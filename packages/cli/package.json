@@ -1,0 +1,64 @@
+{
+  "name": "@neurcode-ai/cli",
+  "version": "0.8.20",
+  "description": "Neurcode CLI - AI code governance and diff analysis",
+  "bin": {
+    "neurcode": "./dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc && chmod +x dist/index.js",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "cli",
+    "code-governance",
+    "diff-analysis",
+    "ai-safety",
+    "neurcode",
+    "ai-code-review",
+    "code-quality"
+  ],
+  "license": "MIT",
+  "author": "Neurcode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sujit-jaunjal/neurcode.git",
+    "directory": "packages/cli"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@neurcode-ai/diff-parser": "^0.1.0",
+    "@neurcode-ai/policy-engine": "^0.1.0",
+    "chalk": "^4.1.2",
+    "chokidar": "^3.6.0",
+    "commander": "^11.1.0",
+    "fs-extra": "^11.2.0",
+    "glob": "^10.3.10",
+    "ignore": "^7.0.5",
+    "lowdb": "^1.0.0",
+    "open": "^11.0.0",
+    "ts-morph": "^24.0.0",
+    "uuid": "^9.0.1",
+    "zod": "^4.3.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/glob": "^8.1.0",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.8",
+    "typescript": "^5.3.0"
+  }
+}

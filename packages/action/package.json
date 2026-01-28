@@ -1,0 +1,33 @@
+{
+  "name": "@neurcode/action",
+  "version": "0.2.0",
+  "description": "GitHub Action for Neurcode - Code adherence verification gatekeeper",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && npm run package",
+    "package": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
+    "dev": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "github-action",
+    "code-governance",
+    "neurcode",
+    "ci-cd"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/exec": "^1.1.1",
+    "@actions/github": "^6.0.0",
+    "@actions/glob": "^0.5.1",
+    "@actions/http-client": "^2.2.3",
+    "@actions/io": "^1.1.2",
+    "@actions/tool-cache": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@vercel/ncc": "^0.38.1",
+    "typescript": "^5.3.0"
+  }
+}

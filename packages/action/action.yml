@@ -1,0 +1,49 @@
+name: 'Neurcode Verify'
+description: 'Gatekeeper action that runs neurcode verify and fails the build if code adherence grade is below threshold'
+author: 'Neurcode'
+branding:
+  icon: 'shield-check'
+  color: 'blue'
+
+inputs:
+  threshold:
+    description: 'Minimum passing grade (A, B, C, D, F). Default: C'
+    required: false
+    default: 'C'
+  github_token:
+    description: 'GitHub token (pass github.token from the workflow if using API features)'
+    required: false
+    default: ''
+  annotate:
+    description: 'Post inline annotations on the PR for each violation (file + line)'
+    required: false
+    default: 'true'
+  api_key:
+    description: 'Neurcode API Key for recording results to Neurcode Cloud'
+    required: false
+    default: ''
+  record:
+    description: 'Enable reporting verification results to Neurcode Cloud'
+    required: false
+    default: 'false'
+  working_directory:
+    description: 'Directory where to run the neurcode verify command'
+    required: false
+    default: '.'
+  plan_id:
+    description: 'Plan ID to verify against (optional, will use from config if not provided)'
+    required: false
+    default: ''
+  project_id:
+    description: 'The Neurcode Project ID (Optional if config file exists)'
+    required: false
+    default: ''
+  neurcode_cli_version:
+    description: 'npm version specifier for @neurcode-ai/cli (e.g. "latest", "0.8.13", "^0.8")'
+    required: false
+    default: 'latest'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+

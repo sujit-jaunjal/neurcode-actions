@@ -1,0 +1,51 @@
+name: Neurcode Gatekeeper
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  
+  # Optional: Allow manual runs for testing
+  workflow_dispatch:
+
+jobs:
+  governance:
+    name: Check Code Adherence
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          # Important: Fetch depth 0 is needed for diff analysis!
+          fetch-depth: 0
+
+      - name: Stage Changes for Neurcode
+        run: |
+          # Default to 'main' if base_ref is missing
+          TARGET_BRANCH="${{ github.base_ref }}"
+          if [ -z "$TARGET_BRANCH" ]; then
+            TARGET_BRANCH="main"
+          fi
+          echo "Target branch is $TARGET_BRANCH"
+          
+          # Reset to the base branch so changes appear as 'staged' for the CLI
+          git config --global --add safe.directory /github/workspace
+          git fetch origin $TARGET_BRANCH
+          git reset --soft origin/$TARGET_BRANCH
+
+      - name: Run Neurcode Verification
+        uses: sujit-jaunjal/neurcode-actions/packages/action@v1
+        env:
+          # Explicitly set production API URL to ensure CLI connects to production
+          NEURCODE_API_URL: https://api.neurcode.com
+        with:
+          api_key: ${{ secrets.NEURCODE_API_KEY }}
+          # Threshold 'C' is standard, but you can adjust
+          threshold: 'C'
+          # Enable recording results to Neurcode Cloud dashboard
+          record: 'true'
+          neurcode_cli_version: 'latest'
+

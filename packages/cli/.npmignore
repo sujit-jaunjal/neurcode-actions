@@ -1,0 +1,10 @@
+src/
+tsconfig.json
+node_modules/
+*.test.ts
+*.spec.ts
+*.map
+.env
+.env.local
+
+

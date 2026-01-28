@@ -1,0 +1,48 @@
+{
+  "name": "@neurcode-ai/policy-engine",
+  "version": "0.1.1",
+  "description": "Policy and rule evaluation engine for Neurcode",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "./scripts/publish-prep.sh",
+    "postpublish": "./scripts/publish-restore.sh"
+  },
+  "keywords": [
+    "policy",
+    "rules",
+    "governance",
+    "neurcode",
+    "code-governance"
+  ],
+  "license": "MIT",
+  "author": "Neurcode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sujit-jaunjal/neurcode.git",
+    "directory": "packages/policy-engine"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@neurcode-ai/diff-parser": "^0.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0"
+  }
+}

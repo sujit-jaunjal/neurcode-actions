@@ -1,0 +1,37 @@
+{
+  "name": "@neurcode-ai/diff-parser",
+  "version": "0.1.0",
+  "description": "Lightweight unified diff parser for Neurcode",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "diff",
+    "parser",
+    "git",
+    "unified-diff",
+    "neurcode"
+  ],
+  "license": "MIT",
+  "author": "Neurcode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sujit-jaunjal/neurcode.git",
+    "directory": "packages/diff-parser"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
+
