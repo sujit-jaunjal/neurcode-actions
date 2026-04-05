@@ -1,0 +1,282 @@
+name: 'Neurcode Verify'
+description: 'Gatekeeper action that runs neurcode verify and fails the build if code adherence grade is below threshold'
+author: 'Neurcode'
+branding:
+  icon: 'shield-check'
+  color: 'blue'
+
+inputs:
+  threshold:
+    description: 'Minimum passing grade (A, B, C, D, F). Default: C'
+    required: false
+    default: 'C'
+  github_token:
+    description: 'GitHub Token for posting PR comments. Pass github.token from the workflow.'
+    required: false
+    default: ''
+  annotate:
+    description: 'Post inline annotations on the PR for each violation (file + line)'
+    required: false
+    default: 'true'
+  api_key:
+    description: 'Neurcode API Key for recording results to Neurcode Cloud'
+    required: false
+    default: ''
+  record:
+    description: 'Enable reporting verification results to Neurcode Cloud'
+    required: false
+    default: 'true'
+  working_directory:
+    description: 'Directory where to run the neurcode verify command'
+    required: false
+    default: '.'
+  base_ref:
+    description: 'Override base ref for verify diff (e.g., origin/main, HEAD~1)'
+    required: false
+    default: ''
+  plan_id:
+    description: 'Plan ID to verify against (optional, will use from config if not provided)'
+    required: false
+    default: ''
+  project_id:
+    description: 'The Neurcode Project ID (Optional if config file exists)'
+    required: false
+    default: ''
+  org_id:
+    description: 'Optional organization ID used to scope CI auth when login state is unavailable'
+    required: false
+    default: ''
+  neurcode_cli_version:
+    description: 'npm version specifier for @neurcode-ai/cli (e.g. "latest", "0.8.13", "^0.8")'
+    required: false
+    default: 'latest'
+  neurcode_cli_source:
+    description: 'CLI install source: npm (registry) or workspace (local packages/cli in current repo)'
+    required: false
+    default: 'npm'
+  neurcode_cli_workspace_path:
+    description: 'Workspace path used when neurcode_cli_source=workspace'
+    required: false
+    default: 'packages/cli'
+  verify_timeout_minutes:
+    description: 'Timeout for neurcode verify command in minutes (Linux/macOS runners)'
+    required: false
+    default: '8'
+  enforce_compatibility_handshake:
+    description: 'Fail fast when CLI/Action/API runtime compatibility contract handshake fails'
+    required: false
+    default: 'true'
+  require_api_compatibility_handshake:
+    description: 'Require API health endpoint to publish compatibility metadata when API URL is configured'
+    required: false
+    default: 'true'
+  compatibility_probe_timeout_minutes:
+    description: 'Timeout for compat probes (CLI compat command and API health) in minutes'
+    required: false
+    default: '2'
+  verify_policy_only:
+    description: 'Run neurcode verify in policy-only mode (skip plan/scope enforcement)'
+    required: false
+    default: 'false'
+  enterprise_mode:
+    description: 'Enable enterprise-safe defaults (auto-enable strict verify + change-contract enforcement unless explicitly overridden)'
+    required: false
+    default: 'true'
+  compiled_policy_path:
+    description: 'Compiled policy artifact path passed to neurcode verify'
+    required: false
+    default: 'neurcode.policy.compiled.json'
+  change_contract_path:
+    description: 'Change contract path passed to neurcode verify'
+    required: false
+    default: '.neurcode/change-contract.json'
+  enforce_change_contract:
+    description: 'Treat change contract drift as hard verification failure (set true/false to override enterprise auto behavior)'
+    required: false
+    default: ''
+  changed_files_only:
+    description: 'Only enforce violations detected in files changed by this PR/base diff'
+    required: false
+    default: 'false'
+  fail_on_violation:
+    description: 'Fail the build if violations are found'
+    required: false
+    default: 'true'
+  enforce_strict_verification:
+    description: 'Treat tier-limited INFO verification results as failure (set true/false to override enterprise auto behavior)'
+    required: false
+    default: ''
+  require_signed_artifacts:
+    description: 'Require cryptographically signed compiled-policy + change-contract artifacts (set true/false to override enterprise auto behavior)'
+    required: false
+    default: ''
+  allow_manual_approval_pending:
+    description: 'Allow runs to pass when governance decision requires manual approval (default false in enterprise mode)'
+    required: false
+    default: 'false'
+  enforce_policy_exception_workflow:
+    description: 'Fail when policy exceptions are blocked by approval governance (set true/false to override enterprise auto behavior)'
+    required: false
+    default: ''
+  auto_remediate:
+    description: 'When verify fails, run neurcode ship auto-remediation flow'
+    required: false
+    default: 'false'
+  remediation_goal:
+    description: 'Optional explicit goal passed to neurcode ship for auto-remediation'
+    required: false
+    default: ''
+  remediation_max_attempts:
+    description: 'Maximum ship remediation attempts when auto_remediate=true'
+    required: false
+    default: '2'
+  remediation_skip_tests:
+    description: 'Skip tests during remediation ship run'
+    required: false
+    default: 'true'
+  remediation_allow_dirty:
+    description: 'Allow dirty tree during remediation ship run'
+    required: false
+    default: 'true'
+  publish_merge_card:
+    description: 'Publish merge confidence card during remediation ship run'
+    required: false
+    default: 'true'
+  ship_test_command:
+    description: 'Optional test command override for neurcode ship remediation'
+    required: false
+    default: ''
+  ship_timeout_minutes:
+    description: 'Timeout for neurcode ship remediation command in minutes (Linux/macOS runners)'
+    required: false
+    default: '20'
+  ship_network_retries:
+    description: 'Additional retries for neurcode ship when transient network errors occur'
+    required: false
+    default: '1'
+  ship_network_retry_delay_seconds:
+    description: 'Delay between neurcode ship network retries in seconds'
+    required: false
+    default: '5'
+  verify_after_remediation:
+    description: 'Run neurcode verify again after auto-remediation succeeds'
+    required: false
+    default: 'true'
+  verify_after_remediation_timeout_minutes:
+    description: 'Timeout for post-remediation neurcode verify command in minutes'
+    required: false
+    default: '8'
+  remediation_commit:
+    description: 'When auto-remediation succeeds, create a commit with generated fixes (same-repo PRs only)'
+    required: false
+    default: 'false'
+  remediation_push:
+    description: 'Push remediation commit back to PR branch (requires write permissions and same-repo PR)'
+    required: false
+    default: 'false'
+  require_remediation_push_success:
+    description: 'Fail the action when remediation push is enabled but commit cannot be pushed'
+    required: false
+    default: 'false'
+  remediation_push_retries:
+    description: 'Additional retries for remediation push on non-fast-forward races'
+    required: false
+    default: '2'
+  remediation_push_retry_delay_seconds:
+    description: 'Delay between remediation push retries in seconds'
+    required: false
+    default: '2'
+  remediation_commit_message:
+    description: 'Commit message used when remediation_commit=true'
+    required: false
+    default: 'chore(neurcode): auto-remediate verify failures'
+  remediation_git_user_name:
+    description: 'Git user.name for remediation commits'
+    required: false
+    default: 'neurcode-bot'
+  remediation_git_user_email:
+    description: 'Git user.email for remediation commits'
+    required: false
+    default: 'neurcode-bot@users.noreply.github.com'
+
+outputs:
+  compatibility_handshake:
+    description: 'compatibility handshake status (passed|skipped)'
+  compatibility_contract_version:
+    description: 'runtime compatibility contract version enforced by this action'
+  compatibility_action_version:
+    description: 'resolved action version used in compatibility checks'
+  compatibility_cli_version:
+    description: 'resolved CLI version from neurcode compat handshake'
+  compatibility_api_version:
+    description: 'resolved API version from health compatibility payload'
+  compatibility_manifest_version:
+    description: 'runtime compatibility manifest version resolved during handshake'
+  runtime_compatibility_issues:
+    description: 'number of runtime compatibility handshake findings emitted as action annotations'
+  verdict:
+    description: 'neurcode verify verdict'
+  verify_mode:
+    description: 'verification mode used by action (plan_aware|plan_enforced_explicit|policy_only|policy_only_fallback)'
+  policy_only_fallback_used:
+    description: 'true when action retried verify in policy-only mode due to missing plan context'
+  enterprise_mode_active:
+    description: 'true when enterprise_mode was enabled for this run'
+  enterprise_enforced_change_contract:
+    description: 'effective enforce_change_contract value after enterprise defaults were applied'
+  enterprise_enforced_strict_verification:
+    description: 'effective enforce_strict_verification value after enterprise defaults were applied'
+  enterprise_enforced_signed_artifacts:
+    description: 'effective require_signed_artifacts value after enterprise defaults were applied'
+  enterprise_enforced_policy_exception_workflow:
+    description: 'effective enforce_policy_exception_workflow value after enterprise defaults were applied'
+  grade:
+    description: 'neurcode verify grade'
+  score:
+    description: 'neurcode verify score'
+  violations:
+    description: 'total violation count'
+  risk_level:
+    description: 'blast radius risk level'
+  suspicious_change_flagged:
+    description: 'whether suspicious change detector was triggered'
+  governance_decision:
+    description: 'governance decision matrix outcome'
+  average_relevance_score:
+    description: 'average per-file AI relevance score'
+  ai_change_log_integrity_valid:
+    description: 'true when signed/tamper checks passed for AI change log'
+  ai_change_log_signed:
+    description: 'true when AI change log is cryptographically signed'
+  org_manual_approval_required:
+    description: 'true when org governance requires manual approvals'
+  org_minimum_manual_approvals:
+    description: 'minimum distinct manual approvers required by org governance'
+  manual_approval_gate_blocked:
+    description: 'true when run failed only because manual governance approval is still pending'
+  policy_exceptions_blocked:
+    description: 'count of policy exception matches blocked by approval governance'
+  policy_exceptions_suppressed:
+    description: 'count of policy violations suppressed by active exceptions'
+  policy_exceptions_matched:
+    description: 'count of exception IDs matched during verify'
+  policy_exceptions_source_mode:
+    description: 'source mode for exceptions (local|org|org_fallback_local)'
+  policy_exception_workflow_blocked:
+    description: 'true when run failed because blocked policy exceptions exist under enforced workflow rules'
+  policy_compilation_fingerprint:
+    description: 'compiled policy fingerprint used during verify'
+  policy_compilation_rule_count:
+    description: 'deterministic rule count in compiled policy'
+  change_contract_exists:
+    description: 'true when a change contract artifact was present'
+  change_contract_valid:
+    description: 'true when evaluated change contract passed'
+  change_contract_enforced:
+    description: 'true when change contract drift was configured as hard-fail'
+  change_contract_id:
+    description: 'content-derived identifier of the active change contract'
+
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

@@ -1,0 +1,22 @@
+{
+  "name": "@neurcode/action",
+  "version": "0.2.2",
+  "description": "GitHub Action for Neurcode - Code adherence verification gatekeeper",
+  "main": "dist/index.js",
+  "scripts": {
+    "smoke": "node -e \"require('./dist/index.js'); console.log('ok')\""
+  },
+  "keywords": [
+    "github-action",
+    "code-governance",
+    "neurcode",
+    "ci-cd"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/exec": "^1.1.1",
+    "@actions/github": "^6.0.0",
+    "@neurcode-ai/contracts": "^0.1.1"
+  }
+}
