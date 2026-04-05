@@ -54,6 +54,8 @@ jobs:
 | `enforce_change_contract` | Treat contract drift as hard fail; set `true`/`false` to override enterprise auto mode | `''` (auto) |
 | `enforce_strict_verification` | Treat tier-limited `INFO` as failure; set `true`/`false` to override enterprise auto mode | `''` (auto) |
 | `require_signed_artifacts` | Require signed compiled-policy/change-contract artifacts; set `true`/`false` to override enterprise auto mode | `''` (auto) |
+| `require_runtime_guard` | Require runtime guard artifact enforcement in verify; set `true`/`false` to override enterprise auto mode | `''` (auto) |
+| `runtime_guard_path` | Runtime guard artifact path passed to verify | `.neurcode/runtime-guard.json` |
 | `allow_manual_approval_pending` | Allow pass when governance requires human approval (`manual_approval`) | `false` |
 | `enforce_policy_exception_workflow` | Fail when exceptions are matched but blocked by approval governance | `''` (auto) |
 | `auto_remediate` | Run `neurcode ship` when verify fails | `false` |
@@ -82,6 +84,7 @@ See `action.yml` for full advanced inputs (timeouts, retries, CLI source/version
 | `compatibility_cli_version` | CLI version discovered from `neurcode compat --json` |
 | `compatibility_api_version` | API version discovered from health compatibility payload |
 | `enterprise_enforced_signed_artifacts` | Effective signed-artifact requirement after enterprise defaults |
+| `enterprise_enforced_runtime_guard` | Effective runtime-guard requirement after enterprise defaults |
 | `enterprise_enforced_policy_exception_workflow` | Effective exception-workflow enforcement after enterprise defaults |
 | `manual_approval_gate_blocked` | `true` when action failed because manual governance approval is still pending |
 | `policy_exceptions_blocked` | Count of exception matches blocked by approval governance |
@@ -89,6 +92,9 @@ See `action.yml` for full advanced inputs (timeouts, retries, CLI source/version
 | `policy_exceptions_matched` | Count of matched exception IDs |
 | `policy_exceptions_source_mode` | Exceptions source mode (`local`, `org`, `org_fallback_local`) |
 | `policy_exception_workflow_blocked` | `true` when action failed due to blocked policy exceptions |
+| `runtime_guard_required` | `true` when runtime guard enforcement was required for verify |
+| `runtime_guard_passed` | `true` when runtime guard evaluation passed |
+| `runtime_guard_path` | Runtime guard artifact path used by verify |
 | `remediation_status` | `READY_TO_MERGE` or `BLOCKED` (when remediation runs) |
 | `merge_confidence` | Merge confidence from ship summary |
 | `share_card_url` | Public merge confidence card URL (when available) |
@@ -102,6 +108,7 @@ See `action.yml` for full advanced inputs (timeouts, retries, CLI source/version
 - In enterprise auto mode, change-contract hard-fail is enabled for plan-aware runs and relaxed for policy-only fallback runs.
 - When strict enterprise verification is active, policy-only fallback is disabled and missing plan context hard-fails.
 - Signed artifact enforcement auto-activates in strict mode when governance signing keys are present (`NEURCODE_GOVERNANCE_SIGNING_KEY` or key-ring env).
+- Runtime guard enforcement can be auto-enabled in enterprise mode when runtime guard artifact exists, or forced via `require_runtime_guard: true`.
 - Manual-approval governance decisions fail the action by default; set `allow_manual_approval_pending: true` only for non-blocking rollout phases.
 - Blocked policy exceptions (pending/invalid approvals) fail by default in enterprise mode; set `enforce_policy_exception_workflow: false` only for temporary migration windows.
 - Use `verify_policy_only: true` only for intentional policy-only governance runs.

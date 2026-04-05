@@ -90,6 +90,14 @@ inputs:
     description: 'Change contract path passed to neurcode verify'
     required: false
     default: '.neurcode/change-contract.json'
+  runtime_guard_path:
+    description: 'Runtime guard artifact path passed to neurcode verify'
+    required: false
+    default: '.neurcode/runtime-guard.json'
+  require_runtime_guard:
+    description: 'Require runtime guard artifact enforcement in neurcode verify (true|false; empty enables enterprise auto behavior)'
+    required: false
+    default: ''
   enforce_change_contract:
     description: 'Treat change contract drift as hard verification failure (set true/false to override enterprise auto behavior)'
     required: false
@@ -228,6 +236,8 @@ outputs:
     description: 'effective enforce_strict_verification value after enterprise defaults were applied'
   enterprise_enforced_signed_artifacts:
     description: 'effective require_signed_artifacts value after enterprise defaults were applied'
+  enterprise_enforced_runtime_guard:
+    description: 'effective require_runtime_guard value after enterprise defaults were applied'
   enterprise_enforced_policy_exception_workflow:
     description: 'effective enforce_policy_exception_workflow value after enterprise defaults were applied'
   grade:
@@ -276,6 +286,12 @@ outputs:
     description: 'true when change contract drift was configured as hard-fail'
   change_contract_id:
     description: 'content-derived identifier of the active change contract'
+  runtime_guard_required:
+    description: 'true when verify required runtime guard enforcement for this run'
+  runtime_guard_passed:
+    description: 'true when runtime guard evaluation passed'
+  runtime_guard_path:
+    description: 'runtime guard artifact path used during verify'
 
 runs:
   using: 'node24'

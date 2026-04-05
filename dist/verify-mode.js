@@ -44,6 +44,10 @@ function buildVerifyArgs(input) {
         args.push('--require-signed-artifacts');
     if (input.requirePlan)
         args.push('--require-plan');
+    if (input.requireRuntimeGuard)
+        args.push('--require-runtime-guard');
+    if (input.runtimeGuardPath)
+        args.push('--runtime-guard', input.runtimeGuardPath);
     if (input.record)
         args.push('--record');
     return args;

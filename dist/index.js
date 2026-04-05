@@ -35330,7 +35330,7 @@ const RUNTIME_COMPATIBILITY_MANIFEST = {
             id: 'current',
             channel: 'current',
             versions: {
-                cli: '0.9.39',
+                cli: '0.9.40',
                 action: '0.2.2',
                 api: '0.2.0',
             },
@@ -36048,6 +36048,21 @@ function assertStrictDeterministicArtifacts(input) {
         throw new Error(`Strict enterprise mode requires deterministic compiled-policy + change-contract artifacts:\n- ${errors.join('\n- ')}`);
     }
 }
+function assertRuntimeGuardRequirement(input) {
+    if (!input.requireRuntimeGuard)
+        return;
+    if (!input.supportsRequireRuntimeGuard) {
+        throw new Error('Current CLI does not support --require-runtime-guard, but this workflow requires runtime guard enforcement.');
+    }
+    const runtimeGuardPath = (input.runtimeGuardPath || '').trim();
+    if (!runtimeGuardPath) {
+        throw new Error('Missing runtime guard artifact path when runtime guard enforcement is enabled.');
+    }
+    const absolutePath = (0, path_1.resolve)(input.cwd, runtimeGuardPath);
+    if (!(0, fs_1.existsSync)(absolutePath)) {
+        throw new Error(`Runtime guard artifact is required but missing: ${runtimeGuardPath}`);
+    }
+}
 function detectProjectOrgId(cwd) {
     const statePath = (0, path_1.join)(cwd, '.neurcode', 'config.json');
     const state = readJsonFile(statePath);
@@ -36712,6 +36727,7 @@ async function resolveVerifyCapabilities(cli, cwd) {
             supportsEnforceChangeContract: true,
             supportsRequirePlan: true,
             supportsRequireSignedArtifacts: true,
+            supportsRequireRuntimeGuard: true,
         };
     }
     const helpText = stripAnsi(helpResult.output).toLowerCase();
@@ -36721,6 +36737,7 @@ async function resolveVerifyCapabilities(cli, cwd) {
         supportsEnforceChangeContract: helpText.includes('--enforce-change-contract'),
         supportsRequirePlan: helpText.includes('--require-plan'),
         supportsRequireSignedArtifacts: helpText.includes('--require-signed-artifacts'),
+        supportsRequireRuntimeGuard: helpText.includes('--require-runtime-guard'),
     };
 }
 async function resolveCliInvocation(cwd) {
@@ -36944,6 +36961,8 @@ async function run() {
         const enterpriseMode = parseBoolean(core.getInput('enterprise_mode'), true);
         const compiledPolicyPath = (core.getInput('compiled_policy_path') || 'neurcode.policy.compiled.json').trim();
         const changeContractPath = (core.getInput('change_contract_path') || '.neurcode/change-contract.json').trim();
+        const runtimeGuardPath = (core.getInput('runtime_guard_path') || '.neurcode/runtime-guard.json').trim();
+        const requireRuntimeGuardOverride = parseBooleanOrUndefined(core.getInput('require_runtime_guard'));
         const enforceChangeContractOverride = parseBooleanOrUndefined(core.getInput('enforce_change_contract'));
         const changedFilesOnly = parseBoolean(core.getInput('changed_files_only'), false);
         const autoRemediate = parseBoolean(core.getInput('auto_remediate'), false);
@@ -36987,6 +37006,10 @@ async function run() {
         const remediationGitUserName = core.getInput('remediation_git_user_name') || 'neurcode-bot';
         const remediationGitUserEmail = core.getInput('remediation_git_user_email') || 'neurcode-bot@users.noreply.github.com';
         const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+        const runtimeGuardArtifactExists = (0, fs_1.existsSync)((0, path_1.resolve)(cwd, runtimeGuardPath));
+        const requireRuntimeGuard = typeof requireRuntimeGuardOverride === 'boolean'
+            ? requireRuntimeGuardOverride
+            : (enterpriseMode && !verifyPolicyOnly && runtimeGuardArtifactExists);
         if (remediationPush && !remediationCommit) {
             throw new Error('Invalid action configuration: remediation_push=true requires remediation_commit=true.');
         }
@@ -37065,6 +37088,9 @@ async function run() {
         if (requireSignedArtifacts && !verifyCapabilities.supportsRequireSignedArtifacts) {
             throw new Error('Current CLI does not support --require-signed-artifacts, but enterprise strict verification requires signed deterministic artifacts.');
         }
+        if (requireRuntimeGuard && !verifyCapabilities.supportsRequireRuntimeGuard) {
+            throw new Error('Current CLI does not support --require-runtime-guard, but this workflow requires runtime guard enforcement.');
+        }
         assertStrictDeterministicArtifacts({
             cwd,
             strictMode: enforceStrictVerification,
@@ -37075,6 +37101,12 @@ async function run() {
             supportsRequireSignedArtifacts: verifyCapabilities.supportsRequireSignedArtifacts,
             requireSignedArtifacts,
         });
+        assertRuntimeGuardRequirement({
+            cwd,
+            requireRuntimeGuard,
+            runtimeGuardPath,
+            supportsRequireRuntimeGuard: verifyCapabilities.supportsRequireRuntimeGuard,
+        });
         const pr = github.context.payload.pull_request;
         const defaultBaseRef = pr ? `origin/${pr.base.ref}` : 'HEAD~1';
         const baseRef = baseRefInput.trim() || defaultBaseRef;
@@ -37083,8 +37115,8 @@ async function run() {
             : `Running verify in push context against ${baseRef}`);
         core.info(`Verification mode: ${verifyPolicyOnly ? 'policy-only' : 'plan-aware'}`);
         core.info(`Enterprise mode: ${enterpriseMode ? 'enabled' : 'disabled'}`);
-        core.info(`Verify capabilities => compiled_policy=${verifyCapabilities.supportsCompiledPolicy}, change_contract=${verifyCapabilities.supportsChangeContract}, enforce_change_contract=${verifyCapabilities.supportsEnforceChangeContract}, require_plan=${verifyCapabilities.supportsRequirePlan}, require_signed_artifacts=${verifyCapabilities.supportsRequireSignedArtifacts}`);
-        core.info(`Enterprise enforcement => enforce_change_contract=${enforceChangeContract}, enforce_strict_verification=${enforceStrictVerification}, require_signed_artifacts=${requireSignedArtifacts}`);
+        core.info(`Verify capabilities => compiled_policy=${verifyCapabilities.supportsCompiledPolicy}, change_contract=${verifyCapabilities.supportsChangeContract}, enforce_change_contract=${verifyCapabilities.supportsEnforceChangeContract}, require_plan=${verifyCapabilities.supportsRequirePlan}, require_signed_artifacts=${verifyCapabilities.supportsRequireSignedArtifacts}, require_runtime_guard=${verifyCapabilities.supportsRequireRuntimeGuard}`);
+        core.info(`Enterprise enforcement => enforce_change_contract=${enforceChangeContract}, enforce_strict_verification=${enforceStrictVerification}, require_signed_artifacts=${requireSignedArtifacts}, require_runtime_guard=${requireRuntimeGuard}`);
         core.info(`Policy exception workflow enforcement => ${enforcePolicyExceptionWorkflow ? 'enabled' : 'disabled'}`);
         if (!fallbackToPolicyOnlyAllowed) {
             core.info('Strict enterprise mode: policy-only fallback is disabled; missing plan context will hard-fail.');
@@ -37117,6 +37149,8 @@ async function run() {
             strictArtifacts: enforceStrictVerification,
             requireSignedArtifacts,
             requirePlan: requirePlanContext && !effectiveVerifyPolicyOnly,
+            requireRuntimeGuard: requireRuntimeGuard && !effectiveVerifyPolicyOnly,
+            runtimeGuardPath: requireRuntimeGuard ? runtimeGuardPath : undefined,
         });
         let verifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyTimeoutMinutes);
         let verifyRun = await runCommand(verifyCommand.cmd, verifyCommand.args, {
@@ -37158,6 +37192,8 @@ async function run() {
                 strictArtifacts: enforceStrictVerification,
                 requireSignedArtifacts,
                 requirePlan: false,
+                requireRuntimeGuard: false,
+                runtimeGuardPath: undefined,
             });
             verifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyTimeoutMinutes);
             verifyRun = await runCommand(verifyCommand.cmd, verifyCommand.args, {
@@ -37449,6 +37485,15 @@ async function run() {
             if (verifyResult.changeContract?.contractId) {
                 core.setOutput('change_contract_id', verifyResult.changeContract.contractId);
             }
+            if (verifyResult.runtimeGuard?.required !== undefined) {
+                core.setOutput('runtime_guard_required', verifyResult.runtimeGuard.required === true ? 'true' : 'false');
+            }
+            if (verifyResult.runtimeGuard?.pass !== undefined) {
+                core.setOutput('runtime_guard_passed', verifyResult.runtimeGuard.pass === true ? 'true' : 'false');
+            }
+            if (typeof verifyResult.runtimeGuard?.path === 'string' && verifyResult.runtimeGuard.path.trim()) {
+                core.setOutput('runtime_guard_path', verifyResult.runtimeGuard.path.trim());
+            }
             const thresholdCheck = isGradeBelowThreshold(verifyResult.grade, threshold);
             core.setOutput('threshold', threshold);
             core.setOutput('threshold_passed', thresholdCheck === null ? 'unknown' : (thresholdCheck ? 'false' : 'true'));
@@ -37484,6 +37529,7 @@ async function run() {
         core.setOutput('enterprise_enforced_change_contract', effectiveEnforceChangeContract ? 'true' : 'false');
         core.setOutput('enterprise_enforced_strict_verification', enforceStrictVerification ? 'true' : 'false');
         core.setOutput('enterprise_enforced_signed_artifacts', requireSignedArtifacts ? 'true' : 'false');
+        core.setOutput('enterprise_enforced_runtime_guard', requireRuntimeGuard ? 'true' : 'false');
         core.setOutput('enterprise_enforced_policy_exception_workflow', enforcePolicyExceptionWorkflow ? 'true' : 'false');
         if (remediation) {
             core.setOutput('remediation_status', remediation.status);
@@ -37730,6 +37776,10 @@ function buildVerifyArgs(input) {
         args.push('--require-signed-artifacts');
     if (input.requirePlan)
         args.push('--require-plan');
+    if (input.requireRuntimeGuard)
+        args.push('--require-runtime-guard');
+    if (input.runtimeGuardPath)
+        args.push('--runtime-guard', input.runtimeGuardPath);
     if (input.record)
         args.push('--record');
     return args;
