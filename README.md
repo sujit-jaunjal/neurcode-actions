@@ -95,6 +95,10 @@ See `action.yml` for full advanced inputs (timeouts, retries, CLI source/version
 | `runtime_guard_required` | `true` when runtime guard enforcement was required for verify |
 | `runtime_guard_passed` | `true` when runtime guard evaluation passed |
 | `runtime_guard_path` | Runtime guard artifact path used by verify |
+| `ai_debt_score` | AI debt budget score from verify (0-100) |
+| `ai_debt_passed` | `true` when AI debt budget passed |
+| `ai_debt_mode` | Effective AI debt mode (`off`, `advisory`, `enforce`) |
+| `ai_debt_violations` | Number of AI debt budget violations |
 | `remediation_status` | `READY_TO_MERGE` or `BLOCKED` (when remediation runs) |
 | `merge_confidence` | Merge confidence from ship summary |
 | `share_card_url` | Public merge confidence card URL (when available) |

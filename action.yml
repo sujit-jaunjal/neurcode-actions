@@ -292,6 +292,14 @@ outputs:
     description: 'true when runtime guard evaluation passed'
   runtime_guard_path:
     description: 'runtime guard artifact path used during verify'
+  ai_debt_score:
+    description: 'AI debt budget score (0-100) from neurcode verify'
+  ai_debt_passed:
+    description: 'true when AI debt budget gate passed for this run'
+  ai_debt_mode:
+    description: 'effective AI debt mode (off|advisory|enforce)'
+  ai_debt_violations:
+    description: 'count of AI debt budget violations detected'
 
 runs:
   using: 'node24'

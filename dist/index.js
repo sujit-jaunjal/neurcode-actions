@@ -36451,6 +36451,33 @@ function parseVerifyResult(output) {
                     : [],
             }
             : undefined,
+        aiDebt: value.aiDebt && typeof value.aiDebt === 'object' && !Array.isArray(value.aiDebt)
+            ? {
+                mode: typeof value.aiDebt.mode === 'string'
+                    ? value.aiDebt.mode
+                    : undefined,
+                pass: typeof value.aiDebt.pass === 'boolean'
+                    ? value.aiDebt.pass
+                    : undefined,
+                score: typeof value.aiDebt.score === 'number'
+                    ? value.aiDebt.score
+                    : undefined,
+                source: typeof value.aiDebt.source === 'string'
+                    ? value.aiDebt.source
+                    : undefined,
+                violations: Array.isArray(value.aiDebt.violations)
+                    ? value.aiDebt.violations
+                        .filter((item) => !!item && typeof item === 'object')
+                        .map((item) => ({
+                        code: typeof item.code === 'string' ? item.code : undefined,
+                        metric: typeof item.metric === 'string' ? item.metric : undefined,
+                        observed: typeof item.observed === 'number' ? item.observed : undefined,
+                        budget: typeof item.budget === 'number' ? item.budget : undefined,
+                        message: typeof item.message === 'string' ? item.message : undefined,
+                    }))
+                    : [],
+            }
+            : undefined,
     };
 }
 function parseShipSummary(output) {
@@ -37493,6 +37520,18 @@ async function run() {
             }
             if (typeof verifyResult.runtimeGuard?.path === 'string' && verifyResult.runtimeGuard.path.trim()) {
                 core.setOutput('runtime_guard_path', verifyResult.runtimeGuard.path.trim());
+            }
+            if (typeof verifyResult.aiDebt?.score === 'number') {
+                core.setOutput('ai_debt_score', verifyResult.aiDebt.score.toString());
+            }
+            if (typeof verifyResult.aiDebt?.pass === 'boolean') {
+                core.setOutput('ai_debt_passed', verifyResult.aiDebt.pass ? 'true' : 'false');
+            }
+            if (typeof verifyResult.aiDebt?.mode === 'string' && verifyResult.aiDebt.mode.trim()) {
+                core.setOutput('ai_debt_mode', verifyResult.aiDebt.mode.trim());
+            }
+            if (Array.isArray(verifyResult.aiDebt?.violations)) {
+                core.setOutput('ai_debt_violations', String(verifyResult.aiDebt.violations.length));
             }
             const thresholdCheck = isGradeBelowThreshold(verifyResult.grade, threshold);
             core.setOutput('threshold', threshold);
