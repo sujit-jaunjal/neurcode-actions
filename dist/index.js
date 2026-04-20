@@ -35303,7 +35303,7 @@ exports.parseCliCompatJsonPayload = parseCliCompatJsonPayload;
 exports.CLI_JSON_CONTRACT_VERSION = '2026-04-04';
 exports.RUNTIME_COMPATIBILITY_CONTRACT_ID = 'neurcode-runtime-compatibility';
 exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION = '2026-04-04';
-exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = '2026-04-08.1';
+exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = '2026-04-12.1';
 exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION = 1;
 const RUNTIME_COMPATIBILITY_MANIFEST = {
     schemaVersion: exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION,
@@ -35330,7 +35330,7 @@ const RUNTIME_COMPATIBILITY_MANIFEST = {
             id: 'current',
             channel: 'current',
             versions: {
-                cli: '0.9.43',
+                cli: '0.9.44',
                 action: '0.2.2',
                 api: '0.2.0',
             },
