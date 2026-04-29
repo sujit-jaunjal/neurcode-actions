@@ -35293,6 +35293,7 @@ exports.evaluateRuntimePeerCompatibility = evaluateRuntimePeerCompatibility;
 exports.parseCliPlanJsonPayload = parseCliPlanJsonPayload;
 exports.parseCliApplyJsonPayload = parseCliApplyJsonPayload;
 exports.parseCliVerifyJsonPayload = parseCliVerifyJsonPayload;
+exports.parseVerifyOutput = parseVerifyOutput;
 exports.parseCliPromptJsonPayload = parseCliPromptJsonPayload;
 exports.parseCliContractImportJsonPayload = parseCliContractImportJsonPayload;
 exports.parseCliShipJsonPayload = parseCliShipJsonPayload;
@@ -35417,6 +35418,10 @@ function asOptionalString(record, key, label) {
         throw new Error(`${label}: expected ${key}:string`);
     }
     return value;
+}
+function asIntegerNumber(record, key, label) {
+    const value = asNumber(record, key, label);
+    return Math.max(0, Math.floor(value));
 }
 function asContractVersion(record) {
     const value = record.contractVersion;
@@ -35576,21 +35581,64 @@ function parseCliApplyJsonPayload(value, label = 'apply') {
     };
 }
 function parseCliVerifyJsonPayload(value, label = 'verify') {
+    return parseVerifyOutput(value, label);
+}
+function parseVerifyOutput(value, label = 'verify') {
     const record = asRecord(value, label);
-    const verificationSourceRaw = record.verificationSource;
-    const verificationSource = verificationSourceRaw === undefined
+    const verdictRaw = asString(record, 'verdict', label).trim().toUpperCase();
+    if (verdictRaw !== 'PASS' && verdictRaw !== 'WARN' && verdictRaw !== 'FAIL') {
+        throw new Error(`${label}: expected verdict:"PASS"|"WARN"|"FAIL"`);
+    }
+    const summaryRecord = asRecord(record.summary, `${label}.summary`);
+    const summary = {
+        totalFilesChanged: asIntegerNumber(summaryRecord, 'totalFilesChanged', `${label}.summary`),
+        totalViolations: asIntegerNumber(summaryRecord, 'totalViolations', `${label}.summary`),
+        totalWarnings: asIntegerNumber(summaryRecord, 'totalWarnings', `${label}.summary`),
+        totalScopeIssues: asIntegerNumber(summaryRecord, 'totalScopeIssues', `${label}.summary`),
+    };
+    const violations = asArray(record, 'violations', label).map((entry, index) => {
+        const item = asRecord(entry, `${label}.violations[${index}]`);
+        const severity = asString(item, 'severity', `${label}.violations[${index}]`).trim().toLowerCase();
+        if (severity !== 'critical' && severity !== 'high' && severity !== 'warning' && severity !== 'info') {
+            throw new Error(`${label}.violations[${index}]: expected severity:"critical"|"high"|"warning"|"info"`);
+        }
+        return {
+            file: asString(item, 'file', `${label}.violations[${index}]`),
+            message: asString(item, 'message', `${label}.violations[${index}]`),
+            policy: asString(item, 'policy', `${label}.violations[${index}]`),
+            severity,
+        };
+    });
+    const warnings = asArray(record, 'warnings', label).map((entry, index) => {
+        const item = asRecord(entry, `${label}.warnings[${index}]`);
+        return {
+            file: asString(item, 'file', `${label}.warnings[${index}]`),
+            message: asString(item, 'message', `${label}.warnings[${index}]`),
+            policy: asString(item, 'policy', `${label}.warnings[${index}]`),
+        };
+    });
+    const scopeIssues = asArray(record, 'scopeIssues', label).map((entry, index) => {
+        const item = asRecord(entry, `${label}.scopeIssues[${index}]`);
+        return {
+            file: asString(item, 'file', `${label}.scopeIssues[${index}]`),
+            message: asString(item, 'message', `${label}.scopeIssues[${index}]`),
+        };
+    });
+    const driftScoreRaw = record.driftScore;
+    const driftScore = driftScoreRaw === undefined
         ? undefined
-        : asString(record, 'verificationSource', label);
+        : (typeof driftScoreRaw === 'number' && Number.isFinite(driftScoreRaw)
+            ? Math.round(Math.max(0, Math.min(100, driftScoreRaw)))
+            : (() => {
+                throw new Error(`${label}: expected driftScore:number when present`);
+            })());
     return {
-        ...record,
-        contractVersion: asContractVersion(record),
-        grade: asString(record, 'grade', label),
-        score: asNumber(record, 'score', label),
-        verdict: asString(record, 'verdict', label),
-        violations: asArray(record, 'violations', label),
-        message: asString(record, 'message', label),
-        scopeGuardPassed: asBoolean(record, 'scopeGuardPassed', label),
-        verificationSource,
+        verdict: verdictRaw,
+        summary,
+        violations,
+        warnings,
+        scopeIssues,
+        ...(typeof driftScore === 'number' ? { driftScore } : {}),
     };
 }
 function parseCliPromptJsonPayload(value, label = 'prompt') {
@@ -35751,6 +35799,8 @@ const https = __importStar(__nccwpck_require__(5692));
 const path_1 = __nccwpck_require__(6928);
 const verify_mode_1 = __nccwpck_require__(4288);
 const runtime_compat_1 = __nccwpck_require__(5654);
+const formatter_1 = __nccwpck_require__(7459);
+const github_client_1 = __nccwpck_require__(7920);
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
 const NON_FAST_FORWARD_PATTERNS = [
     'non-fast-forward',
@@ -36281,203 +36331,71 @@ async function runCompatibilityHandshake(input) {
             || (apiCompatibility ? apiCompatibility.manifestVersion : undefined),
     };
 }
-function parseVerifyResult(output) {
+function parseVerifyOutputFromCommandOutput(output) {
     const parsed = extractLastJsonObject(output);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return null;
-    const value = parsed;
-    let validated;
+    }
     try {
-        validated = (0, contracts_1.parseCliVerifyJsonPayload)(value, 'action-verify-result');
+        return (0, contracts_1.parseVerifyOutput)(parsed, 'action-verify-result');
     }
     catch {
         return null;
     }
-    const rawViolations = Array.isArray(value.violations) ? value.violations : [];
-    const violations = rawViolations
-        .filter((entry) => !!entry && typeof entry === 'object')
-        .map((entry) => ({
-        file: typeof entry.file === 'string' ? entry.file : 'unknown',
-        rule: typeof entry.rule === 'string' ? entry.rule : 'unknown',
-        severity: typeof entry.severity === 'string' ? entry.severity : 'warn',
-        message: typeof entry.message === 'string' ? entry.message : '',
-    }));
+}
+function scoreFromVerifyVerdict(verdict) {
+    if (verdict === 'PASS')
+        return 100;
+    if (verdict === 'WARN')
+        return 60;
+    return 0;
+}
+function gradeFromVerifyVerdict(verdict) {
+    if (verdict === 'PASS')
+        return 'A';
+    if (verdict === 'WARN')
+        return 'C';
+    return 'F';
+}
+function parseVerifyResult(output) {
+    const parsed = parseVerifyOutputFromCommandOutput(output);
+    if (!parsed)
+        return null;
+    const violations = [
+        ...parsed.violations.map((item) => ({
+            file: item.file,
+            rule: item.policy,
+            severity: item.severity,
+            message: item.message,
+        })),
+        ...parsed.warnings.map((item) => ({
+            file: item.file,
+            rule: item.policy,
+            severity: 'warn',
+            message: item.message,
+        })),
+        ...parsed.scopeIssues.map((item) => ({
+            file: item.file,
+            rule: 'scope_guard',
+            severity: 'block',
+            message: item.message,
+        })),
+    ];
+    const message = `${parsed.summary.totalViolations} violations, ` +
+        `${parsed.summary.totalWarnings} warnings, ` +
+        `${parsed.summary.totalScopeIssues} scope issues`;
     return {
-        grade: validated.grade,
-        score: validated.score,
-        verdict: validated.verdict,
-        mode: typeof value.mode === 'string' ? value.mode : undefined,
+        grade: gradeFromVerifyVerdict(parsed.verdict),
+        score: scoreFromVerifyVerdict(parsed.verdict),
+        verdict: parsed.verdict,
+        mode: 'plan_enforced',
         violations,
-        message: validated.message,
-        verificationSource: typeof validated.verificationSource === 'string'
-            ? validated.verificationSource
-            : undefined,
-        tier: typeof value.tier === 'string' ? value.tier : undefined,
-        scopeGuardPassed: validated.scopeGuardPassed,
-        bloatCount: typeof value.bloatCount === 'number' ? value.bloatCount : undefined,
-        blastRadius: value.blastRadius && typeof value.blastRadius === 'object' && !Array.isArray(value.blastRadius)
-            ? {
-                riskScore: typeof value.blastRadius.riskScore === 'string'
-                    ? value.blastRadius.riskScore
-                    : undefined,
-                filesChanged: typeof value.blastRadius.filesChanged === 'number'
-                    ? value.blastRadius.filesChanged
-                    : undefined,
-            }
-            : undefined,
-        suspiciousChange: value.suspiciousChange && typeof value.suspiciousChange === 'object' && !Array.isArray(value.suspiciousChange)
-            ? {
-                flagged: value.suspiciousChange.flagged === true,
-                confidence: typeof value.suspiciousChange.confidence === 'string'
-                    ? value.suspiciousChange.confidence
-                    : undefined,
-                unexpectedFiles: Array.isArray(value.suspiciousChange.unexpectedFiles)
-                    ? value.suspiciousChange.unexpectedFiles
-                        .filter((item) => typeof item === 'string')
-                    : undefined,
-            }
-            : undefined,
-        governanceDecision: value.governanceDecision && typeof value.governanceDecision === 'object' && !Array.isArray(value.governanceDecision)
-            ? {
-                decision: typeof value.governanceDecision.decision === 'string'
-                    ? value.governanceDecision.decision
-                    : undefined,
-                averageRelevanceScore: typeof value.governanceDecision.averageRelevanceScore === 'number'
-                    ? value.governanceDecision.averageRelevanceScore
-                    : undefined,
-            }
-            : undefined,
-        aiChangeLog: value.aiChangeLog && typeof value.aiChangeLog === 'object' && !Array.isArray(value.aiChangeLog)
-            ? (() => {
-                const aiLogRaw = value.aiChangeLog;
-                const integrityRaw = aiLogRaw.integrity && typeof aiLogRaw.integrity === 'object' && !Array.isArray(aiLogRaw.integrity)
-                    ? aiLogRaw.integrity
-                    : null;
-                return {
-                    integrity: integrityRaw
-                        ? {
-                            valid: integrityRaw.valid === true,
-                            signed: integrityRaw.signed === true,
-                            required: integrityRaw.required === true,
-                            issues: Array.isArray(integrityRaw.issues)
-                                ? integrityRaw.issues.filter((item) => typeof item === 'string')
-                                : [],
-                        }
-                        : undefined,
-                };
-            })()
-            : undefined,
-        orgGovernance: value.orgGovernance && typeof value.orgGovernance === 'object' && !Array.isArray(value.orgGovernance)
-            ? {
-                requireSignedAiLogs: value.orgGovernance.requireSignedAiLogs === true,
-                requireManualApproval: value.orgGovernance.requireManualApproval === true,
-                minimumManualApprovals: typeof value.orgGovernance.minimumManualApprovals === 'number'
-                    ? Math.max(1, Math.min(5, Math.floor(value.orgGovernance.minimumManualApprovals)))
-                    : undefined,
-            }
-            : undefined,
-        policyCompilation: value.policyCompilation && typeof value.policyCompilation === 'object' && !Array.isArray(value.policyCompilation)
-            ? {
-                fingerprint: typeof value.policyCompilation.fingerprint === 'string'
-                    ? value.policyCompilation.fingerprint
-                    : undefined,
-                deterministicRuleCount: typeof value.policyCompilation.deterministicRuleCount === 'number'
-                    ? value.policyCompilation.deterministicRuleCount
-                    : undefined,
-                unmatchedStatements: typeof value.policyCompilation.unmatchedStatements === 'number'
-                    ? value.policyCompilation.unmatchedStatements
-                    : undefined,
-                sourcePath: typeof value.policyCompilation.sourcePath === 'string'
-                    ? value.policyCompilation.sourcePath
-                    : undefined,
-                policyLockFingerprint: typeof value.policyCompilation.policyLockFingerprint === 'string'
-                    ? value.policyCompilation.policyLockFingerprint
-                    : null,
-            }
-            : undefined,
-        changeContract: value.changeContract && typeof value.changeContract === 'object' && !Array.isArray(value.changeContract)
-            ? {
-                path: typeof value.changeContract.path === 'string'
-                    ? value.changeContract.path
-                    : undefined,
-                exists: typeof value.changeContract.exists === 'boolean'
-                    ? value.changeContract.exists
-                    : undefined,
-                enforced: typeof value.changeContract.enforced === 'boolean'
-                    ? value.changeContract.enforced
-                    : undefined,
-                valid: typeof value.changeContract.valid === 'boolean'
-                    ? value.changeContract.valid
-                    : null,
-                planId: typeof value.changeContract.planId === 'string'
-                    ? value.changeContract.planId
-                    : null,
-                contractId: typeof value.changeContract.contractId === 'string'
-                    ? value.changeContract.contractId
-                    : null,
-                violations: Array.isArray(value.changeContract.violations)
-                    ? value.changeContract.violations
-                        .filter((item) => !!item && typeof item === 'object')
-                        .map((item) => ({
-                        code: typeof item.code === 'string' ? item.code : undefined,
-                        message: typeof item.message === 'string' ? item.message : undefined,
-                    }))
-                    : [],
-            }
-            : undefined,
-        policyExceptions: value.policyExceptions && typeof value.policyExceptions === 'object' && !Array.isArray(value.policyExceptions)
-            ? {
-                sourceMode: typeof value.policyExceptions.sourceMode === 'string'
-                    ? value.policyExceptions.sourceMode
-                    : undefined,
-                blocked: typeof value.policyExceptions.blocked === 'number'
-                    ? Math.max(0, Math.floor(value.policyExceptions.blocked))
-                    : undefined,
-                suppressed: typeof value.policyExceptions.suppressed === 'number'
-                    ? Math.max(0, Math.floor(value.policyExceptions.suppressed))
-                    : undefined,
-                matched: typeof value.policyExceptions.matched === 'number'
-                    ? Math.max(0, Math.floor(value.policyExceptions.matched))
-                    : undefined,
-                blockedViolations: Array.isArray(value.policyExceptions.blockedViolations)
-                    ? value.policyExceptions.blockedViolations
-                        .filter((item) => !!item && typeof item === 'object')
-                        .map((item) => ({
-                        file: typeof item.file === 'string' ? item.file : undefined,
-                        rule: typeof item.rule === 'string' ? item.rule : undefined,
-                        severity: typeof item.severity === 'string' ? item.severity : undefined,
-                        message: typeof item.message === 'string' ? item.message : undefined,
-                    }))
-                    : [],
-            }
-            : undefined,
-        aiDebt: value.aiDebt && typeof value.aiDebt === 'object' && !Array.isArray(value.aiDebt)
-            ? {
-                mode: typeof value.aiDebt.mode === 'string'
-                    ? value.aiDebt.mode
-                    : undefined,
-                pass: typeof value.aiDebt.pass === 'boolean'
-                    ? value.aiDebt.pass
-                    : undefined,
-                score: typeof value.aiDebt.score === 'number'
-                    ? value.aiDebt.score
-                    : undefined,
-                source: typeof value.aiDebt.source === 'string'
-                    ? value.aiDebt.source
-                    : undefined,
-                violations: Array.isArray(value.aiDebt.violations)
-                    ? value.aiDebt.violations
-                        .filter((item) => !!item && typeof item === 'object')
-                        .map((item) => ({
-                        code: typeof item.code === 'string' ? item.code : undefined,
-                        metric: typeof item.metric === 'string' ? item.metric : undefined,
-                        observed: typeof item.observed === 'number' ? item.observed : undefined,
-                        budget: typeof item.budget === 'number' ? item.budget : undefined,
-                        message: typeof item.message === 'string' ? item.message : undefined,
-                    }))
-                    : [],
-            }
-            : undefined,
+        message,
+        scopeGuardPassed: parsed.summary.totalScopeIssues === 0,
+        bloatCount: parsed.summary.totalScopeIssues,
+        blastRadius: {
+            filesChanged: parsed.summary.totalFilesChanged,
+        },
     };
 }
 function parseShipSummary(output) {
@@ -36861,106 +36779,43 @@ function buildShipArgs(input) {
         args.push('--no-publish-card');
     return args;
 }
-function generateMarkdown(verifyResult, remediation, remediationCommit) {
-    if (!verifyResult) {
-        return [
-            '### ⚠️ Neurcode Gatekeeper',
-            '',
-            'Neurcode ran, but JSON output could not be parsed reliably.',
-            'Check workflow logs for full details.',
-        ].join('\n');
+function sanitizeGovernanceFailureReason(reason) {
+    const trimmed = reason.trim();
+    if (!trimmed) {
+        return 'Unknown error';
     }
-    const isPass = verifyResult.verdict === 'PASS' || (verifyResult.verdict === 'INFO' && !isTierLimitedInfoVerifyResult(verifyResult));
-    const icon = isPass ? '✅' : '❌';
-    const lines = [
-        `### ${icon} Neurcode Gatekeeper: ${verifyResult.verdict}`,
-        '',
-        `**Score:** \`${verifyResult.score}/100\` | **Grade:** \`${verifyResult.grade}\``,
-    ];
-    if (verifyResult.message) {
-        lines.push(`> ${verifyResult.message}`);
-    }
-    if (verifyResult.tier) {
-        lines.push(`- Verification tier: \`${verifyResult.tier}\``);
-    }
-    if (isTierLimitedInfoVerifyResult(verifyResult)) {
-        lines.push('- ⚠️ Tier-limited verification: governance policy checks were not fully evaluated.');
-    }
-    if (verifyResult.policyCompilation?.fingerprint) {
-        lines.push(`- Policy compilation: \`${verifyResult.policyCompilation.fingerprint.slice(0, 12)}\` (${verifyResult.policyCompilation.deterministicRuleCount || 0} deterministic rules)`);
-    }
-    if (verifyResult.changeContract?.exists) {
-        const contractState = verifyResult.changeContract.valid === true
-            ? 'valid'
-            : verifyResult.changeContract.valid === false
-                ? 'drift_detected'
-                : 'not_evaluated';
-        lines.push(`- Change contract: **${contractState}**${verifyResult.changeContract.enforced ? ' (enforced)' : ''}`);
-        if ((verifyResult.changeContract.violations || []).length > 0) {
-            lines.push(`- Change contract violations: ${(verifyResult.changeContract.violations || []).length}`);
-        }
-    }
-    if (verifyResult.scopeGuardPassed === false) {
-        lines.push('', '**⚠️ Scope Violation:** Changes detected outside the approved plan.');
-    }
-    if (verifyResult.violations.length > 0) {
-        lines.push('', '### 🚨 Policy Violations', '', '| Severity | File | Message |', '| :--- | :--- | :--- |');
-        for (const v of verifyResult.violations.slice(0, 15)) {
-            const sevIcon = v.severity === 'block' ? '🔴' : '🟡';
-            lines.push(`| ${sevIcon} **${v.severity}** | \`${v.file}\` | ${v.message || v.rule} |`);
-        }
-        if (verifyResult.violations.length > 15) {
-            lines.push(`| … | … | ${verifyResult.violations.length - 15} more violation(s) omitted |`);
-        }
-    }
-    if (remediation) {
-        const remIcon = remediation.status === 'READY_TO_MERGE' ? '🛠️✅' : '🛠️⚠️';
-        lines.push('', `### ${remIcon} Auto-Remediation`);
-        lines.push(`- Result: **${remediation.status}**`);
-        lines.push(`- Final plan: \`${remediation.finalPlanId}\``);
-        lines.push(`- Merge confidence: **${remediation.mergeConfidence}/100**`);
-        lines.push(`- Risk score: **${remediation.riskScore}/100**`);
-        lines.push(`- Verification after remediation: **${remediation.verification.verdict}** (${remediation.verification.grade}, score ${remediation.verification.score})`);
-        lines.push(`- Tests: **${remediation.tests.passed ? 'PASS' : 'FAIL'}**${remediation.tests.skipped ? ' (skipped)' : ''}`);
-        if (remediation.shareCard?.shareUrl) {
-            lines.push(`- Share card: [Open merge confidence card](${remediation.shareCard.shareUrl})`);
-        }
-    }
-    if (remediationCommit) {
-        lines.push('', '### 🧾 Remediation Commit');
-        lines.push(`- ${remediationCommit.message}`);
-        if (remediationCommit.commitSha) {
-            lines.push(`- Commit: \`${remediationCommit.commitSha}\``);
-        }
-    }
-    lines.push('', '---', '[View Full Report in Dashboard](https://dashboard.neurcode.com)');
-    return lines.join('\n');
+    const firstLine = trimmed.split('\n')[0]?.trim();
+    return firstLine && firstLine.length > 0 ? firstLine : 'Unknown error';
 }
-async function postComment(token, prNumber, verifyResult, remediation, remediationCommit) {
-    const octokit = github.getOctokit(token);
-    const body = generateMarkdown(verifyResult, remediation, remediationCommit);
-    const { data: comments } = await octokit.rest.issues.listComments({
-        ...github.context.repo,
-        issue_number: prNumber,
-    });
-    const botComment = comments.find((comment) => comment.body?.includes('Neurcode Gatekeeper'));
-    if (botComment) {
-        await octokit.rest.issues.updateComment({
-            ...github.context.repo,
-            comment_id: botComment.id,
-            body,
-        });
-    }
-    else {
-        await octokit.rest.issues.createComment({
-            ...github.context.repo,
-            issue_number: prNumber,
-            body,
-        });
-    }
+function formatGovernanceFailureComment(reason) {
+    return [
+        formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER,
+        '## Neurcode Governance Report',
+        '',
+        'Neurcode failed to analyze this PR.',
+        `Reason: ${sanitizeGovernanceFailureReason(reason)}`,
+    ].join('\n');
+}
+function formatGovernanceFallbackComment() {
+    return [
+        formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER,
+        '## Neurcode Governance Report',
+        '',
+        'Neurcode could not generate a governance report for this PR.',
+    ].join('\n');
 }
 async function run() {
+    const pr = github.context.payload.pull_request;
+    let githubToken = '';
+    let governanceCommentBody = null;
+    let governanceCommentPosted = false;
+    let governanceFailureReason = null;
     try {
+        core.info('Neurcode Action started');
+        githubToken = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+        if (!process.env.GITHUB_TOKEN) {
+            core.error('process.env.GITHUB_TOKEN is missing. PR governance report commenting may fail without token input.');
+        }
         const thresholdInput = core.getInput('threshold');
         const parsedThreshold = normalizeGrade(thresholdInput);
         const threshold = parsedThreshold || 'C';
@@ -36968,7 +36823,6 @@ async function run() {
             core.warning(`Invalid threshold "${thresholdInput}" provided; defaulting to "C".`);
         }
         const apiKey = core.getInput('api_key') || core.getInput('api-key') || process.env.NEURCODE_API_KEY;
-        const githubToken = core.getInput('github_token') || process.env.GITHUB_TOKEN;
         const failOnViolation = parseBoolean(core.getInput('fail_on_violation'), true);
         const planId = core.getInput('plan_id') || core.getInput('plan-id');
         const projectId = core.getInput('project_id') || core.getInput('project-id');
@@ -37134,7 +36988,6 @@ async function run() {
             runtimeGuardPath,
             supportsRequireRuntimeGuard: verifyCapabilities.supportsRequireRuntimeGuard,
         });
-        const pr = github.context.payload.pull_request;
         const defaultBaseRef = pr ? `origin/${pr.base.ref}` : 'HEAD~1';
         const baseRef = baseRefInput.trim() || defaultBaseRef;
         core.info(pr
@@ -37179,14 +37032,14 @@ async function run() {
             requireRuntimeGuard: requireRuntimeGuard && !effectiveVerifyPolicyOnly,
             runtimeGuardPath: requireRuntimeGuard ? runtimeGuardPath : undefined,
         });
+        core.info('Running neurcode verify');
         let verifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyTimeoutMinutes);
         let verifyRun = await runCommand(verifyCommand.cmd, verifyCommand.args, {
             cwd,
             env: apiKey ? { NEURCODE_API_KEY: apiKey } : undefined,
         });
         if (verifyCommand.timeoutApplied && verifyRun.exitCode === 124) {
-            core.setFailed(`Neurcode verify timed out after ${verifyTimeoutMinutes} minute(s).`);
-            return;
+            throw new Error(`Neurcode verify timed out after ${verifyTimeoutMinutes} minute(s).`);
         }
         const fallbackDecision = (0, verify_mode_1.getVerifyFallbackDecision)({
             verifyExitCode: verifyRun.exitCode,
@@ -37228,8 +37081,7 @@ async function run() {
                 env: apiKey ? { NEURCODE_API_KEY: apiKey } : undefined,
             });
             if (verifyCommand.timeoutApplied && verifyRun.exitCode === 124) {
-                core.setFailed(`Neurcode verify timed out after ${verifyTimeoutMinutes} minute(s).`);
-                return;
+                throw new Error(`Neurcode verify timed out after ${verifyTimeoutMinutes} minute(s).`);
             }
             if (verifyRun.exitCode !== 0) {
                 fallbackFailureHint =
@@ -37248,6 +37100,7 @@ async function run() {
             fallbackFailureHint =
                 'Strict enterprise mode blocked policy-only fallback because plan context is required. Run "neurcode plan" first or pass a valid --plan-id.';
         }
+        core.info('Verify completed');
         let remediation = null;
         let remediationCommitResult = null;
         let baselineDirty = false;
@@ -37435,8 +37288,48 @@ async function run() {
                 failureReason = `Policy exception approvals are pending (${blockedPolicyExceptions} blocked exception violation(s)).`;
             }
         }
+        const governanceReport = parseVerifyOutputFromCommandOutput(finalVerifyOutput) || {
+            verdict: finalExitCode === 0 ? 'PASS' : 'FAIL',
+            summary: {
+                totalFilesChanged: 0,
+                totalViolations: 0,
+                totalWarnings: 1,
+                totalScopeIssues: 0,
+            },
+            violations: [],
+            warnings: [
+                {
+                    file: 'unknown',
+                    policy: 'verify_output',
+                    message: 'Verify output was not parseable by governance report contract',
+                },
+            ],
+            scopeIssues: [],
+        };
+        const governanceReportVerdict = (0, formatter_1.resolveGovernanceVerdict)(governanceReport);
+        core.setOutput('governance_report_verdict', governanceReportVerdict);
+        if (governanceReportVerdict === 'blocked' && finalExitCode === 0) {
+            finalExitCode = 2;
+            if (!failureReason) {
+                failureReason = 'Neurcode governance report detected critical policy violations.';
+            }
+        }
+        else if (governanceReportVerdict === 'needs_attention' && finalExitCode === 0) {
+            core.warning('Neurcode governance report: needs attention before merge.');
+        }
+        else if (governanceReportVerdict === 'ready' && finalExitCode === 0) {
+            core.info('Neurcode governance report: ready to merge.');
+        }
+        governanceCommentBody = (0, formatter_1.formatGovernanceComment)(governanceReport);
         if (githubToken && pr) {
-            await postComment(githubToken, pr.number, verifyResult, remediation, remediationCommitResult);
+            core.info('Posting PR governance report');
+            await (0, github_client_1.upsertGovernanceReportComment)({
+                token: githubToken,
+                body: governanceCommentBody,
+                prNumber: pr.number,
+                runId: github.context.runId,
+            });
+            governanceCommentPosted = true;
         }
         if (verifyResult) {
             core.setOutput('verdict', verifyResult.verdict);
@@ -37595,7 +37488,8 @@ async function run() {
                     'threshold check skipped.');
             }
         }
-        if (finalExitCode !== 0 && failOnViolation) {
+        const mustFailBlockedGovernance = governanceReportVerdict === 'blocked';
+        if (finalExitCode !== 0 && (failOnViolation || mustFailBlockedGovernance)) {
             if (failureReason) {
                 core.setFailed(failureReason);
             }
@@ -37607,14 +37501,354 @@ async function run() {
     }
     catch (error) {
         if (error instanceof Error) {
+            governanceFailureReason = sanitizeGovernanceFailureReason(error.message);
+            core.error(error.stack || error.message);
             core.setFailed(error.message);
         }
         else {
+            governanceFailureReason = sanitizeGovernanceFailureReason(String(error));
+            core.error(String(error));
             core.setFailed('Unknown Neurcode Action failure');
+        }
+    }
+    finally {
+        if (!pr) {
+            return;
+        }
+        if (!githubToken) {
+            const missingTokenMessage = 'Unable to post PR governance report because no GitHub token was provided.';
+            core.error(missingTokenMessage);
+            core.setFailed(missingTokenMessage);
+            return;
+        }
+        if (governanceCommentPosted) {
+            return;
+        }
+        const fallbackComment = governanceCommentBody
+            || (governanceFailureReason
+                ? formatGovernanceFailureComment(governanceFailureReason)
+                : formatGovernanceFallbackComment());
+        try {
+            core.info('Posting PR governance report');
+            await (0, github_client_1.upsertGovernanceReportComment)({
+                token: githubToken,
+                body: fallbackComment,
+                prNumber: pr.number,
+                runId: github.context.runId,
+            });
+            governanceCommentPosted = true;
+        }
+        catch (commentError) {
+            if (commentError instanceof Error) {
+                core.error(commentError.stack || commentError.message);
+                core.setFailed(`Failed to post PR governance report: ${commentError.message}`);
+            }
+            else {
+                const commentFailure = String(commentError);
+                core.error(commentFailure);
+                core.setFailed(`Failed to post PR governance report: ${commentFailure}`);
+            }
         }
     }
 }
 run();
+
+
+/***/ }),
+
+/***/ 2574:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.calculateDriftScore = calculateDriftScore;
+function clampScore(value) {
+    if (!Number.isFinite(value))
+        return 0;
+    if (value < 0)
+        return 0;
+    if (value > 100)
+        return 100;
+    return value;
+}
+function calculateDriftScore(data) {
+    const scopeScore = Math.min(data.scopeIssues.length * 10, 100);
+    const violationScore = Math.min(data.violations.length * 15, 100);
+    const warningScore = Math.min(data.warnings.length * 5, 100);
+    const weighted = (0.4 * scopeScore) + (0.4 * violationScore) + (0.2 * warningScore);
+    const hasCriticalOrHighViolation = data.violations.some((violation) => {
+        const severity = (violation.severity || '').trim().toLowerCase();
+        return severity === 'critical' || severity === 'high';
+    });
+    const baseScore = Math.round(clampScore(weighted));
+    return hasCriticalOrHighViolation ? Math.max(baseScore, 60) : baseScore;
+}
+
+
+/***/ }),
+
+/***/ 7459:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NEURCODE_RUN_ID_PLACEHOLDER = exports.NEURCODE_GOVERNANCE_REPORT_MARKER = void 0;
+exports.resolveGovernanceVerdict = resolveGovernanceVerdict;
+exports.formatGovernanceComment = formatGovernanceComment;
+const drift_1 = __nccwpck_require__(2574);
+exports.NEURCODE_GOVERNANCE_REPORT_MARKER = '<!-- neurcode-governance-report -->';
+exports.NEURCODE_RUN_ID_PLACEHOLDER = '{{NEURCODE_RUN_ID}}';
+function escapeMarkdownInline(value) {
+    return value.replace(/\|/g, '\\|').replace(/`/g, '\\`');
+}
+function hasCriticalViolations(data) {
+    return data.violations.some((violation) => {
+        const severity = (violation.severity || '').trim().toLowerCase();
+        return severity === 'critical' || severity === 'high';
+    });
+}
+function resolveGovernanceVerdict(data) {
+    if (hasCriticalViolations(data)) {
+        return 'blocked';
+    }
+    if (data.warnings.length > 0 || data.scopeIssues.length > 0) {
+        return 'needs_attention';
+    }
+    return 'ready';
+}
+function renderVerdictLine(verdict) {
+    if (verdict === 'blocked') {
+        return '**Verdict:** ❌ Blocked';
+    }
+    if (verdict === 'needs_attention') {
+        return '**Verdict:** ⚠️ Needs Attention';
+    }
+    return '**Verdict:** ✅ Ready to Merge';
+}
+function countBlockingViolations(data) {
+    return data.violations.filter((violation) => {
+        const severity = (violation.severity || '').trim().toLowerCase();
+        return severity === 'critical' || severity === 'high';
+    }).length;
+}
+function renderVerdictReason(verdict, data) {
+    if (verdict !== 'blocked') {
+        return null;
+    }
+    const criticalCount = countBlockingViolations(data);
+    return `Reason: ${criticalCount} critical policy violations detected`;
+}
+function renderViolations(data) {
+    const lines = ['### Policy Violations', ''];
+    if (data.violations.length === 0) {
+        lines.push('- No policy violations detected.');
+        return lines;
+    }
+    for (const violation of data.violations) {
+        lines.push(`- \`${escapeMarkdownInline(violation.file)}\` — ${escapeMarkdownInline(violation.message)} ` +
+            `(policy: \`${escapeMarkdownInline(violation.policy)}\`, severity: \`${escapeMarkdownInline(violation.severity)}\`)`);
+    }
+    return lines;
+}
+function renderScopeIssues(data) {
+    const lines = ['### Scope / Architectural Issues', ''];
+    if (data.scopeIssues.length === 0) {
+        lines.push('- No scope issues detected.');
+        return lines;
+    }
+    for (const issue of data.scopeIssues) {
+        lines.push(`- \`${escapeMarkdownInline(issue.file)}\` — ${escapeMarkdownInline(issue.message)}`);
+    }
+    return lines;
+}
+function renderSummary(data) {
+    return [
+        '### Summary',
+        '',
+        `- ${data.summary.totalFilesChanged} files changed`,
+        `- ${data.summary.totalViolations} policy violations detected`,
+    ];
+}
+function resolveDriftScore(data) {
+    if (typeof data.driftScore === 'number' && Number.isFinite(data.driftScore)) {
+        const bounded = Math.max(0, Math.min(100, data.driftScore));
+        return Math.round(bounded);
+    }
+    return (0, drift_1.calculateDriftScore)(data);
+}
+function resolveDriftStatus(score) {
+    if (score <= 30)
+        return 'Low';
+    if (score <= 70)
+        return 'Moderate';
+    return 'High';
+}
+function renderDriftScore(data) {
+    const score = resolveDriftScore(data);
+    const status = resolveDriftStatus(score);
+    return [
+        '### Drift Score',
+        '',
+        `- Drift score: **${score} / 100** (${status})`,
+        '- Indicates deviation from intended architecture',
+    ];
+}
+function renderWhatToDo(data, verdict) {
+    const suggestions = [];
+    const firstViolation = data.violations[0];
+    if (firstViolation) {
+        suggestions.push(`Start with \`${escapeMarkdownInline(firstViolation.file)}\`: ${escapeMarkdownInline(firstViolation.message)} (quick fix)`);
+    }
+    if (verdict === 'blocked') {
+        suggestions.push('Resolve all critical policy violations before merge.');
+    }
+    if (data.scopeIssues.length > 0) {
+        suggestions.push('Align out-of-scope file changes with the approved plan or update the plan context.');
+    }
+    if (data.warnings.length > 0) {
+        suggestions.push('Review warning-level findings and reduce risk in the affected files.');
+    }
+    if (suggestions.length === 0) {
+        suggestions.push('No immediate action required. Continue with standard review checks.');
+    }
+    suggestions.push('To fix quickly, run: `neurcode fix`');
+    return ['### What To Do', '', ...suggestions.map((suggestion) => `- ${suggestion}`)];
+}
+function renderFooter() {
+    return [
+        '- Governed by Neurcode',
+        '- Based on Neurcode policy and structural analysis',
+        `- Run ID: ${exports.NEURCODE_RUN_ID_PLACEHOLDER}`,
+        '- AI attribution not fully tracked yet',
+    ];
+}
+function formatGovernanceComment(data) {
+    const verdict = resolveGovernanceVerdict(data);
+    const reason = renderVerdictReason(verdict, data);
+    const sections = [
+        exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
+        '## Neurcode Governance Report',
+        '',
+        renderVerdictLine(verdict),
+        ...(reason ? ['', reason] : []),
+        '',
+        'Impact: This PR may introduce architectural inconsistencies and policy violations that could affect system stability.',
+        '',
+        '---',
+        '',
+        ...renderWhatToDo(data, verdict),
+        '',
+        '---',
+        '',
+        ...renderViolations(data),
+        '',
+        '---',
+        '',
+        ...renderScopeIssues(data),
+        '',
+        '---',
+        '',
+        ...renderSummary(data),
+        '',
+        '---',
+        '',
+        ...renderDriftScore(data),
+        '',
+        '---',
+        '',
+        ...renderFooter(),
+    ];
+    return sections.join('\n');
+}
+
+
+/***/ }),
+
+/***/ 7920:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getPullRequestNumberFromContext = getPullRequestNumberFromContext;
+exports.upsertGovernanceReportComment = upsertGovernanceReportComment;
+const github = __importStar(__nccwpck_require__(5251));
+const formatter_1 = __nccwpck_require__(7459);
+function getPullRequestNumberFromContext() {
+    const pullRequest = github.context.payload.pull_request;
+    if (!pullRequest || typeof pullRequest.number !== 'number') {
+        return null;
+    }
+    return pullRequest.number;
+}
+async function upsertGovernanceReportComment(input) {
+    const prNumber = typeof input.prNumber === 'number'
+        ? input.prNumber
+        : getPullRequestNumberFromContext();
+    if (!prNumber) {
+        return;
+    }
+    const octokit = github.getOctokit(input.token);
+    const finalBody = input.body.replaceAll(formatter_1.NEURCODE_RUN_ID_PLACEHOLDER, String(input.runId ?? github.context.runId));
+    const { owner, repo } = github.context.repo;
+    const { data: comments } = await octokit.rest.issues.listComments({
+        owner,
+        repo,
+        issue_number: prNumber,
+        per_page: 100,
+    });
+    const existing = comments.find((comment) => comment.body?.includes(formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER));
+    if (existing) {
+        await octokit.rest.issues.updateComment({
+            owner,
+            repo,
+            comment_id: existing.id,
+            body: finalBody,
+        });
+        return;
+    }
+    await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: finalBody,
+    });
+}
 
 
 /***/ }),
