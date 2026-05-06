@@ -32,8 +32,14 @@ function buildVerifyArgs(input) {
     }
     if (input.projectId)
         args.push('--project-id', input.projectId);
-    if (input.compiledPolicyPath)
+    if (input.compiledPolicyPath) {
         args.push('--compiled-policy', input.compiledPolicyPath);
+        // Skip policy lock baseline check when a compiled policy artifact is provided.
+        // The compiled policy supersedes the lock file comparison; without this the lock
+        // mismatch (fresh CI compile vs committed lock fingerprint) causes an early exit
+        // before evaluateRules runs, preventing detection of actual policy violations.
+        args.push('--skip-policy-lock');
+    }
     if (input.changeContractPath)
         args.push('--change-contract', input.changeContractPath);
     if (input.enforceChangeContract)

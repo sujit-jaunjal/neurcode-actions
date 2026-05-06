@@ -9,17 +9,33 @@ exports.NEURCODE_RUN_ID_PLACEHOLDER = '{{NEURCODE_RUN_ID}}';
 function escapeMarkdownInline(value) {
     return value.replace(/\|/g, '\\|').replace(/`/g, '\\`');
 }
+function isArtifactCheckViolation(violation) {
+    const policy = (violation.policy || '').toLowerCase();
+    return policy === 'deterministic_artifacts_required' || policy === 'signed_artifacts_required';
+}
 function hasCriticalViolations(data) {
     return data.violations.some((violation) => {
+        // Artifact presence/signature checks are advisory and must never drive the blocked verdict.
+        if (isArtifactCheckViolation(violation))
+            return false;
         const severity = (violation.severity || '').trim().toLowerCase();
         return severity === 'critical' || severity === 'high';
     });
 }
+function isSystemStatusWarning(warning) {
+    // 'verify_result' is a CLI-emitted status indicator ("✅ Policy check passed"),
+    // not a real advisory finding. Exclude it from the needs_attention verdict.
+    const policy = (warning.policy || '').toLowerCase();
+    return policy === 'verify_result';
+}
 function resolveGovernanceVerdict(data) {
-    if (hasCriticalViolations(data)) {
+    data = safeData(data);
+    if (hasCriticalViolations(data) || data.scopeIssues.length > 0) {
         return 'blocked';
     }
-    if (data.warnings.length > 0 || data.scopeIssues.length > 0) {
+    const realViolations = data.violations.filter((v) => !isArtifactCheckViolation(v));
+    const realWarnings = data.warnings.filter((w) => !isSystemStatusWarning(w));
+    if (realViolations.length > 0 || realWarnings.length > 0) {
         return 'needs_attention';
     }
     return 'ready';
@@ -35,6 +51,8 @@ function renderVerdictLine(verdict) {
 }
 function countBlockingViolations(data) {
     return data.violations.filter((violation) => {
+        if (isArtifactCheckViolation(violation))
+            return false;
         const severity = (violation.severity || '').trim().toLowerCase();
         return severity === 'critical' || severity === 'high';
     }).length;
@@ -43,19 +61,67 @@ function renderVerdictReason(verdict, data) {
     if (verdict !== 'blocked') {
         return null;
     }
-    const criticalCount = countBlockingViolations(data);
-    return `Reason: ${criticalCount} critical policy violations detected`;
+    const blockingCount = countBlockingViolations(data);
+    const scopeCount = data.scopeIssues.length;
+    const parts = [];
+    if (blockingCount > 0)
+        parts.push(`${blockingCount} critical policy violation(s)`);
+    if (scopeCount > 0)
+        parts.push(`${scopeCount} scope/architectural issue(s)`);
+    return `Reason: ${parts.length > 0 ? parts.join(', ') : 'blocking governance issues'} detected`;
 }
-function renderViolations(data) {
-    const lines = ['### Policy Violations', ''];
-    if (data.violations.length === 0) {
-        lines.push('- No policy violations detected.');
+function renderViolationLine(violation) {
+    return (`- \`${escapeMarkdownInline(violation.file)}\` — ${escapeMarkdownInline(violation.message)} ` +
+        `(policy: \`${escapeMarkdownInline(violation.policy)}\`, severity: \`${escapeMarkdownInline(violation.severity)}\`)`);
+}
+function renderBlockingViolations(data) {
+    const blocking = data.violations.filter((v) => {
+        if (isArtifactCheckViolation(v))
+            return false;
+        const sev = (v.severity || '').toLowerCase();
+        return sev === 'critical' || sev === 'high';
+    });
+    const lines = ['### Blocking Violations', ''];
+    if (blocking.length === 0) {
+        lines.push('- No blocking policy violations detected.');
         return lines;
     }
-    for (const violation of data.violations) {
-        lines.push(`- \`${escapeMarkdownInline(violation.file)}\` — ${escapeMarkdownInline(violation.message)} ` +
-            `(policy: \`${escapeMarkdownInline(violation.policy)}\`, severity: \`${escapeMarkdownInline(violation.severity)}\`)`);
+    for (const v of blocking)
+        lines.push(renderViolationLine(v));
+    return lines;
+}
+function renderAdvisoryViolations(data) {
+    const advisory = data.violations.filter((v) => {
+        if (isArtifactCheckViolation(v))
+            return false;
+        const sev = (v.severity || '').toLowerCase();
+        return sev !== 'critical' && sev !== 'high';
+    });
+    const realWarnings = data.warnings.filter((w) => !isSystemStatusWarning(w));
+    const lines = ['### Advisory Violations', ''];
+    if (advisory.length === 0 && realWarnings.length === 0) {
+        lines.push('- No advisory issues detected.');
+        return lines;
     }
+    for (const v of advisory)
+        lines.push(renderViolationLine(v));
+    for (const w of realWarnings) {
+        lines.push(`- \`${escapeMarkdownInline(w.file)}\` — ${escapeMarkdownInline(w.message)} ` +
+            `(policy: \`${escapeMarkdownInline(w.policy)}\`)`);
+    }
+    return lines;
+}
+function renderArtifactChecks(data) {
+    const artifactIssues = data.violations.filter(isArtifactCheckViolation);
+    if (artifactIssues.length === 0)
+        return null;
+    const lines = ['### Artifact Checks (Advisory)', ''];
+    for (const v of artifactIssues) {
+        lines.push(`- \`${escapeMarkdownInline(v.file)}\` — ${escapeMarkdownInline(v.message)} ` +
+            `(policy: \`${escapeMarkdownInline(v.policy)}\`)`);
+    }
+    lines.push('');
+    lines.push('> Artifact checks are advisory and do not block merge.');
     return lines;
 }
 function renderScopeIssues(data) {
@@ -101,6 +167,52 @@ function renderDriftScore(data) {
         '- Indicates deviation from intended architecture',
     ];
 }
+function renderHighlights(data) {
+    const blocking = data.violations.filter((v) => {
+        if (isArtifactCheckViolation(v))
+            return false;
+        const sev = (v.severity || '').toLowerCase();
+        return sev === 'critical' || sev === 'high';
+    });
+    const scope = data.scopeIssues;
+    const advisory = data.violations.filter((v) => {
+        if (isArtifactCheckViolation(v))
+            return false;
+        const sev = (v.severity || '').toLowerCase();
+        return sev !== 'critical' && sev !== 'high';
+    });
+    const realWarnings = data.warnings.filter((w) => !isSystemStatusWarning(w));
+    const top = [
+        ...blocking,
+        ...scope.map((s) => ({ file: s.file, message: s.message, policy: 'scope_guard', severity: 'high' })),
+        ...advisory,
+        ...realWarnings.map((w) => ({ file: w.file, message: w.message, policy: w.policy, severity: 'warning' })),
+    ].slice(0, 3);
+    if (top.length === 0)
+        return [];
+    return [
+        '**Highlights:**',
+        '',
+        ...top.map((item) => `- ${escapeMarkdownInline(item.message)} in \`${escapeMarkdownInline(item.file)}\``),
+    ];
+}
+function renderSuggestedAction(verdict) {
+    if (verdict === 'ready') {
+        return ['**Suggested Action:** No action required — ready to merge.'];
+    }
+    return [
+        '**Suggested Action:**',
+        '',
+        '```',
+        'neurcode fix',
+        '```',
+        '',
+        '_or apply safe patches automatically:_',
+        '```',
+        'neurcode fix --apply-safe',
+        '```',
+    ];
+}
 function renderWhatToDo(data, verdict) {
     const suggestions = [];
     const firstViolation = data.violations[0];
@@ -113,14 +225,13 @@ function renderWhatToDo(data, verdict) {
     if (data.scopeIssues.length > 0) {
         suggestions.push('Align out-of-scope file changes with the approved plan or update the plan context.');
     }
-    if (data.warnings.length > 0) {
+    if (data.warnings.filter((w) => !isSystemStatusWarning(w)).length > 0) {
         suggestions.push('Review warning-level findings and reduce risk in the affected files.');
     }
     if (suggestions.length === 0) {
         suggestions.push('No immediate action required. Continue with standard review checks.');
     }
-    suggestions.push('To fix quickly, run: `neurcode fix`');
-    return ['### What To Do', '', ...suggestions.map((suggestion) => `- ${suggestion}`)];
+    return ['### Details', '', ...suggestions.map((suggestion) => `- ${suggestion}`)];
 }
 function renderFooter() {
     return [
@@ -130,25 +241,48 @@ function renderFooter() {
         '- AI attribution not fully tracked yet',
     ];
 }
+function safeData(data) {
+    return {
+        ...data,
+        violations: Array.isArray(data.violations) ? data.violations : [],
+        warnings: Array.isArray(data.warnings) ? data.warnings : [],
+        scopeIssues: Array.isArray(data.scopeIssues) ? data.scopeIssues : [],
+        summary: data.summary ?? { totalFilesChanged: 0, totalViolations: 0, totalWarnings: 0, totalScopeIssues: 0 },
+    };
+}
 function formatGovernanceComment(data) {
+    data = safeData(data);
     const verdict = resolveGovernanceVerdict(data);
     const reason = renderVerdictReason(verdict, data);
+    const artifactChecks = renderArtifactChecks(data);
+    const blockingCount = countBlockingViolations(data);
+    const advisoryCount = data.violations.filter((v) => {
+        if (isArtifactCheckViolation(v))
+            return false;
+        const sev = (v.severity || '').toLowerCase();
+        return sev !== 'critical' && sev !== 'high';
+    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length;
+    const highlights = renderHighlights(data);
     const sections = [
         exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
         '## Neurcode Governance Report',
         '',
+        // ── Quick status ────────────────────────────────────────────────────────
         renderVerdictLine(verdict),
         ...(reason ? ['', reason] : []),
         '',
-        'Impact: This PR may introduce architectural inconsistencies and policy violations that could affect system stability.',
+        `**Blocking Issues:** ${blockingCount}`,
+        `**Advisory:** ${advisoryCount}`,
+        '',
+        // ── Highlights (top 3 issues, scannable) ────────────────────────────────
+        ...(highlights.length > 0 ? [...highlights, ''] : []),
+        // ── Suggested action ────────────────────────────────────────────────────
+        ...renderSuggestedAction(verdict),
         '',
         '---',
         '',
-        ...renderWhatToDo(data, verdict),
-        '',
-        '---',
-        '',
-        ...renderViolations(data),
+        // ── Detailed breakdown ───────────────────────────────────────────────────
+        ...renderBlockingViolations(data),
         '',
         '---',
         '',
@@ -156,7 +290,7 @@ function formatGovernanceComment(data) {
         '',
         '---',
         '',
-        ...renderSummary(data),
+        ...renderAdvisoryViolations(data),
         '',
         '---',
         '',
@@ -164,6 +298,15 @@ function formatGovernanceComment(data) {
         '',
         '---',
         '',
+        ...renderSummary(data),
+        '',
+        '---',
+        '',
+        ...renderWhatToDo(data, verdict),
+        '',
+        '---',
+        '',
+        ...(artifactChecks ? [...artifactChecks, '', '---', ''] : []),
         ...renderFooter(),
     ];
     return sections.join('\n');
