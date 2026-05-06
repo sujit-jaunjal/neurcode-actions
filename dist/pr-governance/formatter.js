@@ -167,52 +167,6 @@ function renderDriftScore(data) {
         '- Indicates deviation from intended architecture',
     ];
 }
-function renderHighlights(data) {
-    const blocking = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev === 'critical' || sev === 'high';
-    });
-    const scope = data.scopeIssues;
-    const advisory = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev !== 'critical' && sev !== 'high';
-    });
-    const realWarnings = data.warnings.filter((w) => !isSystemStatusWarning(w));
-    const top = [
-        ...blocking,
-        ...scope.map((s) => ({ file: s.file, message: s.message, policy: 'scope_guard', severity: 'high' })),
-        ...advisory,
-        ...realWarnings.map((w) => ({ file: w.file, message: w.message, policy: w.policy, severity: 'warning' })),
-    ].slice(0, 3);
-    if (top.length === 0)
-        return [];
-    return [
-        '**Highlights:**',
-        '',
-        ...top.map((item) => `- ${escapeMarkdownInline(item.message)} in \`${escapeMarkdownInline(item.file)}\``),
-    ];
-}
-function renderSuggestedAction(verdict) {
-    if (verdict === 'ready') {
-        return ['**Suggested Action:** No action required — ready to merge.'];
-    }
-    return [
-        '**Suggested Action:**',
-        '',
-        '```',
-        'neurcode fix',
-        '```',
-        '',
-        '_or apply safe patches automatically:_',
-        '```',
-        'neurcode fix --apply-safe',
-        '```',
-    ];
-}
 function renderWhatToDo(data, verdict) {
     const suggestions = [];
     const firstViolation = data.violations[0];
@@ -231,7 +185,8 @@ function renderWhatToDo(data, verdict) {
     if (suggestions.length === 0) {
         suggestions.push('No immediate action required. Continue with standard review checks.');
     }
-    return ['### Details', '', ...suggestions.map((suggestion) => `- ${suggestion}`)];
+    suggestions.push('To fix quickly, run: `neurcode fix`');
+    return ['### What To Do', '', ...suggestions.map((suggestion) => `- ${suggestion}`)];
 }
 function renderFooter() {
     return [
@@ -255,45 +210,31 @@ function formatGovernanceComment(data) {
     const verdict = resolveGovernanceVerdict(data);
     const reason = renderVerdictReason(verdict, data);
     const artifactChecks = renderArtifactChecks(data);
-    const blockingCount = countBlockingViolations(data);
-    const advisoryCount = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev !== 'critical' && sev !== 'high';
-    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length;
-    const highlights = renderHighlights(data);
     const sections = [
         exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
         '## Neurcode Governance Report',
         '',
-        // ── Quick status ────────────────────────────────────────────────────────
         renderVerdictLine(verdict),
         ...(reason ? ['', reason] : []),
         '',
-        `**Blocking Issues:** ${blockingCount}`,
-        `**Advisory:** ${advisoryCount}`,
-        '',
-        // ── Highlights (top 3 issues, scannable) ────────────────────────────────
-        ...(highlights.length > 0 ? [...highlights, ''] : []),
-        // ── Suggested action ────────────────────────────────────────────────────
-        ...renderSuggestedAction(verdict),
-        '',
         '---',
         '',
-        // ── Detailed breakdown ───────────────────────────────────────────────────
+        // 1. BLOCKING issues
         ...renderBlockingViolations(data),
         '',
         '---',
         '',
+        // 2. Scope / architectural issues
         ...renderScopeIssues(data),
         '',
         '---',
         '',
+        // 3. Advisory issues (warnings + low-severity violations)
         ...renderAdvisoryViolations(data),
         '',
         '---',
         '',
+        // 4. Drift score
         ...renderDriftScore(data),
         '',
         '---',
@@ -306,6 +247,7 @@ function formatGovernanceComment(data) {
         '',
         '---',
         '',
+        // 5. Artifact checks (optional, advisory only)
         ...(artifactChecks ? [...artifactChecks, '', '---', ''] : []),
         ...renderFooter(),
     ];
