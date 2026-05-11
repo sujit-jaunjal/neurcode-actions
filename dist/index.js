@@ -35315,11 +35315,13 @@ exports.parseCliShipRunsJsonPayload = parseCliShipRunsJsonPayload;
 exports.parseCliShipResumeJsonPayload = parseCliShipResumeJsonPayload;
 exports.parseCliShipAttestationVerifyJsonPayload = parseCliShipAttestationVerifyJsonPayload;
 exports.parseCliCompatJsonPayload = parseCliCompatJsonPayload;
-exports.CLI_JSON_CONTRACT_VERSION = '2026-04-04';
+exports.CLI_JSON_CONTRACT_VERSION = '2026-05-11';
 __exportStar(__nccwpck_require__(2494), exports);
+__exportStar(__nccwpck_require__(5499), exports);
+__exportStar(__nccwpck_require__(5733), exports);
 exports.RUNTIME_COMPATIBILITY_CONTRACT_ID = 'neurcode-runtime-compatibility';
 exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION = '2026-04-04';
-exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = '2026-05-07.1';
+exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = '2026-05-09.1';
 exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION = 1;
 const RUNTIME_COMPATIBILITY_MANIFEST = {
     schemaVersion: exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION,
@@ -35346,7 +35348,7 @@ const RUNTIME_COMPATIBILITY_MANIFEST = {
             id: 'current',
             channel: 'current',
             versions: {
-                cli: '0.9.63',
+                cli: '0.9.64',
                 action: '0.2.2',
                 api: '0.2.0',
             },
@@ -35647,6 +35649,15 @@ function parseVerifyOutput(value, label = 'verify') {
             : (() => {
                 throw new Error(`${label}: expected driftScore:number when present`);
             })());
+    const governanceFindingsRaw = record.governanceFindings;
+    if (governanceFindingsRaw !== undefined && !Array.isArray(governanceFindingsRaw)) {
+        throw new Error(`${label}: expected governanceFindings:array when present`);
+    }
+    const governanceVerificationRaw = record.governanceVerification;
+    if (governanceVerificationRaw !== undefined
+        && (typeof governanceVerificationRaw !== 'object' || governanceVerificationRaw === null || Array.isArray(governanceVerificationRaw))) {
+        throw new Error(`${label}: expected governanceVerification:object when present`);
+    }
     return {
         verdict: verdictRaw,
         summary,
@@ -35654,6 +35665,14 @@ function parseVerifyOutput(value, label = 'verify') {
         warnings,
         scopeIssues,
         ...(typeof driftScore === 'number' ? { driftScore } : {}),
+        ...(governanceFindingsRaw !== undefined
+            ? { governanceFindings: governanceFindingsRaw }
+            : {}),
+        ...(governanceVerificationRaw !== undefined
+            ? {
+                governanceVerification: governanceVerificationRaw,
+            }
+            : {}),
     };
 }
 function parseCliPromptJsonPayload(value, label = 'prompt') {
@@ -35765,6 +35784,16 @@ function parseCliCompatJsonPayload(value, label = 'compat') {
 
 /***/ }),
 
+/***/ 5733:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
 /***/ 2494:
 /***/ ((__unused_webpack_module, exports) => {
 
@@ -35870,6 +35899,43 @@ exports.ONBOARDING_HINTS = [
     'Replay execution history',
 ];
 //# sourceMappingURL=status-vocabulary.js.map
+
+/***/ }),
+
+/***/ 5499:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isDeterminismClassification = exports.GOVERNANCE_FINDINGS_SCHEMA_VERSION = void 0;
+var taxonomy_1 = __nccwpck_require__(168);
+Object.defineProperty(exports, "GOVERNANCE_FINDINGS_SCHEMA_VERSION", ({ enumerable: true, get: function () { return taxonomy_1.GOVERNANCE_FINDINGS_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "isDeterminismClassification", ({ enumerable: true, get: function () { return taxonomy_1.isDeterminismClassification; } }));
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 168:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Canonical determinism taxonomy — every governance finding MUST map to exactly one.
+ * Do not blur or infer across these buckets in consumer UIs.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GOVERNANCE_FINDINGS_SCHEMA_VERSION = void 0;
+exports.isDeterminismClassification = isDeterminismClassification;
+exports.GOVERNANCE_FINDINGS_SCHEMA_VERSION = '2026-05-11.1';
+function isDeterminismClassification(value) {
+    return (value === 'deterministic-structural'
+        || value === 'deterministic-semantic'
+        || value === 'heuristic-advisory'
+        || value === 'llm-assisted-planning');
+}
+//# sourceMappingURL=taxonomy.js.map
 
 /***/ }),
 
@@ -37971,6 +38037,42 @@ function renderHighlights(data) {
         ...top.map((item) => `- ${escapeMarkdownInline(item.message)} in \`${escapeMarkdownInline(item.file)}\``),
     ];
 }
+function getGovernanceFindings(data) {
+    if (Array.isArray(data.governanceFindings))
+        return data.governanceFindings;
+    const envelope = data.governanceVerification;
+    if (envelope && Array.isArray(envelope.findings))
+        return envelope.findings;
+    return [];
+}
+function renderOperationalNarrative(data) {
+    const findings = getGovernanceFindings(data);
+    if (findings.length === 0)
+        return [];
+    const bySeverity = {
+        blocking: findings.filter((f) => f.severity === 'BLOCKING'),
+        advisory: findings.filter((f) => f.severity === 'ADVISORY'),
+    };
+    const top = [...findings]
+        .sort((a, b) => {
+        const sevRank = (v) => (v.severity === 'BLOCKING' ? 2 : v.severity === 'ADVISORY' ? 1 : 0);
+        return sevRank(b) - sevRank(a) || b.confidence - a.confidence;
+    })
+        .slice(0, 4);
+    const replayStatus = data.governanceVerification?.replayIntegrity?.status === 'exact'
+        ? 'exact'
+        : data.governanceVerification?.replayIntegrity?.status === 'bounded-degradation'
+            ? 'bounded-degradation'
+            : 'unknown';
+    return [
+        '### Operational Narrative',
+        '',
+        `- Canonical findings: ${findings.length} (blocking ${bySeverity.blocking.length}, advisory ${bySeverity.advisory.length})`,
+        `- Replay reconstruction: ${replayStatus}`,
+        ...top.map((f) => `- [${escapeMarkdownInline(f.determinismClassification)}] ${escapeMarkdownInline(f.title)} ` +
+            `(${Math.round(Math.max(0, Math.min(1, f.confidence)) * 100)}%)`),
+    ];
+}
 function renderSuggestedAction(verdict) {
     if (verdict === 'ready') {
         return ['**Suggested Action:** No action required — ready to merge.'];
@@ -38038,6 +38140,7 @@ function formatGovernanceComment(data) {
         return sev !== 'critical' && sev !== 'high';
     }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length;
     const highlights = renderHighlights(data);
+    const operationalNarrative = renderOperationalNarrative(data);
     const sections = [
         exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
         '## Neurcode Governance Report',
@@ -38051,6 +38154,7 @@ function formatGovernanceComment(data) {
         '',
         // ── Highlights (top 3 issues, scannable) ────────────────────────────────
         ...(highlights.length > 0 ? [...highlights, ''] : []),
+        ...(operationalNarrative.length > 0 ? [...operationalNarrative, ''] : []),
         // ── Suggested action ────────────────────────────────────────────────────
         ...renderSuggestedAction(verdict),
         '',

@@ -196,6 +196,42 @@ function renderHighlights(data) {
         ...top.map((item) => `- ${escapeMarkdownInline(item.message)} in \`${escapeMarkdownInline(item.file)}\``),
     ];
 }
+function getGovernanceFindings(data) {
+    if (Array.isArray(data.governanceFindings))
+        return data.governanceFindings;
+    const envelope = data.governanceVerification;
+    if (envelope && Array.isArray(envelope.findings))
+        return envelope.findings;
+    return [];
+}
+function renderOperationalNarrative(data) {
+    const findings = getGovernanceFindings(data);
+    if (findings.length === 0)
+        return [];
+    const bySeverity = {
+        blocking: findings.filter((f) => f.severity === 'BLOCKING'),
+        advisory: findings.filter((f) => f.severity === 'ADVISORY'),
+    };
+    const top = [...findings]
+        .sort((a, b) => {
+        const sevRank = (v) => (v.severity === 'BLOCKING' ? 2 : v.severity === 'ADVISORY' ? 1 : 0);
+        return sevRank(b) - sevRank(a) || b.confidence - a.confidence;
+    })
+        .slice(0, 4);
+    const replayStatus = data.governanceVerification?.replayIntegrity?.status === 'exact'
+        ? 'exact'
+        : data.governanceVerification?.replayIntegrity?.status === 'bounded-degradation'
+            ? 'bounded-degradation'
+            : 'unknown';
+    return [
+        '### Operational Narrative',
+        '',
+        `- Canonical findings: ${findings.length} (blocking ${bySeverity.blocking.length}, advisory ${bySeverity.advisory.length})`,
+        `- Replay reconstruction: ${replayStatus}`,
+        ...top.map((f) => `- [${escapeMarkdownInline(f.determinismClassification)}] ${escapeMarkdownInline(f.title)} ` +
+            `(${Math.round(Math.max(0, Math.min(1, f.confidence)) * 100)}%)`),
+    ];
+}
 function renderSuggestedAction(verdict) {
     if (verdict === 'ready') {
         return ['**Suggested Action:** No action required — ready to merge.'];
@@ -263,6 +299,7 @@ function formatGovernanceComment(data) {
         return sev !== 'critical' && sev !== 'high';
     }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length;
     const highlights = renderHighlights(data);
+    const operationalNarrative = renderOperationalNarrative(data);
     const sections = [
         exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
         '## Neurcode Governance Report',
@@ -276,6 +313,7 @@ function formatGovernanceComment(data) {
         '',
         // ── Highlights (top 3 issues, scannable) ────────────────────────────────
         ...(highlights.length > 0 ? [...highlights, ''] : []),
+        ...(operationalNarrative.length > 0 ? [...operationalNarrative, ''] : []),
         // ── Suggested action ────────────────────────────────────────────────────
         ...renderSuggestedAction(verdict),
         '',
