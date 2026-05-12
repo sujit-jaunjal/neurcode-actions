@@ -6,6 +6,8 @@ exports.formatGovernanceComment = formatGovernanceComment;
 const drift_1 = require("./drift");
 exports.NEURCODE_GOVERNANCE_REPORT_MARKER = '<!-- neurcode-governance-report -->';
 exports.NEURCODE_RUN_ID_PLACEHOLDER = '{{NEURCODE_RUN_ID}}';
+/** Keeps PR comments scannable when many advisory rows exist — full list remains in verify JSON artifact. */
+const MAX_ADVISORY_ROWS_IN_COMMENT = 15;
 function escapeMarkdownInline(value) {
     return value.replace(/\|/g, '\\|').replace(/`/g, '\\`');
 }
@@ -57,6 +59,21 @@ function countBlockingViolations(data) {
         return severity === 'critical' || severity === 'high';
     }).length;
 }
+function renderMergeSafety(verdict) {
+    if (verdict === 'blocked') {
+        return [
+            '**Merge safety:** Not sufficient for merge under default Neurcode verdict rules — resolve blocking items or adjust approved scope.',
+        ];
+    }
+    if (verdict === 'needs_attention') {
+        return [
+            '**Merge safety:** Advisory debt present — merge only if your policy explicitly allows it and reviewers accept the risk.',
+        ];
+    }
+    return [
+        '**Merge safety:** No blocking governance findings in this verify snapshot — still subject to your org’s other checks.',
+    ];
+}
 function renderVerdictReason(verdict, data) {
     if (verdict !== 'blocked') {
         return null;
@@ -103,11 +120,20 @@ function renderAdvisoryViolations(data) {
         lines.push('- No advisory issues detected.');
         return lines;
     }
+    const rowStrings = [];
     for (const v of advisory)
-        lines.push(renderViolationLine(v));
+        rowStrings.push(renderViolationLine(v));
     for (const w of realWarnings) {
-        lines.push(`- \`${escapeMarkdownInline(w.file)}\` — ${escapeMarkdownInline(w.message)} ` +
+        rowStrings.push(`- \`${escapeMarkdownInline(w.file)}\` — ${escapeMarkdownInline(w.message)} ` +
             `(policy: \`${escapeMarkdownInline(w.policy)}\`)`);
+    }
+    const omitted = Math.max(0, rowStrings.length - MAX_ADVISORY_ROWS_IN_COMMENT);
+    const shown = omitted > 0 ? rowStrings.slice(0, MAX_ADVISORY_ROWS_IN_COMMENT) : rowStrings;
+    for (const row of shown)
+        lines.push(row);
+    if (omitted > 0) {
+        lines.push('');
+        lines.push(`> *${omitted} additional advisory row(s) omitted in this comment — open the full verify JSON artifact or CI log for the complete list.*`);
     }
     return lines;
 }
@@ -279,13 +305,14 @@ function renderSuggestedAction(verdict) {
     return [
         '**Suggested Action:**',
         '',
+        'Export deterministic remediation context (advisory — external tools apply edits):',
         '```',
-        'neurcode fix',
+        'neurcode remediate-export --finding-index 0',
         '```',
         '',
-        '_or apply safe patches automatically:_',
+        'Then run fixes in your editor or AI assistant, and **re-verify**:',
         '```',
-        'neurcode fix --apply-safe',
+        'neurcode verify --ci',
         '```',
     ];
 }
@@ -293,7 +320,7 @@ function renderWhatToDo(data, verdict) {
     const suggestions = [];
     const firstViolation = data.violations[0];
     if (firstViolation) {
-        suggestions.push(`Start with \`${escapeMarkdownInline(firstViolation.file)}\`: ${escapeMarkdownInline(firstViolation.message)} (quick fix)`);
+        suggestions.push(`Prioritize \`${escapeMarkdownInline(firstViolation.file)}\`: ${escapeMarkdownInline(firstViolation.message)}`);
     }
     if (verdict === 'blocked') {
         suggestions.push('Resolve all critical policy violations before merge.');
@@ -346,6 +373,8 @@ function formatGovernanceComment(data) {
         // ── Quick status ────────────────────────────────────────────────────────
         renderVerdictLine(verdict),
         ...(reason ? ['', reason] : []),
+        '',
+        ...renderMergeSafety(verdict),
         '',
         `**Blocking Issues:** ${blockingCount}`,
         `**Advisory:** ${advisoryCount}`,
