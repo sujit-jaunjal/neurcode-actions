@@ -204,6 +204,46 @@ function getGovernanceFindings(data) {
         return envelope.findings;
     return [];
 }
+function renderReplayProvenance(data) {
+    const gv = data.governanceVerification;
+    const lines = [
+        '### Replay / provenance',
+        '',
+    ];
+    if (!gv) {
+        lines.push('- Canonical **governanceVerification** envelope missing — `replayChecksum` and replay integrity are unavailable.');
+        lines.push('- **Governance findings** (if any) are still authoritative for merge decisions.');
+        lines.push('');
+        lines.push('> Replay metadata describes reproducibility of the envelope, not runtime correctness of your application.');
+        return lines;
+    }
+    if (typeof gv.replayChecksum === 'string' && gv.replayChecksum.length > 0) {
+        lines.push(`- **replayChecksum:** \`${gv.replayChecksum.slice(0, 18)}…\` (full hash in JSON verify output)`);
+    }
+    else {
+        lines.push('- **replayChecksum:** not recorded — use current CLI `verify --json` to emit checksums where enabled.');
+    }
+    const ri = gv.replayIntegrity;
+    if (ri) {
+        lines.push(`- **Replay integrity:** \`${escapeMarkdownInline(String(ri.status))}\``);
+        const missing = ri.missingArtifacts ?? [];
+        if (missing.length > 0) {
+            lines.push(`- **Missing / degraded dimensions:** ${missing.slice(0, 4).map(escapeMarkdownInline).join('; ')}`);
+        }
+        const notes = ri.notes ?? [];
+        for (const n of notes.slice(0, 2)) {
+            lines.push(`- ${escapeMarkdownInline(n)}`);
+        }
+    }
+    else {
+        lines.push('- **Replay integrity:** not attached (no envelope drift analysis for this run).');
+    }
+    lines.push('');
+    lines.push('> **Deterministic vs advisory:** structural/rule IDs with high confidence are repeatable; heuristic rows may require judgment.');
+    lines.push('');
+    lines.push('> Replay bounded-degradation is explicit — it is not a merge bypass.');
+    return lines;
+}
 function renderOperationalNarrative(data) {
     const findings = getGovernanceFindings(data);
     if (findings.length === 0)
@@ -271,10 +311,9 @@ function renderWhatToDo(data, verdict) {
 }
 function renderFooter() {
     return [
-        '- Governed by Neurcode',
-        '- Based on Neurcode policy and structural analysis',
+        '- Governed by Neurcode (deterministic structural + configured policy)',
         `- Run ID: ${exports.NEURCODE_RUN_ID_PLACEHOLDER}`,
-        '- AI attribution not fully tracked yet',
+        '- For replay/evidence retention in CI, upload `.neurcode/evidence/` (and snapshots if enabled) as job artifacts.',
     ];
 }
 function safeData(data) {
@@ -314,6 +353,8 @@ function formatGovernanceComment(data) {
         // ── Highlights (top 3 issues, scannable) ────────────────────────────────
         ...(highlights.length > 0 ? [...highlights, ''] : []),
         ...(operationalNarrative.length > 0 ? [...operationalNarrative, ''] : []),
+        ...renderReplayProvenance(data),
+        '',
         // ── Suggested action ────────────────────────────────────────────────────
         ...renderSuggestedAction(verdict),
         '',
