@@ -35348,7 +35348,7 @@ const RUNTIME_COMPATIBILITY_MANIFEST = {
             id: 'current',
             channel: 'current',
             versions: {
-                cli: '0.9.65',
+                cli: '0.9.66',
                 action: '0.2.2',
                 api: '0.2.0',
             },
