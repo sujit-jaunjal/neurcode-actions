@@ -85,6 +85,12 @@ function hasCriticalViolations(data) {
         return severity === 'critical' || severity === 'high';
     });
 }
+function countBlockingGovernanceFindings(data) {
+    return getGovernanceFindings(data).filter((finding) => finding.severity === 'BLOCKING').length;
+}
+function countAdvisoryGovernanceFindings(data) {
+    return getGovernanceFindings(data).filter((finding) => finding.severity === 'ADVISORY').length;
+}
 function isSystemStatusWarning(warning) {
     // 'verify_result' is a CLI-emitted status indicator ("✅ Policy check passed"),
     // not a real advisory finding. Exclude it from the needs_attention verdict.
@@ -93,7 +99,7 @@ function isSystemStatusWarning(warning) {
 }
 function resolveGovernanceVerdict(data) {
     data = safeData(data);
-    if (hasCriticalViolations(data) || data.scopeIssues.length > 0) {
+    if (hasCriticalViolations(data) || data.scopeIssues.length > 0 || countBlockingGovernanceFindings(data) > 0) {
         return 'blocked';
     }
     const realViolations = data.violations.filter((v) => !isArtifactCheckViolation(v));
@@ -112,13 +118,16 @@ function renderVerdictLine(verdict) {
     }
     return '**Verdict:** ✅ Ready to Merge';
 }
-function countBlockingViolations(data) {
+function countBlockingPolicyViolations(data) {
     return data.violations.filter((violation) => {
         if (isArtifactCheckViolation(violation))
             return false;
         const severity = (violation.severity || '').trim().toLowerCase();
         return severity === 'critical' || severity === 'high';
     }).length;
+}
+function countBlockingViolations(data) {
+    return countBlockingPolicyViolations(data) + countBlockingGovernanceFindings(data);
 }
 function renderMergeSafety(verdict) {
     if (verdict === 'blocked') {
@@ -139,11 +148,14 @@ function renderVerdictReason(verdict, data) {
     if (verdict !== 'blocked') {
         return null;
     }
-    const blockingCount = countBlockingViolations(data);
+    const policyBlockingCount = countBlockingPolicyViolations(data);
+    const governanceBlockingCount = countBlockingGovernanceFindings(data);
     const scopeCount = data.scopeIssues.length;
     const parts = [];
-    if (blockingCount > 0)
-        parts.push(`${blockingCount} critical policy violation(s)`);
+    if (policyBlockingCount > 0)
+        parts.push(`${policyBlockingCount} critical policy violation(s)`);
+    if (governanceBlockingCount > 0)
+        parts.push(`${governanceBlockingCount} blocking governance finding(s)`);
     if (scopeCount > 0)
         parts.push(`${scopeCount} scope/architectural issue(s)`);
     return `Reason: ${parts.length > 0 ? parts.join(', ') : 'blocking governance issues'} detected`;
@@ -530,7 +542,7 @@ function formatGovernanceComment(data) {
             return false;
         const sev = (v.severity || '').toLowerCase();
         return sev !== 'critical' && sev !== 'high';
-    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length;
+    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length + countAdvisoryGovernanceFindings(data);
     const highlights = renderHighlights(data);
     const governancePosture = renderGovernancePosture(data, verdict);
     const governanceDecisions = renderGovernanceDecisions(data);
@@ -607,7 +619,7 @@ function formatGovernanceStepSummary(data) {
             return false;
         const sev = (v.severity || '').toLowerCase();
         return sev !== 'critical' && sev !== 'high';
-    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length;
+    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length + countAdvisoryGovernanceFindings(data);
     const rolloutTrust = resolveRolloutTrust(data, verdict);
     const governanceGate = resolveGovernanceGate(data, verdict);
     const decisions = getGovernanceDecisions(data);
