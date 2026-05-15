@@ -35921,11 +35921,79 @@ exports.ONBOARDING_HINTS = [
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isDeterminismClassification = exports.GOVERNANCE_FINDINGS_SCHEMA_VERSION = void 0;
+exports.isGovernanceStageId = exports.GOVERNANCE_STAGE_ORDER = exports.GOVERNANCE_PIPELINE_SCHEMA_VERSION = exports.isDeterminismClassification = exports.GOVERNANCE_FINDINGS_SCHEMA_VERSION = void 0;
 var taxonomy_1 = __nccwpck_require__(168);
 Object.defineProperty(exports, "GOVERNANCE_FINDINGS_SCHEMA_VERSION", ({ enumerable: true, get: function () { return taxonomy_1.GOVERNANCE_FINDINGS_SCHEMA_VERSION; } }));
 Object.defineProperty(exports, "isDeterminismClassification", ({ enumerable: true, get: function () { return taxonomy_1.isDeterminismClassification; } }));
+var pipeline_1 = __nccwpck_require__(6881);
+Object.defineProperty(exports, "GOVERNANCE_PIPELINE_SCHEMA_VERSION", ({ enumerable: true, get: function () { return pipeline_1.GOVERNANCE_PIPELINE_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "GOVERNANCE_STAGE_ORDER", ({ enumerable: true, get: function () { return pipeline_1.GOVERNANCE_STAGE_ORDER; } }));
+Object.defineProperty(exports, "isGovernanceStageId", ({ enumerable: true, get: function () { return pipeline_1.isGovernanceStageId; } }));
 //# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6881:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Canonical Governance Pipeline Contracts
+ * ----------------------------------------
+ * Shared, immutable types describing the staged decomposition of the verify runtime.
+ *
+ * These contracts are ADDITIVE. They do not replace, mutate, or re-encode the canonical
+ * governance envelope (`GovernanceVerificationEnvelope`), the finding identity scheme,
+ * or the replay checksum. Stage metadata flows alongside the envelope as an
+ * out-of-band observability + replay-reconstruction surface.
+ *
+ * Design invariants:
+ *   - Stage IDs are a closed set. Adding a new stage requires bumping the schema version.
+ *   - Stage metadata never carries excerpts, file content, or PII.
+ *   - Stage fingerprints are computed from stable identifiers — never wall-clock timestamps.
+ *   - A stage's `replay.outputFingerprint` is independent of `replayChecksum`; the two
+ *     are consistent but serve different audiences (stage lineage vs. envelope identity).
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GOVERNANCE_STAGE_ORDER = exports.GOVERNANCE_PIPELINE_SCHEMA_VERSION = void 0;
+exports.isGovernanceStageId = isGovernanceStageId;
+exports.GOVERNANCE_PIPELINE_SCHEMA_VERSION = '2026-05-14.1';
+/**
+ * Type guard: is the given string a known stage identifier?
+ */
+function isGovernanceStageId(value) {
+    return exports.GOVERNANCE_STAGE_ORDER.includes(value);
+}
+/**
+ * Canonical execution order. Mirror of the union above — exported as a runtime
+ * value for iteration, indexing, and stage-ordering invariants.
+ */
+exports.GOVERNANCE_STAGE_ORDER = [
+    'diff-normalization',
+    'plan-sync',
+    'policy-lock',
+    'compiled-policy',
+    'policy-exceptions',
+    'structural-analysis',
+    'runtime-guard',
+    'intent-evaluation',
+    'semantic-analysis',
+    'policy-evaluation',
+    'suppression-evaluation',
+    'advisory-signals',
+    'change-contract',
+    'ai-debt-budget',
+    'governance-synthesis',
+    'provenance-generation',
+    'replay-integrity',
+    'remediation-export-preparation',
+    'evidence-generation',
+    'telemetry-harvest',
+    'ci-shaping',
+    'output-rendering',
+];
+//# sourceMappingURL=pipeline.js.map
 
 /***/ }),
 
@@ -37056,6 +37124,7 @@ async function run() {
         const runtimeGuardPath = (core.getInput('runtime_guard_path') || '.neurcode/runtime-guard.json').trim();
         const requireRuntimeGuardOverride = parseBooleanOrUndefined(core.getInput('require_runtime_guard'));
         const enforceChangeContractOverride = parseBooleanOrUndefined(core.getInput('enforce_change_contract'));
+        const collectEvidence = parseBoolean(core.getInput('collect_evidence'), false);
         const changedFilesOnly = parseBoolean(core.getInput('changed_files_only'), false);
         const autoRemediate = parseBoolean(core.getInput('auto_remediate'), false);
         const remediationGoalInput = core.getInput('remediation_goal') || '';
@@ -37237,6 +37306,7 @@ async function run() {
             projectId: projectId || undefined,
             policyOnly: effectiveVerifyPolicyOnly,
             record,
+            evidence: collectEvidence,
             compiledPolicyPath: effectiveCompiledPolicyPath,
             changeContractPath: effectiveChangeContractPath,
             enforceChangeContract: effectiveEnforceChangeContract,
@@ -37280,6 +37350,7 @@ async function run() {
                 planId: undefined,
                 policyOnly: true,
                 record,
+                evidence: collectEvidence,
                 compiledPolicyPath: effectiveCompiledPolicyPath,
                 changeContractPath: effectiveChangeContractPath,
                 enforceChangeContract: effectiveEnforceChangeContract,
@@ -38819,6 +38890,8 @@ function buildVerifyArgs(input) {
         args.push('--runtime-guard', input.runtimeGuardPath);
     if (input.record)
         args.push('--record');
+    if (input.evidence)
+        args.push('--evidence');
     return args;
 }
 function resolveEnterpriseEnforcement(input) {

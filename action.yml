@@ -94,6 +94,10 @@ inputs:
     description: 'Runtime guard artifact path passed to neurcode verify'
     required: false
     default: '.neurcode/runtime-guard.json'
+  collect_evidence:
+    description: 'Write verification evidence artifacts to .neurcode/evidence/ for audit retention (equivalent to --evidence flag or NEURCODE_VERIFY_EVIDENCE=1 env var)'
+    required: false
+    default: 'false'
   require_runtime_guard:
     description: 'Require runtime guard artifact enforcement in neurcode verify (true|false; empty enables enterprise auto behavior)'
     required: false

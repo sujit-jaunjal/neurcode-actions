@@ -56,6 +56,8 @@ function buildVerifyArgs(input) {
         args.push('--runtime-guard', input.runtimeGuardPath);
     if (input.record)
         args.push('--record');
+    if (input.evidence)
+        args.push('--evidence');
     return args;
 }
 function resolveEnterpriseEnforcement(input) {
