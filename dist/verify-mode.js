@@ -54,6 +54,8 @@ function buildVerifyArgs(input) {
         args.push('--require-runtime-guard');
     if (input.runtimeGuardPath)
         args.push('--runtime-guard', input.runtimeGuardPath);
+    if (input.requireIntentRuntime)
+        args.push('--require-intent-runtime');
     if (input.record)
         args.push('--record');
     if (input.evidence)

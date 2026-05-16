@@ -1,5 +1,5 @@
-name: 'Neurcode Verify'
-description: 'Gatekeeper action that runs neurcode verify and fails the build if code adherence grade is below threshold'
+name: 'Neurcode Governance Gate'
+description: 'Deterministic governance gate for AI-assisted PRs. Enforces intent contracts, scope + forbidden-boundary guards, dependency-overreach detection, generated-code spillover detection, and replay-grade evidence. Fails merge when the runtime declares a blocking governance verdict.'
 author: 'Neurcode'
 branding:
   icon: 'shield-check'
@@ -102,6 +102,10 @@ inputs:
     description: 'Require runtime guard artifact enforcement in neurcode verify (true|false; empty enables enterprise auto behavior)'
     required: false
     default: ''
+  require_intent_runtime:
+    description: 'Require the intent-governed runtime to be active (intent-pack present and applied). Fails the build if neurcode falls back to structural-only mode. Mirrors --require-intent-runtime / NEURCODE_REQUIRE_INTENT_RUNTIME=1.'
+    required: false
+    default: 'false'
   enforce_change_contract:
     description: 'Treat change contract drift as hard verification failure (set true/false to override enterprise auto behavior)'
     required: false

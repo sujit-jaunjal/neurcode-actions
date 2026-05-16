@@ -35637,10 +35637,27 @@ function parseVerifyOutput(value, label = 'verify') {
     });
     const scopeIssues = asArray(record, 'scopeIssues', label).map((entry, index) => {
         const item = asRecord(entry, `${label}.scopeIssues[${index}]`);
-        return {
+        const issue = {
             file: asString(item, 'file', `${label}.scopeIssues[${index}]`),
             message: asString(item, 'message', `${label}.scopeIssues[${index}]`),
         };
+        const rawPolicy = item.policy;
+        if (typeof rawPolicy === 'string' && rawPolicy.length > 0) {
+            const allowedPolicies = ['forbidden', 'review-required', 'out-of-scope', 'generated-code', 'unscoped'];
+            if (allowedPolicies.includes(rawPolicy)) {
+                issue.policy = rawPolicy;
+            }
+        }
+        const rawBoundary = item.boundaryType;
+        if (typeof rawBoundary === 'string' && rawBoundary.length > 0) {
+            const allowedBoundaries = [
+                'sensitive', 'infra', 'ci', 'dependency-manifest', 'service', 'module', 'generated-code', 'unspecified',
+            ];
+            if (allowedBoundaries.includes(rawBoundary)) {
+                issue.boundaryType = rawBoundary;
+            }
+        }
+        return issue;
     });
     const driftScoreRaw = record.driftScore;
     const driftScore = driftScoreRaw === undefined
@@ -36952,6 +36969,7 @@ async function resolveVerifyCapabilities(cli, cwd) {
             supportsRequirePlan: true,
             supportsRequireSignedArtifacts: true,
             supportsRequireRuntimeGuard: true,
+            supportsRequireIntentRuntime: true,
         };
     }
     const helpText = stripAnsi(helpResult.output).toLowerCase();
@@ -36962,6 +36980,7 @@ async function resolveVerifyCapabilities(cli, cwd) {
         supportsRequirePlan: helpText.includes('--require-plan'),
         supportsRequireSignedArtifacts: helpText.includes('--require-signed-artifacts'),
         supportsRequireRuntimeGuard: helpText.includes('--require-runtime-guard'),
+        supportsRequireIntentRuntime: helpText.includes('--require-intent-runtime'),
     };
 }
 async function resolveCliInvocation(cwd) {
@@ -37123,6 +37142,7 @@ async function run() {
         const changeContractPath = (core.getInput('change_contract_path') || '.neurcode/change-contract.json').trim();
         const runtimeGuardPath = (core.getInput('runtime_guard_path') || '.neurcode/runtime-guard.json').trim();
         const requireRuntimeGuardOverride = parseBooleanOrUndefined(core.getInput('require_runtime_guard'));
+        const requireIntentRuntime = parseBoolean(core.getInput('require_intent_runtime'), false);
         const enforceChangeContractOverride = parseBooleanOrUndefined(core.getInput('enforce_change_contract'));
         const collectEvidence = parseBoolean(core.getInput('collect_evidence'), false);
         const changedFilesOnly = parseBoolean(core.getInput('changed_files_only'), false);
@@ -37315,7 +37335,11 @@ async function run() {
             requirePlan: requirePlanContext && !effectiveVerifyPolicyOnly,
             requireRuntimeGuard: requireRuntimeGuard && !effectiveVerifyPolicyOnly,
             runtimeGuardPath: requireRuntimeGuard ? runtimeGuardPath : undefined,
+            requireIntentRuntime: requireIntentRuntime && verifyCapabilities.supportsRequireIntentRuntime,
         });
+        if (requireIntentRuntime && !verifyCapabilities.supportsRequireIntentRuntime) {
+            core.warning('Workflow asked for require_intent_runtime=true but the installed CLI does not understand --require-intent-runtime. Upgrade @neurcode-ai/cli to a build that includes the intent-runtime activation.');
+        }
         core.info('Running neurcode verify');
         let verifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyTimeoutMinutes);
         let verifyRun = await runCommand(verifyCommand.cmd, verifyCommand.args, {
@@ -37359,6 +37383,7 @@ async function run() {
                 requirePlan: false,
                 requireRuntimeGuard: false,
                 runtimeGuardPath: undefined,
+                requireIntentRuntime: requireIntentRuntime && verifyCapabilities.supportsRequireIntentRuntime,
             });
             verifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyTimeoutMinutes);
             verifyRun = await runCommand(verifyCommand.cmd, verifyCommand.args, {
@@ -38157,6 +38182,21 @@ function renderArtifactChecks(data) {
     lines.push('> Artifact checks are advisory and do not block merge.');
     return lines;
 }
+function renderScopeIssueBadge(policy, boundaryType) {
+    const parts = [];
+    if (policy) {
+        const label = policy === 'forbidden' ? '⛔ forbidden'
+            : policy === 'review-required' ? '⚠ review-required'
+                : policy === 'generated-code' ? '🤖 generated-code'
+                    : policy === 'out-of-scope' ? '🚫 out-of-scope'
+                        : policy;
+        parts.push(`\`${label}\``);
+    }
+    if (boundaryType && boundaryType !== 'unspecified') {
+        parts.push(`\`${boundaryType}\``);
+    }
+    return parts.length > 0 ? ` ${parts.join(' ')}` : '';
+}
 function renderScopeIssues(data) {
     const lines = ['### Scope / Architectural Issues', ''];
     if (data.scopeIssues.length === 0) {
@@ -38164,7 +38204,55 @@ function renderScopeIssues(data) {
         return lines;
     }
     for (const issue of data.scopeIssues) {
-        lines.push(`- \`${escapeMarkdownInline(issue.file)}\` — ${escapeMarkdownInline(issue.message)}`);
+        // Optional structured governance classification surviving canonicalisation —
+        // see packages/contracts/src/index.ts VerifyOutputScopeIssue. Stay
+        // defensive: legacy payloads may not carry these fields.
+        const meta = issue;
+        const badge = renderScopeIssueBadge(meta.policy, meta.boundaryType);
+        lines.push(`- \`${escapeMarkdownInline(issue.file)}\`${badge} — ${escapeMarkdownInline(issue.message)}`);
+    }
+    return lines;
+}
+function asRuntimeCapabilities(data) {
+    const rc = data.runtimeCapabilities;
+    if (!rc || typeof rc !== 'object' || Array.isArray(rc))
+        return null;
+    return rc;
+}
+function renderRuntimeCapabilities(data) {
+    const rc = asRuntimeCapabilities(data);
+    if (!rc)
+        return [];
+    const lines = ['### Runtime Capabilities', ''];
+    const row = (label, value) => {
+        if (value === undefined || value === null || value === '')
+            return;
+        const rendered = Array.isArray(value)
+            ? (value.length > 0 ? value.map((v) => `\`${String(v)}\``).join(', ') : '_(none)_')
+            : `\`${String(value)}\``;
+        lines.push(`- **${label}:** ${rendered}`);
+    };
+    row('Execution path', rc.executionPath);
+    row('Intent runtime', rc.intentRuntime);
+    row('Intent contract source', rc.intentContractSource);
+    if (rc.intentRuntimeRequired !== undefined) {
+        row('Intent runtime required', rc.intentRuntimeRequired);
+        if (rc.intentRuntimeRequirementSatisfied === false) {
+            lines.push('  - ⛔ **Requirement NOT satisfied** — runtime fell back to structural-only despite `require_intent_runtime=true`.');
+        }
+    }
+    row('Scope guard', rc.scopeGuard);
+    row('Forbidden-boundary enforcement', rc.forbiddenBoundaryEnforcement);
+    row('Drift intelligence', rc.driftIntelligence);
+    row('Generated-code governance', rc.generatedCodeGovernance);
+    row('Structural rules', rc.structuralRules);
+    row('Replay determinism', rc.replayDeterminism);
+    row('API contract status', rc.apiContractStatus);
+    if (Array.isArray(rc.observedScopeCategories) && rc.observedScopeCategories.length > 0) {
+        row('Observed scope categories', rc.observedScopeCategories);
+    }
+    if (Array.isArray(rc.observedBoundaryTypes) && rc.observedBoundaryTypes.length > 0) {
+        row('Observed boundary types', rc.observedBoundaryTypes);
     }
     return lines;
 }
@@ -38521,6 +38609,9 @@ function formatGovernanceComment(data) {
         '',
         '---',
         '',
+        ...(renderRuntimeCapabilities(data).length > 0
+            ? [...renderRuntimeCapabilities(data), '', '---', '']
+            : []),
         ...renderAdvisoryViolations(data),
         '',
         '---',
@@ -38888,6 +38979,8 @@ function buildVerifyArgs(input) {
         args.push('--require-runtime-guard');
     if (input.runtimeGuardPath)
         args.push('--runtime-guard', input.runtimeGuardPath);
+    if (input.requireIntentRuntime)
+        args.push('--require-intent-runtime');
     if (input.record)
         args.push('--record');
     if (input.evidence)
