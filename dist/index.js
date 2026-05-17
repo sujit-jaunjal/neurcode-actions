@@ -35349,7 +35349,7 @@ const RUNTIME_COMPATIBILITY_MANIFEST = {
             id: 'current',
             channel: 'current',
             versions: {
-                cli: '0.11.0',
+                cli: '0.12.0',
                 action: '0.2.4',
                 api: '0.2.0',
             },
@@ -35655,6 +35655,41 @@ function parseVerifyOutput(value, label = 'verify') {
             ];
             if (allowedBoundaries.includes(rawBoundary)) {
                 issue.boundaryType = rawBoundary;
+            }
+        }
+        const rawImportEdge = item.importEdge;
+        if (rawImportEdge && typeof rawImportEdge === 'object' && !Array.isArray(rawImportEdge)) {
+            const edgeRecord = rawImportEdge;
+            const allowedEdgeKinds = ['static', 'relative', 'dynamic', 'require', 'side-effect'];
+            const allowedEdgeLanguages = ['python', 'typescript', 'javascript'];
+            const sourceFile = edgeRecord.sourceFile;
+            const importTarget = edgeRecord.importTarget;
+            const resolvedTargetPath = edgeRecord.resolvedTargetPath;
+            const resolvedBoundary = edgeRecord.resolvedBoundary;
+            const sourceLine = edgeRecord.sourceLine;
+            const edgeKind = edgeRecord.edgeKind;
+            const language = edgeRecord.language;
+            if (typeof sourceFile === 'string'
+                && typeof importTarget === 'string'
+                && typeof resolvedTargetPath === 'string'
+                && typeof resolvedBoundary === 'string'
+                && typeof sourceLine === 'number'
+                && Number.isFinite(sourceLine)
+                && typeof edgeKind === 'string'
+                && typeof language === 'string'
+                && allowedEdgeKinds.includes(edgeKind)
+                && allowedEdgeLanguages.includes(language)) {
+                issue.importEdge = {
+                    sourceFile,
+                    sourceLine,
+                    importTarget,
+                    resolvedTargetPath,
+                    resolvedBoundary,
+                    edgeKind: edgeKind,
+                    language: language,
+                    deterministic: true,
+                    replayStable: true,
+                };
             }
         }
         return issue;
