@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPullRequestNumberFromContext = getPullRequestNumberFromContext;
+exports.getExistingGovernanceCommentBody = getExistingGovernanceCommentBody;
 exports.upsertGovernanceReportComment = upsertGovernanceReportComment;
 const github = __importStar(require("@actions/github"));
 const formatter_1 = require("./formatter");
@@ -43,6 +44,21 @@ function getPullRequestNumberFromContext() {
         return null;
     }
     return pullRequest.number;
+}
+/** Fetch the existing Neurcode comment body for a PR (or null) — used to read the embedded lifecycle. */
+async function getExistingGovernanceCommentBody(token, prNumber) {
+    const n = typeof prNumber === 'number' ? prNumber : getPullRequestNumberFromContext();
+    if (!n)
+        return null;
+    try {
+        const octokit = github.getOctokit(token);
+        const { owner, repo } = github.context.repo;
+        const { data: comments } = await octokit.rest.issues.listComments({ owner, repo, issue_number: n, per_page: 100 });
+        return comments.find((c) => c.body?.includes(formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER))?.body ?? null;
+    }
+    catch {
+        return null;
+    }
 }
 async function upsertGovernanceReportComment(input) {
     const prNumber = typeof input.prNumber === 'number'
@@ -68,6 +84,10 @@ async function upsertGovernanceReportComment(input) {
             comment_id: existing.id,
             body: finalBody,
         });
+        return;
+    }
+    // Silent success: nothing to update and we must not create a new comment.
+    if (input.onlyIfExists) {
         return;
     }
     await octokit.rest.issues.createComment({

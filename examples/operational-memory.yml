@@ -1,0 +1,26 @@
+# Repository operational memory (pull-first, scheduled).
+# Copy to .github/workflows/neurcode-memory.yml in your repo.
+# Operational structure changes slowly — monthly is plenty.
+name: Neurcode Operational Memory
+
+on:
+  schedule:
+    - cron: '0 9 1 * *'   # 09:00 UTC on the 1st of each month
+  workflow_dispatch: {}    # let a maintainer run it on demand
+
+permissions:
+  contents: read
+
+jobs:
+  memory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: sujit-jaunjal/neurcode-actions@v0.2.4
+        with:
+          mode: 'memory'
+          github_token: ${{ github.token }}
+      # Output: .neurcode/reports/operational-memory.md + .jsonl, and a run Step Summary.
+      # Commit those files if you want the history tracked in-repo.

@@ -35349,7 +35349,7 @@ const RUNTIME_COMPATIBILITY_MANIFEST = {
             id: 'current',
             channel: 'current',
             versions: {
-                cli: '0.12.0',
+                cli: '0.14.0',
                 action: '0.2.4',
                 api: '0.2.0',
             },
@@ -36123,6 +36123,20 @@ const verify_mode_1 = __nccwpck_require__(4288);
 const runtime_compat_1 = __nccwpck_require__(5654);
 const formatter_1 = __nccwpck_require__(7459);
 const github_client_1 = __nccwpck_require__(7920);
+const pr_lifecycle_1 = __nccwpck_require__(4638);
+const scope_coherence_1 = __nccwpck_require__(6334);
+const repo_topology_1 = __nccwpck_require__(7383);
+const oss_formatter_1 = __nccwpck_require__(7881);
+const operational_memory_1 = __nccwpck_require__(6481);
+const operational_report_1 = __nccwpck_require__(3664);
+const release_memory_1 = __nccwpck_require__(9006);
+const operational_cartography_1 = __nccwpck_require__(315);
+const operational_delta_1 = __nccwpck_require__(134);
+const operational_dynamics_1 = __nccwpck_require__(7460);
+const operational_synthesis_1 = __nccwpck_require__(5194);
+const operational_pilot_1 = __nccwpck_require__(6794);
+const operational_bootstrap_1 = __nccwpck_require__(4098);
+const structural_coupling_1 = __nccwpck_require__(312);
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
 const NON_FAST_FORWARD_PATTERNS = [
     'non-fast-forward',
@@ -37137,7 +37151,495 @@ function formatGovernanceFallbackComment() {
         'Neurcode could not generate a governance report for this PR.',
     ].join('\n');
 }
+/**
+ * Project the verify envelope down to the compact advisory finding shape the
+ * OSS comment renders. Prefers canonical structural findings; falls back to
+ * raw structural-rule violations. The OSS formatter dedupes, so the policy
+ * engine's mirror rows are harmless here.
+ */
+function extractStructuralFindings(report) {
+    const out = [];
+    const findings = Array.isArray(report.governanceFindings) ? report.governanceFindings : [];
+    for (const f of findings) {
+        if (f.sourceSystem !== 'structural-rules')
+            continue;
+        const ruleId = f.structuralMetadata?.ruleId || f.title.match(/^([A-Z]{2,3}\d{3})/)?.[1] || 'STRUCT';
+        const title = f.structuralMetadata?.ruleName
+            || f.title.replace(/^[A-Z]{2,3}\d{3}\s*·?\s*/, '').trim()
+            || f.title;
+        out.push({
+            file: f.evidence?.filePath || 'unknown',
+            line: typeof f.evidence?.line === 'number' ? f.evidence.line : undefined,
+            ruleId,
+            title,
+            severity: f.severity === 'BLOCKING' ? 'blocking' : 'advisory',
+        });
+    }
+    if (out.length === 0) {
+        for (const v of report.violations) {
+            const code = v.policy || '';
+            if (!/^(PY|SR|DS|TS|JS)\d/.test(code))
+                continue;
+            const sev = (v.severity || '').toLowerCase();
+            out.push({
+                file: v.file,
+                ruleId: code,
+                title: (v.message || '').replace(/^[A-Z]{2,3}\d{3}\s*·?\s*/, '').split(':')[0].trim() || 'reliability finding',
+                severity: sev === 'critical' || sev === 'high' || sev === 'block' ? 'blocking' : 'advisory',
+            });
+        }
+    }
+    return out;
+}
+/** Derive the repo topology + static dependency edges from the checkout. */
+async function buildTopologyFromCheckout(cwd) {
+    const tree = await runCommand('git', ['ls-files'], { cwd });
+    if (tree.exitCode !== 0)
+        return { staticEdges: [] };
+    const paths = tree.output.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (paths.length === 0)
+        return { staticEdges: [] };
+    const topo = (0, repo_topology_1.deriveTopology)(paths);
+    const manifests = [];
+    for (const mp of (0, repo_topology_1.findManifestPaths)(paths).slice(0, 1000)) {
+        try {
+            const content = (0, fs_1.readFileSync)((0, path_1.resolve)(cwd, mp), 'utf8');
+            if (content.length <= 200_000)
+                manifests.push({ path: mp, content });
+        }
+        catch { /* skip */ }
+    }
+    const staticEdges = (0, repo_topology_1.deriveManifestEdges)(manifests, topo.moduleRoots);
+    return { topology: (0, repo_topology_1.withCentrality)(topo, staticEdges), staticEdges };
+}
+function loadOssConfig(cwd) {
+    const f = (0, path_1.resolve)(cwd, '.neurcode/oss.json');
+    if (!(0, fs_1.existsSync)(f))
+        return {};
+    try {
+        const j = JSON.parse((0, fs_1.readFileSync)(f, 'utf8'));
+        return {
+            commentOn: ['always', 'flagged', 'never'].includes(j.commentOn) ? j.commentOn : undefined,
+            failOnIncoherent: typeof j.failOnIncoherent === 'boolean' ? j.failOnIncoherent : undefined,
+            ignorePaths: Array.isArray(j.ignorePaths) ? j.ignorePaths.filter((x) => typeof x === 'string') : undefined,
+        };
+    }
+    catch {
+        return {};
+    }
+}
+/** Read CODEOWNERS from its conventional locations, or []. */
+function loadCodeowners(cwd) {
+    for (const rel of ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']) {
+        const f = (0, path_1.resolve)(cwd, rel);
+        if ((0, fs_1.existsSync)(f)) {
+            try {
+                return (0, structural_coupling_1.parseCodeowners)((0, fs_1.readFileSync)(f, 'utf8'));
+            }
+            catch {
+                return [];
+            }
+        }
+    }
+    return [];
+}
+/** Day-zero bootstrap: reconstruct records by replaying recent merged-PR history. */
+async function bootstrapViaApi(token, cwd, limit) {
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+    const { topology } = await buildTopologyFromCheckout(cwd);
+    const pulls = await octokit.paginate(octokit.rest.pulls.list, { owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100 });
+    const merged = pulls.filter((p) => p.merged_at).slice(0, limit);
+    const prs = [];
+    for (const p of merged) {
+        let files = [];
+        try {
+            files = await octokit.paginate(octokit.rest.pulls.listFiles, { owner, repo, pull_number: p.number, per_page: 100 }, (r) => r.data.map((f) => f.filename));
+        }
+        catch {
+            files = [];
+        }
+        const labels = (p.labels ?? []).map((l) => (typeof l === 'string' ? l : (l.name ?? ''))).filter(Boolean);
+        prs.push({ number: p.number, title: p.title ?? '', body: p.body ?? '', labels, files, author: p.user?.login ?? '', mergedAt: p.merged_at ?? undefined });
+    }
+    return (0, operational_bootstrap_1.bootstrapRecords)(prs, topology);
+}
+/**
+ * Records for a report mode: the accumulated ledger when it has enough history,
+ * otherwise a day-zero bootstrap replayed from PR history (so every mode works
+ * on first adoption). The bootstrap is byte-identical to a months-old ledger.
+ */
+async function resolveRecords(cwd, ledgerPath, token, minRecords, bootstrapLimit = 150) {
+    const ledgerFile = (0, path_1.resolve)(cwd, ledgerPath);
+    const ledger = (0, fs_1.existsSync)(ledgerFile) ? (0, operational_memory_1.parseLedger)((0, fs_1.readFileSync)(ledgerFile, 'utf8')) : [];
+    if (ledger.length >= minRecords)
+        return { records: ledger, source: 'ledger' };
+    if (token) {
+        const boot = await bootstrapViaApi(token, cwd, bootstrapLimit);
+        if (boot.length >= ledger.length) {
+            core.info(`Day-zero bootstrap: reconstructed ${boot.length} operational records from PR history (ledger had ${ledger.length}).`);
+            return { records: boot, source: boot.length > 0 ? 'bootstrap' : 'none' };
+        }
+    }
+    return { records: ledger, source: ledger.length > 0 ? 'ledger' : 'none' };
+}
+/**
+ * Operational Evolution Report mode (mode: report). Reads the ledger (or
+ * day-zero bootstraps from PR history), splits it into a current vs prior
+ * window, and writes a deterministic, archived report. No PR context required.
+ */
+async function runOperationalReport() {
+    const workingDirectory = core.getInput('working_directory') || '.';
+    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+    const windowSize = parsePositiveInt(core.getInput('report_window'), 60, 4, 1000);
+    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
+    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
+    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
+    if (records.length < 4) {
+        core.info(`Only ${records.length} operational records available (ledger + bootstrap) — too little for a report.`);
+        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
+        return;
+    }
+    core.setOutput('report_source', source);
+    const current = records.slice(-windowSize);
+    const prior = records.length > current.length
+        ? records.slice(Math.max(0, records.length - 2 * windowSize), records.length - current.length)
+        : undefined;
+    const report = (0, operational_report_1.synthesizeDriftReport)({
+        current,
+        prior: prior && prior.length > 0 ? prior : undefined,
+        periodLabel: `last ${current.length} PRs${prior && prior.length ? ` vs prior ${prior.length}` : ''}`,
+    });
+    const markdown = (0, operational_report_1.renderReportMarkdown)(report, { recordCount: records.length });
+    const outDir = (0, path_1.resolve)(cwd, outputDir);
+    (0, fs_1.mkdirSync)(outDir, { recursive: true });
+    // Archival: content-addressed by reportHash + a stable latest.md pointer.
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `${report.reportHash}.md`), `${markdown}\n`);
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'latest.md'), `${markdown}\n`);
+    try {
+        await core.summary.addRaw(markdown).write();
+    }
+    catch { /* summary best-effort */ }
+    core.setOutput('report_status', 'generated');
+    core.setOutput('report_hash', report.reportHash);
+    core.setOutput('report_path', (0, path_1.join)(outputDir, `${report.reportHash}.md`));
+    core.info(`Operational report ${report.reportHash} written (${records.length} records, window ${current.length}).`);
+}
+/**
+ * Release-aware report mode (mode: release-report). Groups the ledger by release
+ * tag (fetched via the API) and writes a deterministic Release Operational
+ * History — topology by release + architectural transitions + migration epochs.
+ */
+async function runReleaseReport() {
+    const workingDirectory = core.getInput('working_directory') || '.';
+    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
+    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
+    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+    if (!token) {
+        core.warning('release-report needs github_token to list releases.');
+        core.setOutput('report_status', 'no_token');
+        return;
+    }
+    const resolved = await resolveRecords(cwd, ledgerPath, token, 8);
+    const records = resolved.records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
+    if (records.length < 8) {
+        core.info(`Only ${records.length} dated record(s) available (ledger + bootstrap) — too little for a release report.`);
+        core.setOutput('report_status', 'insufficient_history');
+        return;
+    }
+    core.setOutput('report_source', resolved.source);
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+    const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
+    const releases = rels
+        .map((r) => ({ tag: r.tag_name, date: r.published_at || r.created_at || '' }))
+        .filter((r) => r.tag && r.date);
+    if (releases.length === 0) {
+        core.info('No releases found — nothing to group by.');
+        core.setOutput('report_status', 'no_releases');
+        return;
+    }
+    const report = (0, release_memory_1.synthesizeReleaseReport)({ records, releases, repo: `${owner}/${repo}` });
+    const outDir = (0, path_1.resolve)(cwd, outputDir);
+    (0, fs_1.mkdirSync)(outDir, { recursive: true });
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `release-${report.reportHash}.md`), `${report.markdown}\n`);
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'release-latest.md'), `${report.markdown}\n`);
+    try {
+        await core.summary.addRaw(report.markdown).write();
+    }
+    catch { /* best-effort */ }
+    core.setOutput('report_status', 'generated');
+    core.setOutput('report_hash', report.reportHash);
+    core.setOutput('report_path', (0, path_1.join)(outputDir, `release-${report.reportHash}.md`));
+    core.info(`Release report ${report.reportHash} written (${report.buckets} release windows, ${report.transitions.length} transitions).`);
+}
+/**
+ * Operational-memory mode (mode: memory). The accumulating, PULL-FIRST surface —
+ * "git log for repository operational structure". Builds CUMULATIVE geography
+ * snapshots at each release boundary, diffs consecutive snapshots, and writes a
+ * delta-only operational history to a repo-native artifact + step summary. It
+ * never posts a PR comment and never restates standing state. Replay-safe:
+ * re-derivable from the record history.
+ */
+async function runOperationalMemory() {
+    const workingDirectory = core.getInput('working_directory') || '.';
+    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
+    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
+    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+    const minWindow = Number(core.getInput('memory_min_window')) || 40;
+    if (!token) {
+        core.warning('memory needs github_token to list releases.');
+        core.setOutput('report_status', 'no_token');
+        return;
+    }
+    const resolved = await resolveRecords(cwd, ledgerPath, token, 8);
+    const records = resolved.records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
+    if (records.length < 8) {
+        core.info(`Only ${records.length} dated record(s) available — too little for operational memory.`);
+        core.setOutput('report_status', 'insufficient_history');
+        return;
+    }
+    core.setOutput('report_source', resolved.source);
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+    const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
+    const releases = rels
+        .map((r) => ({ tag: r.tag_name, date: (r.published_at || r.created_at || ''), pre: r.prerelease === true || (0, release_memory_1.isPreRelease)(r.tag_name) }))
+        .filter((r) => r.tag && r.date && !r.pre)
+        .sort((a, b) => a.date.localeCompare(b.date));
+    if (releases.length < 2) {
+        core.info('Fewer than 2 release boundaries — no operational evolution to diff yet.');
+        core.setOutput('report_status', 'insufficient_releases');
+        return;
+    }
+    const { staticEdges } = await buildTopologyFromCheckout(cwd);
+    const snapshots = releases
+        .map((rel) => {
+        const upTo = records.filter((r) => r.mergedAt <= rel.date);
+        return upTo.length > 0 ? (0, operational_delta_1.snapshotFromGeography)(rel.tag, (0, operational_cartography_1.deriveGeography)(upTo, staticEdges)) : null;
+    })
+        .filter((s) => s !== null);
+    const memory = (0, operational_delta_1.deriveMemory)(snapshots, { minWindow });
+    const markdown = (0, operational_delta_1.renderOperationalMemory)(memory, { repo: `${owner}/${repo}`, path: (0, path_1.join)(outputDir, 'operational-memory.md') });
+    const outDir = (0, path_1.resolve)(cwd, outputDir);
+    (0, fs_1.mkdirSync)(outDir, { recursive: true });
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'operational-memory.md'), `${markdown}\n`);
+    // Append-only, re-derivable machine artifact (the ledger of operational events).
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'operational-memory.jsonl'), `${(0, operational_delta_1.serializeMemoryJsonl)(memory)}\n`);
+    try {
+        await core.summary.addRaw(markdown).write();
+    }
+    catch { /* best-effort */ }
+    core.setOutput('report_status', memory.events.length === 0 ? 'no_evolution' : 'generated');
+    core.setOutput('operational_events', String(memory.events.length));
+    core.setOutput('report_path', (0, path_1.join)(outputDir, 'operational-memory.md'));
+    core.info(`Operational memory: ${memory.events.length} event(s) across ${snapshots.length} release boundaries.`);
+}
+/**
+ * Cartography mode (mode: cartography). Derives the repository's operational
+ * geography (pressure zones, regions, corridors, boundaries) from the ledger.
+ */
+async function runCartographyReport() {
+    const workingDirectory = core.getInput('working_directory') || '.';
+    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
+    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
+    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
+    if (records.length < 8) {
+        core.info(`Only ${records.length} record(s) available (ledger + bootstrap) — too little for a geography map.`);
+        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
+        return;
+    }
+    core.setOutput('report_source', source);
+    const { owner, repo } = github.context.repo;
+    const { staticEdges } = await buildTopologyFromCheckout(cwd);
+    const map = (0, operational_cartography_1.deriveGeography)(records, staticEdges);
+    const crossings = (0, structural_coupling_1.ownershipCrossings)(map, loadCodeowners(cwd));
+    const markdown = (0, operational_cartography_1.renderGeographyReport)(map, { repo: `${owner}/${repo}`, ownershipCrossings: crossings });
+    const outDir = (0, path_1.resolve)(cwd, outputDir);
+    (0, fs_1.mkdirSync)(outDir, { recursive: true });
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `geography-${map.mapHash}.md`), `${markdown}\n`);
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'geography-latest.md'), `${markdown}\n`);
+    try {
+        await core.summary.addRaw(markdown).write();
+    }
+    catch { /* best-effort */ }
+    core.setOutput('report_status', 'generated');
+    core.setOutput('report_hash', map.mapHash);
+    core.setOutput('report_path', (0, path_1.join)(outputDir, `geography-${map.mapHash}.md`));
+    core.info(`Geography map ${map.mapHash} written (${map.regions.length} regions, ${map.corridors.length} corridors).`);
+}
+/**
+ * Dynamics mode (mode: dynamics). Groups the ledger into release eras and
+ * derives operational momentum — intensifying / cooling / stabilized /
+ * dissipated / persistent — across ≥3 eras. Movement analysis, not forecasting.
+ */
+async function runDynamicsReport() {
+    const workingDirectory = core.getInput('working_directory') || '.';
+    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
+    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
+    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+    if (!token) {
+        core.warning('dynamics needs github_token to list releases.');
+        core.setOutput('report_status', 'no_token');
+        return;
+    }
+    const resolved = await resolveRecords(cwd, ledgerPath, token, 15);
+    const records = resolved.records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
+    if (records.length < 15) {
+        core.info(`Only ${records.length} dated record(s) (ledger + bootstrap) — too little for momentum.`);
+        core.setOutput('report_status', 'insufficient_history');
+        return;
+    }
+    core.setOutput('report_source', resolved.source);
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+    const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
+    const releases = rels
+        .map((r) => ({ tag: r.tag_name, date: r.published_at || r.created_at || '' }))
+        .filter((r) => r.tag && r.date && !(0, release_memory_1.isPreRelease)(r.tag));
+    const buckets = (0, release_memory_1.groupByReleases)(records, releases).filter((b) => b.tag !== 'unreleased' && b.records.length >= 5);
+    if (buckets.length < 3) {
+        core.info(`Only ${buckets.length} stable release era(s) — need ≥3 for momentum.`);
+        core.setOutput('report_status', 'insufficient_eras');
+        return;
+    }
+    const eras = buckets.map((b) => (0, operational_dynamics_1.eraFromRecords)(b.tag, b.records));
+    const report = (0, operational_dynamics_1.synthesizeDynamicsReport)({ eras, repo: `${owner}/${repo}` });
+    const outDir = (0, path_1.resolve)(cwd, outputDir);
+    (0, fs_1.mkdirSync)(outDir, { recursive: true });
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `dynamics-${report.momentumHash}.md`), `${report.markdown}\n`);
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'dynamics-latest.md'), `${report.markdown}\n`);
+    try {
+        await core.summary.addRaw(report.markdown).write();
+    }
+    catch { /* best-effort */ }
+    core.setOutput('report_status', 'generated');
+    core.setOutput('report_hash', report.momentumHash);
+    core.setOutput('report_path', (0, path_1.join)(outputDir, `dynamics-${report.momentumHash}.md`));
+    core.info(`Dynamics report ${report.momentumHash} written (${eras.length} eras, ${report.findings.length} momentum findings).`);
+}
+/**
+ * Digest mode (mode: digest). The convergence artifact — fuses drift, geography,
+ * and release-era momentum from the ledger into ONE coherent operational digest.
+ */
+async function runDigest() {
+    const workingDirectory = core.getInput('working_directory') || '.';
+    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
+    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
+    const windowSize = parsePositiveInt(core.getInput('report_window'), 60, 4, 1000);
+    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
+    if (records.length < 8) {
+        core.info(`Only ${records.length} record(s) available (ledger + bootstrap) — too little for a digest.`);
+        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
+        return;
+    }
+    core.setOutput('report_source', source);
+    const current = records.slice(-windowSize);
+    const prior = records.length > current.length
+        ? records.slice(Math.max(0, records.length - 2 * windowSize), records.length - current.length)
+        : undefined;
+    // Release eras (for momentum) when dated records + releases are available.
+    let eras;
+    const dated = records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
+    if (token && dated.length >= 15) {
+        const octokit = github.getOctokit(token);
+        const { owner, repo } = github.context.repo;
+        const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
+        const releases = rels.map((r) => ({ tag: r.tag_name, date: r.published_at || r.created_at || '' })).filter((r) => r.tag && r.date && !(0, release_memory_1.isPreRelease)(r.tag));
+        const buckets = (0, release_memory_1.groupByReleases)(dated, releases).filter((b) => b.tag !== 'unreleased' && b.records.length >= 5);
+        if (buckets.length >= 3)
+            eras = buckets.map((b) => (0, operational_dynamics_1.eraFromRecords)(b.tag, b.records));
+    }
+    const { owner, repo } = github.context.repo;
+    const { staticEdges } = await buildTopologyFromCheckout(cwd);
+    const digest = (0, operational_synthesis_1.synthesizeOperationalDigest)({ current, prior: prior && prior.length > 0 ? prior : undefined, eras, staticEdges, repo: `${owner}/${repo}` });
+    const outDir = (0, path_1.resolve)(cwd, outputDir);
+    (0, fs_1.mkdirSync)(outDir, { recursive: true });
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `digest-${digest.digestHash}.md`), `${digest.markdown}\n`);
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'digest-latest.md'), `${digest.markdown}\n`);
+    try {
+        await core.summary.addRaw(digest.markdown).write();
+    }
+    catch { /* best-effort */ }
+    core.setOutput('report_status', 'generated');
+    core.setOutput('report_hash', digest.digestHash);
+    core.setOutput('report_path', (0, path_1.join)(outputDir, `digest-${digest.digestHash}.md`));
+    core.info(`Operational digest ${digest.digestHash} written (${digest.statements.length} fused statements, ${digest.eras} eras).`);
+}
+/**
+ * Pilot mode (mode: pilot). Derives a deterministic Trust & Survivability profile
+ * from the ledger — silent-rate, flag-rate, FAIL-rarity, override-rate, and
+ * trust-decay trend. Answers "do maintainers keep trusting this over time?".
+ */
+async function runPilotReport() {
+    const workingDirectory = core.getInput('working_directory') || '.';
+    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
+    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
+    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
+    const windowSize = parsePositiveInt(core.getInput('report_window'), 120, 8, 2000);
+    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
+    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
+    if (records.length < 8) {
+        core.info(`Only ${records.length} record(s) available (ledger + bootstrap) — too little for a trust profile.`);
+        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
+        return;
+    }
+    core.setOutput('report_source', source);
+    const { owner, repo } = github.context.repo;
+    const report = (0, operational_pilot_1.synthesizePilotReport)({ records, repo: `${owner}/${repo}`, windowSize });
+    const outDir = (0, path_1.resolve)(cwd, outputDir);
+    (0, fs_1.mkdirSync)(outDir, { recursive: true });
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `pilot-${report.pilotHash}.md`), `${report.markdown}\n`);
+    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'pilot-latest.md'), `${report.markdown}\n`);
+    try {
+        await core.summary.addRaw(report.markdown).write();
+    }
+    catch { /* best-effort */ }
+    core.setOutput('report_status', 'generated');
+    core.setOutput('report_hash', report.pilotHash);
+    core.setOutput('report_path', (0, path_1.join)(outputDir, `pilot-${report.pilotHash}.md`));
+    core.setOutput('survivability', report.metrics.survivability);
+    core.setOutput('silent_rate', String(Math.round(report.metrics.silentRate * 100)));
+    core.info(`Pilot report ${report.pilotHash}: trust profile ${report.metrics.survivability}, silence ${Math.round(report.metrics.silentRate * 100)}%.`);
+}
 async function run() {
+    const mode = (core.getInput('mode') || 'gate').trim().toLowerCase();
+    if (mode === 'report') {
+        await runOperationalReport();
+        return;
+    }
+    if (mode === 'release-report') {
+        await runReleaseReport();
+        return;
+    }
+    if (mode === 'memory') {
+        await runOperationalMemory();
+        return;
+    }
+    if (mode === 'cartography') {
+        await runCartographyReport();
+        return;
+    }
+    if (mode === 'dynamics') {
+        await runDynamicsReport();
+        return;
+    }
+    if (mode === 'digest') {
+        await runDigest();
+        return;
+    }
+    if (mode === 'pilot') {
+        await runPilotReport();
+        return;
+    }
     const pr = github.context.payload.pull_request;
     let githubToken = '';
     let governanceCommentBody = null;
@@ -37155,6 +37657,17 @@ async function run() {
         if (thresholdInput && !parsedThreshold) {
             core.warning(`Invalid threshold "${thresholdInput}" provided; defaulting to "C".`);
         }
+        // OSS mode: a lightweight, deterministic PR scope-coherence gate. It forces
+        // the local structural path (no cloud, no plan, no enterprise enforcement),
+        // renders the compact scope-coherence comment, and is advisory by default.
+        const ossMode = parseBoolean(core.getInput('oss_mode'), false);
+        const scopeCoherenceFail = parseBoolean(core.getInput('scope_coherence_fail'), false);
+        // Repo-derived operational topology (default on in OSS mode). Generalizes the
+        // gate beyond the hardcoded web-backend ontology to the repo's own modules.
+        const useTopology = parseBoolean(core.getInput('topology'), true);
+        if (ossMode) {
+            core.info('Neurcode OSS mode active: deterministic PR scope-coherence gate (advisory by default).');
+        }
         const apiKey = core.getInput('api_key') || core.getInput('api-key') || process.env.NEURCODE_API_KEY;
         const failOnViolation = parseBoolean(core.getInput('fail_on_violation'), true);
         const planId = core.getInput('plan_id') || core.getInput('plan-id');
@@ -37162,7 +37675,7 @@ async function run() {
         const orgId = core.getInput('org_id') || core.getInput('org-id') || process.env.NEURCODE_ORG_ID || '';
         const baseRefInput = core.getInput('base_ref') || '';
         const workingDirectory = core.getInput('working_directory') || '.';
-        const record = parseBoolean(core.getInput('record'), true);
+        const record = ossMode ? false : parseBoolean(core.getInput('record'), true);
         const cliVersion = core.getInput('neurcode_cli_version') || 'latest';
         const cliInstallSource = parseCliInstallSource(core.getInput('neurcode_cli_source'));
         const cliWorkspacePath = core.getInput('neurcode_cli_workspace_path') || 'packages/cli';
@@ -37171,17 +37684,17 @@ async function run() {
         const requireApiCompatibilityHandshake = parseBoolean(core.getInput('require_api_compatibility_handshake'), true);
         const compatibilityProbeTimeoutMinutes = parsePositiveInt(core.getInput('compatibility_probe_timeout_minutes'), 2, 1, 15);
         const configuredApiUrl = (process.env.NEURCODE_API_URL || '').trim();
-        const verifyPolicyOnly = parseBoolean(core.getInput('verify_policy_only'), false);
-        const enterpriseMode = parseBoolean(core.getInput('enterprise_mode'), true);
+        const verifyPolicyOnly = ossMode ? true : parseBoolean(core.getInput('verify_policy_only'), false);
+        const enterpriseMode = ossMode ? false : parseBoolean(core.getInput('enterprise_mode'), true);
         const compiledPolicyPath = (core.getInput('compiled_policy_path') || 'neurcode.policy.compiled.json').trim();
         const changeContractPath = (core.getInput('change_contract_path') || '.neurcode/change-contract.json').trim();
         const runtimeGuardPath = (core.getInput('runtime_guard_path') || '.neurcode/runtime-guard.json').trim();
         const requireRuntimeGuardOverride = parseBooleanOrUndefined(core.getInput('require_runtime_guard'));
-        const requireIntentRuntime = parseBoolean(core.getInput('require_intent_runtime'), false);
+        const requireIntentRuntime = ossMode ? false : parseBoolean(core.getInput('require_intent_runtime'), false);
         const enforceChangeContractOverride = parseBooleanOrUndefined(core.getInput('enforce_change_contract'));
         const collectEvidence = parseBoolean(core.getInput('collect_evidence'), false);
-        const changedFilesOnly = parseBoolean(core.getInput('changed_files_only'), false);
-        const autoRemediate = parseBoolean(core.getInput('auto_remediate'), false);
+        const changedFilesOnly = ossMode ? true : parseBoolean(core.getInput('changed_files_only'), false);
+        const autoRemediate = ossMode ? false : parseBoolean(core.getInput('auto_remediate'), false);
         const remediationGoalInput = core.getInput('remediation_goal') || '';
         const remediationMaxAttempts = parsePositiveInt(core.getInput('remediation_max_attempts'), 2, 1, 5);
         const remediationSkipTests = parseBoolean(core.getInput('remediation_skip_tests'), true);
@@ -37696,40 +38209,206 @@ async function run() {
         }
         const governanceReportVerdict = (0, formatter_1.resolveGovernanceVerdict)(governanceReport);
         core.setOutput('governance_report_verdict', governanceReportVerdict);
-        if (governanceReportVerdict === 'blocked' && finalExitCode === 0 && !baselineOnlyIgnored) {
-            // Only re-block when we have not already made an explicit decision to treat
-            // baseline-only violations as non-blocking (changed_files_only mode). Otherwise
-            // the log would say "non-blocking" but the PR comment would say Blocked.
-            finalExitCode = 2;
-            if (!failureReason) {
-                failureReason = 'Neurcode governance report detected critical policy violations.';
+        if (ossMode) {
+            // ── OSS scope-coherence branch ─────────────────────────────────────────
+            // Deterministic, advisory-by-default. The only OSS gate signal is whether
+            // the declared scope of the PR matches its actual operational blast radius.
+            const ossConfig = loadOssConfig(cwd);
+            let ossChangedFiles = [...changedFiles];
+            if (ossChangedFiles.length === 0) {
+                const cf = await runCommand('git', ['diff', '--name-only', `${baseRef}...HEAD`], { cwd });
+                if (cf.exitCode === 0)
+                    ossChangedFiles = [...parseChangedFiles(cf.output)];
+            }
+            // Repo-native ignorePaths (vendored/generated dirs maintainers don't want gated).
+            const ignorePaths = ossConfig.ignorePaths ?? [];
+            const isIgnored = (f) => ignorePaths.some((ip) => {
+                const p = ip.replace(/^\.?\//, '').replace(/\/$/, '');
+                return f === p || f.startsWith(`${p}/`);
+            });
+            if (ignorePaths.length > 0) {
+                const before = ossChangedFiles.length;
+                ossChangedFiles = ossChangedFiles.filter((f) => !isIgnored(f));
+                if (ossChangedFiles.length !== before)
+                    core.info(`oss config: ignorePaths filtered ${before - ossChangedFiles.length} file(s).`);
+            }
+            let diffText = '';
+            const diffRun = await runCommand('git', ['diff', '--unified=0', `${baseRef}...HEAD`], { cwd });
+            if (diffRun.exitCode === 0)
+                diffText = diffRun.output.slice(0, 2_000_000);
+            // Per-file +/- counts — sharpen mechanical (formatting/codemod) detection.
+            let fileStats;
+            const numstatRun = await runCommand('git', ['diff', '--numstat', `${baseRef}...HEAD`], { cwd });
+            if (numstatRun.exitCode === 0) {
+                fileStats = numstatRun.output.split('\n').reduce((acc, line) => {
+                    const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+                    if (m && !isIgnored(normalizeRepoPath(m[3]))) {
+                        acc.push({
+                            path: normalizeRepoPath(m[3]),
+                            additions: m[1] === '-' ? 0 : Number(m[1]),
+                            deletions: m[2] === '-' ? 0 : Number(m[2]),
+                        });
+                    }
+                    return acc;
+                }, []);
+            }
+            // Derive the repo's operational topology from its own file tree (paths
+            // only — fast even on large monorepos, fully deterministic). This is what
+            // lets the gate reason about Rust/Dart/Go/monorepo structure rather than a
+            // hardcoded web-backend ontology. Disable with topology=false.
+            let topology;
+            if (useTopology) {
+                const tree = await runCommand('git', ['ls-files'], { cwd });
+                if (tree.exitCode === 0) {
+                    const paths = tree.output.split('\n').map((s) => s.trim()).filter(Boolean);
+                    if (paths.length > 0) {
+                        topology = (0, repo_topology_1.deriveTopology)(paths);
+                        // Lightweight centrality: read only the (few) package manifests and
+                        // derive inter-module dependency edges → fan-in. No full import scan.
+                        const manifestPaths = (0, repo_topology_1.findManifestPaths)(paths).slice(0, 1000);
+                        const manifests = [];
+                        for (const mp of manifestPaths) {
+                            try {
+                                const content = (0, fs_1.readFileSync)((0, path_1.resolve)(cwd, mp), 'utf8');
+                                if (content.length <= 200_000)
+                                    manifests.push({ path: mp, content });
+                            }
+                            catch { /* unreadable manifest — skip */ }
+                        }
+                        const edges = (0, repo_topology_1.deriveManifestEdges)(manifests, topology.moduleRoots);
+                        topology = (0, repo_topology_1.withCentrality)(topology, edges);
+                        core.info(`Topology: ${topology.moduleRoots.length} module(s), ${edges.length} manifest dep-edge(s), ` +
+                            `${topology.centralModules.length} central (profile ${topology.profileHash}).`);
+                    }
+                }
+            }
+            const rawLabels = pr?.labels ?? [];
+            const prLabels = Array.isArray(rawLabels)
+                ? rawLabels.map((l) => (l && typeof l.name === 'string' ? l.name : '')).filter(Boolean)
+                : [];
+            const coherence = (0, scope_coherence_1.evaluateScopeCoherence)({
+                title: typeof pr?.title === 'string' ? pr.title : '',
+                body: typeof pr?.body === 'string' ? pr.body : '',
+                labels: prLabels,
+                changedFiles: ossChangedFiles,
+                diffText,
+                fileStats,
+                topology,
+            });
+            if (coherence.mechanical?.isMechanical) {
+                core.info(`Recognised as ${coherence.mechanical.mechanicalClass} (mechanical) — wide-diff signals suppressed.`);
+            }
+            if (topology)
+                core.setOutput('scope_topology_profile', topology.profileHash);
+            core.setOutput('mechanical_class', coherence.mechanical?.mechanicalClass ?? '');
+            core.setOutput('narrative_summary', coherence.narrative?.summary ?? '');
+            // Append-to-ledger projection: a deterministic per-PR operational record.
+            // A downstream job can collect these into .neurcode/operational-ledger.jsonl
+            // to build longitudinal operational memory (re-derivable, replay-safe).
+            const prAuthor = (pr?.user?.login) ?? '';
+            const recordMergedAt = (core.getInput('record_merged_at') || pr?.merged_at || '').trim();
+            core.setOutput('operational_record', (0, operational_memory_1.serializeRecord)((0, operational_memory_1.recordFromResult)(coherence, { pr: pr?.number ?? 0, author: prAuthor, mergedAt: recordMergedAt || undefined }, topology)));
+            core.setOutput('scope_coherence_verdict', coherence.level);
+            core.setOutput('declared_change_kind', coherence.declared.changeKind);
+            core.setOutput('blast_radius_subsystems', coherence.blastRadius.subsystems.map((s) => s.subsystem).join(','));
+            core.setOutput('scope_incoherent', String(coherence.level === 'incoherent'));
+            core.setOutput('scope_hash', coherence.scopeHash);
+            // Per-push lifecycle: read the prior lifecycle embedded in the existing PR
+            // comment, append this push's operational state, and derive the convergence
+            // story. The comment IS the replay-safe per-PR store — no telemetry pipeline.
+            let lifecycle;
+            if (githubToken && pr) {
+                const priorBody = await (0, github_client_1.getExistingGovernanceCommentBody)(githubToken, pr.number);
+                const codes = (coherence.narrative?.statements ?? []).map((s) => s.code);
+                lifecycle = (0, pr_lifecycle_1.appendPush)((0, pr_lifecycle_1.parseLifecycle)(priorBody), { verdict: coherence.level, codes, hash: coherence.scopeHash });
+                const lifecycleAnalysis = (0, pr_lifecycle_1.analyzeLifecycle)(lifecycle);
+                core.setOutput('convergence', lifecycleAnalysis.convergence);
+                if (lifecycleAnalysis.narrative)
+                    core.info(`Lifecycle: ${lifecycleAnalysis.narrative}`);
+            }
+            governanceCommentBody = (0, oss_formatter_1.formatOssScopeComment)({
+                result: coherence,
+                structural: extractStructuralFindings(governanceReport),
+                lifecycle,
+            });
+            // Repo-native config overrides action inputs (maintainer review/override flow).
+            const effectiveFailOnIncoherent = ossConfig.failOnIncoherent ?? scopeCoherenceFail;
+            const ossExit = (0, oss_formatter_1.resolveOssExit)({ level: coherence.level, failOnIncoherent: effectiveFailOnIncoherent });
+            finalExitCode = ossExit.shouldFail ? 2 : 0;
+            if (ossExit.shouldFail) {
+                failureReason = failureReason || ossExit.warning || 'Neurcode: PR scope mismatch.';
+                core.error(failureReason);
+            }
+            else if (ossExit.warning) {
+                core.warning(ossExit.warning);
+            }
+            else {
+                core.info('Neurcode: PR scope coherent.');
+            }
+            try {
+                await core.summary.addRaw((0, oss_formatter_1.formatOssStepSummary)(coherence)).write();
+            }
+            catch (error) {
+                core.warning(`Failed to write GitHub step summary: ${error instanceof Error ? error.message : String(error)}`);
+            }
+            // ── Silent success: HIGH SIGNAL, LOW PRESENCE ─────────────────────────
+            // Comment only when there is something operationally real (flagged), so a
+            // healthy repo feels almost no Neurcode presence. When a PR was flagged
+            // and is now coherent, update the existing comment to the resolved state;
+            // never create a comment on a coherent PR. Step Summary + outputs always.
+            const rawCommentOn = ossConfig.commentOn ?? (core.getInput('comment_on') || 'flagged');
+            const effectiveCommentOn = rawCommentOn === 'always' || rawCommentOn === 'never' ? rawCommentOn : 'flagged';
+            const willComment = (0, oss_formatter_1.shouldComment)(coherence.level, effectiveCommentOn);
+            core.setOutput('commented', String(willComment));
+            if (githubToken && pr) {
+                if (willComment) {
+                    core.info(`Posting PR scope-coherence report (${coherence.level}).`);
+                    await (0, github_client_1.upsertGovernanceReportComment)({ token: githubToken, body: governanceCommentBody, prNumber: pr.number, runId: github.context.runId });
+                }
+                else {
+                    // Update a prior flag comment to the resolved/coherent state, but never create one.
+                    await (0, github_client_1.upsertGovernanceReportComment)({ token: githubToken, body: governanceCommentBody, prNumber: pr.number, runId: github.context.runId, onlyIfExists: true });
+                    core.info('Neurcode: scope coherent — staying quiet (no PR comment).');
+                }
+                governanceCommentPosted = true; // suppress the fallback comment in finally
             }
         }
-        else if (governanceReportVerdict === 'needs_attention' && finalExitCode === 0) {
-            core.warning('Neurcode governance report: needs attention before merge.');
-        }
-        else if (governanceReportVerdict === 'ready' && finalExitCode === 0) {
-            core.info('Neurcode governance report: ready to merge.');
-        }
-        governanceCommentBody = (0, formatter_1.formatGovernanceComment)(governanceReport);
-        try {
-            await core.summary
-                .addRaw((0, formatter_1.formatGovernanceStepSummary)(governanceReport))
-                .write();
-        }
-        catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            core.warning(`Failed to write GitHub step summary: ${message}`);
-        }
-        if (githubToken && pr) {
-            core.info('Posting PR governance report');
-            await (0, github_client_1.upsertGovernanceReportComment)({
-                token: githubToken,
-                body: governanceCommentBody,
-                prNumber: pr.number,
-                runId: github.context.runId,
-            });
-            governanceCommentPosted = true;
+        else {
+            if (governanceReportVerdict === 'blocked' && finalExitCode === 0 && !baselineOnlyIgnored) {
+                // Only re-block when we have not already made an explicit decision to treat
+                // baseline-only violations as non-blocking (changed_files_only mode). Otherwise
+                // the log would say "non-blocking" but the PR comment would say Blocked.
+                finalExitCode = 2;
+                if (!failureReason) {
+                    failureReason = 'Neurcode governance report detected critical policy violations.';
+                }
+            }
+            else if (governanceReportVerdict === 'needs_attention' && finalExitCode === 0) {
+                core.warning('Neurcode governance report: needs attention before merge.');
+            }
+            else if (governanceReportVerdict === 'ready' && finalExitCode === 0) {
+                core.info('Neurcode governance report: ready to merge.');
+            }
+            governanceCommentBody = (0, formatter_1.formatGovernanceComment)(governanceReport);
+            try {
+                await core.summary
+                    .addRaw((0, formatter_1.formatGovernanceStepSummary)(governanceReport))
+                    .write();
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                core.warning(`Failed to write GitHub step summary: ${message}`);
+            }
+            if (githubToken && pr) {
+                core.info('Posting PR governance report');
+                await (0, github_client_1.upsertGovernanceReportComment)({
+                    token: githubToken,
+                    body: governanceCommentBody,
+                    prNumber: pr.number,
+                    runId: github.context.runId,
+                });
+                governanceCommentPosted = true;
+            }
         }
         if (verifyResult) {
             core.setOutput('verdict', verifyResult.verdict);
@@ -37888,7 +38567,9 @@ async function run() {
                     'threshold check skipped.');
             }
         }
-        const mustFailBlockedGovernance = governanceReportVerdict === 'blocked';
+        // In OSS mode the gate is governed solely by scope coherence (set above);
+        // structural findings are advisory and must not hard-fail the build.
+        const mustFailBlockedGovernance = !ossMode && governanceReportVerdict === 'blocked';
         if (finalExitCode !== 0 && (failOnViolation || mustFailBlockedGovernance)) {
             if (failureReason) {
                 core.setFailed(failureReason);
@@ -38761,6 +39442,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getPullRequestNumberFromContext = getPullRequestNumberFromContext;
+exports.getExistingGovernanceCommentBody = getExistingGovernanceCommentBody;
 exports.upsertGovernanceReportComment = upsertGovernanceReportComment;
 const github = __importStar(__nccwpck_require__(5251));
 const formatter_1 = __nccwpck_require__(7459);
@@ -38770,6 +39452,21 @@ function getPullRequestNumberFromContext() {
         return null;
     }
     return pullRequest.number;
+}
+/** Fetch the existing Neurcode comment body for a PR (or null) — used to read the embedded lifecycle. */
+async function getExistingGovernanceCommentBody(token, prNumber) {
+    const n = typeof prNumber === 'number' ? prNumber : getPullRequestNumberFromContext();
+    if (!n)
+        return null;
+    try {
+        const octokit = github.getOctokit(token);
+        const { owner, repo } = github.context.repo;
+        const { data: comments } = await octokit.rest.issues.listComments({ owner, repo, issue_number: n, per_page: 100 });
+        return comments.find((c) => c.body?.includes(formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER))?.body ?? null;
+    }
+    catch {
+        return null;
+    }
 }
 async function upsertGovernanceReportComment(input) {
     const prNumber = typeof input.prNumber === 'number'
@@ -38797,12 +39494,3601 @@ async function upsertGovernanceReportComment(input) {
         });
         return;
     }
+    // Silent success: nothing to update and we must not create a new comment.
+    if (input.onlyIfExists) {
+        return;
+    }
     await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: prNumber,
         body: finalBody,
     });
+}
+
+
+/***/ }),
+
+/***/ 4050:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Mechanical / bulk PR detection (deterministic)
+ * ==============================================
+ *
+ * Some wide PRs are wide *by nature* and operationally uninteresting: reverts,
+ * release syncs, dependency bumps, generated-file refreshes, formatting sweeps,
+ * codemods, snapshot updates, CI migrations. A maintainer already knows a revert
+ * or a `bump X from 1.2 to 1.3` touches a lot — flagging "wide blast radius" on
+ * those is exactly the kind of noise that gets an Action uninstalled.
+ *
+ * This module recognises those classes from deterministic signals only — PR
+ * title/body semantics, label, file composition (via the topology role), and
+ * diff shape (edit symmetry from per-file +/- counts). No classifier, no
+ * embeddings, no scoring.
+ *
+ * CRUCIAL: detecting "mechanical" only ever DOWNGRADES the spread / generated /
+ * docs-touches-source signals. It never suppresses a genuinely suspicious
+ * signal — a low-surface change reaching into a *significant* module, or a new
+ * import edge into a security boundary, still fires. A revert is allowed to be
+ * wide; it is not allowed to quietly add an `import ..auth`.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.detectMechanical = detectMechanical;
+const repo_topology_1 = __nccwpck_require__(7383);
+const NON_MERGE_NOTE = '';
+const SNAPSHOT_RE = /(^|\/)(__snapshots__\/|cassettes\/|.+\.snap$|.+\.ambr$|.+\.approved\.[a-z]+$|.+\.vcr\.ya?ml$)/i;
+function editSymmetry(files) {
+    const withStats = files.filter((f) => typeof f.additions === 'number' && typeof f.deletions === 'number');
+    if (withStats.length === 0)
+        return { symmetricRatio: 0, lowChurn: false, n: 0 };
+    let symmetric = 0;
+    const churns = [];
+    for (const f of withStats) {
+        const a = f.additions ?? 0;
+        const d = f.deletions ?? 0;
+        churns.push(a + d);
+        // "Replace-shaped": both sides non-trivial and within 25% (or ±2) of each other.
+        if (a > 0 && d > 0 && Math.abs(a - d) <= Math.max(2, 0.25 * Math.max(a, d)))
+            symmetric += 1;
+    }
+    churns.sort((x, y) => x - y);
+    const median = churns[Math.floor(churns.length / 2)] ?? 0;
+    return { symmetricRatio: symmetric / withStats.length, lowChurn: median <= 15, n: withStats.length };
+}
+function mech(mechanicalClass, reason) {
+    return { isMechanical: true, mechanicalClass, reason };
+}
+/**
+ * Deterministic mechanical classification. Ordered most-specific first.
+ * `paths` drives composition checks; `fileStats` (optional per-file +/- counts)
+ * sharpens the formatting/codemod shape signal but is not required.
+ */
+function detectMechanical(input) {
+    const title = (input.title || '').trim();
+    const body = (input.body || '').trim();
+    const labels = (input.labels || []).map((l) => l.toLowerCase().trim());
+    const paths = input.paths.filter(Boolean);
+    if (paths.length === 0)
+        return { isMechanical: false, mechanicalClass: null, reason: NON_MERGE_NOTE };
+    const roles = paths.map(repo_topology_1.roleOf);
+    const everyRoleIn = (allowed) => roles.every((r) => allowed.has(r));
+    const fileStats = input.fileStats ?? paths.map((p) => ({ path: p }));
+    // 1. REVERT — explicit author intent; reverts are legitimately wide.
+    if (/^revert[\s:"(]/i.test(title) || /this reverts commit [0-9a-f]{7,40}/i.test(body)) {
+        return mech('revert', 'PR is a revert (a revert legitimately spans whatever it undoes)');
+    }
+    // 2. RELEASE / version sync.
+    if (labels.includes('release') ||
+        /\b(prepare\s+)?release\b/i.test(title) || /\brc\d+\b/i.test(title) || /\bversion bump\b/i.test(title) ||
+        /^sync\b.*\b(stable|release|main|test)\b/i.test(title) || /\bmerge\b.*\brelease[-/]?\d/i.test(title)) {
+        return mech('release', 'release / version-sync PR');
+    }
+    // 3. DEPENDENCY BUMP — only when the change is confined to manifests/lockfiles,
+    //    or the title is an unambiguous bump. A "bump" that edits source is NOT clean.
+    const allManifests = everyRoleIn(new Set(['build', 'config']));
+    const bumpTitle = /^(chore(\(deps\))?:?\s*)?bump\b/i.test(title) ||
+        /^chore\(deps\)/i.test(title) ||
+        /\b(update|upgrade|bump)\b.*\b(dependency|dependencies|deps|lockfile|requirements)\b/i.test(title) ||
+        labels.includes('dependencies');
+    if (allManifests && (bumpTitle || paths.length > 0)) {
+        return mech('dependency-bump', 'only dependency manifests / lockfiles changed');
+    }
+    // 4. SNAPSHOT refresh.
+    if (paths.every((p) => SNAPSHOT_RE.test(p))) {
+        return mech('snapshot-refresh', 'only snapshot / cassette / approval files changed');
+    }
+    // 5. GENERATED refresh — diff is overwhelmingly generated files.
+    const genRatio = roles.filter((r) => r === 'generated').length / roles.length;
+    if (genRatio >= 0.8) {
+        return mech('generated-refresh', `${Math.round(genRatio * 100)}% of changed files are generated`);
+    }
+    // 6. CI / infra migration — confined to CI/infra/build/config surfaces.
+    if (everyRoleIn(new Set(['ci', 'infra', 'build', 'config']))) {
+        return mech('ci-migration', 'only CI / infra / build / config files changed');
+    }
+    // 7. FORMATTING — explicit intent, ideally corroborated by symmetric diff shape.
+    const sym = editSymmetry(fileStats);
+    const fmtTitle = /\b(format(ting)?|reformat|prettier|gofmt|rustfmt|black|isort|clang-format|autopep8|eslint|lint(ing)?|whitespace|cosmetic|style)\b/i.test(title);
+    if (fmtTitle && (paths.length <= 2 || sym.symmetricRatio >= 0.6)) {
+        return mech('formatting', sym.symmetricRatio >= 0.6 ? 'formatting/style PR (symmetric diff shape)' : 'formatting/style PR');
+    }
+    // 8. CODEMOD / mass rename — uniform, low-churn, symmetric edits across many files.
+    const renameTitle = /\b(codemod|mass[- ]?(rename|update|migration)|rename\b|replace\b.*\bwith\b|migrate\b.*\bto\b)\b/i.test(title);
+    if ((renameTitle && paths.length >= 5) || (paths.length >= 10 && sym.lowChurn && sym.symmetricRatio >= 0.6)) {
+        return mech('codemod', renameTitle ? 'codemod / mass-rename (title)' : 'codemod shape (many files, uniform low-churn symmetric diff)');
+    }
+    return { isMechanical: false, mechanicalClass: null, reason: NON_MERGE_NOTE };
+}
+
+
+/***/ }),
+
+/***/ 9047:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Deterministic operational narrative synthesis
+ * =============================================
+ *
+ * Turns the engine's structured facts (declared lane, touched operational
+ * areas, module topology, centrality fan-in, import-edge crossings, mechanical
+ * class) into a sparse, operationally-grounded explanation — so a maintainer
+ * feels the system understands the *operational shape* of the PR.
+ *
+ * It is NOT a code reviewer and NOT an AI summariser. Every sentence is a
+ * deterministic template filled from facts already computed by the coherence
+ * engine. Same result ⇒ same narrative ⇒ replay-safe. Narratives are sparse:
+ * a trivial coherent PR gets one short line (or none beyond the verdict).
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.operationalArea = operationalArea;
+exports.synthesizeNarrative = synthesizeNarrative;
+const repo_topology_1 = __nccwpck_require__(7383);
+const AREA_LABEL = {
+    auth: 'the authentication boundary',
+    crypto: 'security / cryptography',
+    payments: 'the payments boundary',
+    persistence: 'persistence / data storage',
+    'runtime-entrypoint': 'runtime entrypoints',
+    infrastructure: 'infrastructure / deploy surfaces',
+    generated: 'generated code',
+    ui: 'UI / rendering',
+    'runtime-source': 'runtime source',
+};
+const PERSISTENCE_TOKENS = new Set([
+    'db', 'database', 'persistence', 'sqlite', 'postgres', 'mysql', 'orm', 'dao',
+    'repository', 'repositories', 'schema', 'store', 'storage', 'migrations', 'migration',
+]);
+const FRONTEND_EXTS = new Set(['tsx', 'jsx', 'vue', 'svelte', 'css', 'scss', 'less', 'html']);
+function tokensOf(p) { return p.toLowerCase().split(/[/\\._\-]+/).filter(Boolean); }
+function extOf(p) { const b = p.split('/').pop() || p; const d = b.lastIndexOf('.'); return d > 0 ? b.slice(d + 1).toLowerCase() : ''; }
+/** Deterministic operational area for a path. */
+function operationalArea(path) {
+    const role = (0, repo_topology_1.roleOf)(path);
+    if (role === 'entrypoint')
+        return 'runtime-entrypoint';
+    if (role === 'infra')
+        return 'infrastructure';
+    if (role === 'generated')
+        return 'generated';
+    const sec = (0, repo_topology_1.significantSecurityTagFor)(path);
+    if (sec === 'auth' || sec === 'authz')
+        return 'auth';
+    if (sec === 'crypto' || sec === 'secrets' || sec === 'security')
+        return 'crypto';
+    if (sec === 'payments' || sec === 'billing')
+        return 'payments';
+    if (sec === 'migrations')
+        return 'persistence';
+    if (tokensOf(path).some((t) => PERSISTENCE_TOKENS.has(t)))
+        return 'persistence';
+    const segs = path.toLowerCase().split('/');
+    if (FRONTEND_EXTS.has(extOf(path)) || segs.includes('components') || segs.includes('ui') || segs.includes('pages') || segs.includes('views'))
+        return 'ui';
+    return 'runtime-source';
+}
+// Article-free adjectives so templates read cleanly as "This <lane> change …".
+const LANE = {
+    docs: 'documentation', test: 'test', chore: 'maintenance', fix: 'fix',
+    refactor: 'refactor', feature: 'feature', unknown: 'unlabelled',
+};
+function uniqueSorted(xs) { return [...new Set(xs)].sort(); }
+function joinList(xs) {
+    if (xs.length === 0)
+        return 'nothing';
+    if (xs.length === 1)
+        return xs[0];
+    if (xs.length === 2)
+        return `${xs[0]} and ${xs[1]}`;
+    return `${xs.slice(0, -1).join(', ')}, and ${xs[xs.length - 1]}`;
+}
+// ── Synthesis ─────────────────────────────────────────────────────────────────
+function synthesizeNarrative(result, profile) {
+    const kind = result.declared.changeKind;
+    const lane = LANE[kind] ?? 'unlabelled';
+    const allFiles = uniqueSorted(result.blastRadius.subsystems.flatMap((s) => s.files));
+    const codeModules = profile
+        ? uniqueSorted(allFiles.filter((f) => { const r = (0, repo_topology_1.roleOf)(f); return r === 'source' || r === 'entrypoint'; }).map((f) => (0, repo_topology_1.subsystemOf)(f, profile)))
+        : [];
+    const reason = (code) => result.reasons.find((r) => r.code === code);
+    const areaLabelsFor = (files) => uniqueSorted(files.map((f) => AREA_LABEL[operationalArea(f)]));
+    const statements = [];
+    if (result.mechanical?.isMechanical) {
+        statements.push({
+            code: 'mechanical',
+            text: `Recognised as a ${result.mechanical.mechanicalClass} change — ${result.mechanical.reason}. Wide-diff coherence signals were suppressed; boundary and import-edge checks still applied.`,
+        });
+    }
+    // Significance reason: topology path emits 'low-surface-touches-significant';
+    // the fixed-taxonomy path emits 'low-surface-touches-sensitive'. Handle both.
+    const sig = reason('low-surface-touches-significant') || reason('low-surface-touches-sensitive');
+    if (sig) {
+        statements.push({
+            code: 'boundary-crossing',
+            text: `Described as ${lane} work, it reaches into ${joinList(areaLabelsFor(sig.evidence))} — an operational boundary it never declares.`,
+            evidence: sig.evidence,
+        });
+    }
+    const edge = reason('import-edge-into-sensitive');
+    if (edge) {
+        const targets = uniqueSorted(result.blastRadius.importEdgeCrossings.map((e) => e.toTag));
+        statements.push({
+            code: 'new-operational-edge',
+            text: `It opens a new operational edge into ${joinList(targets)} — a dependency the module did not previously have.`,
+            evidence: edge.evidence,
+        });
+    }
+    const central = reason('low-surface-touches-central-module');
+    if (central) {
+        const mod = profile && central.evidence.length > 0 ? (0, repo_topology_1.subsystemOf)(central.evidence[0], profile) : '';
+        const fanIn = profile?.centralFanIn[mod];
+        statements.push({
+            code: 'centrality',
+            text: `It touches \`${mod}\`, a high-centrality module ${typeof fanIn === 'number' ? `${fanIn} other module(s) depend on` : 'many modules depend on'} — changes here have broad operational reach.`,
+            evidence: central.evidence,
+        });
+    }
+    const docsrc = reason('docs-change-touches-source');
+    if (docsrc) {
+        statements.push({
+            code: 'widening',
+            text: `Declared as documentation, it widens into ${docsrc.evidence.length} runtime source file(s).`,
+            evidence: docsrc.evidence,
+        });
+    }
+    const gen = reason('generated-code-touched');
+    if (gen) {
+        statements.push({ code: 'generated-spillover', text: `It regenerates code outside a feature or chore — confirm the source-of-truth change accompanies it.`, evidence: gen.evidence });
+    }
+    const wide = reason('wide-blast-radius');
+    if (wide) {
+        const shown = wide.evidence.slice(0, 5);
+        statements.push({
+            code: 'widening',
+            text: `Its blast radius spans ${wide.evidence.length} distinct ${profile ? 'modules' : 'subsystems'}: ${joinList(shown)}${wide.evidence.length > 5 ? ', …' : ''}.`,
+            evidence: wide.evidence,
+        });
+    }
+    // ── Summary: the single best "operational shape" sentence ───────────────────
+    let summary;
+    if (result.level === 'incoherent') {
+        const areas = sig ? areaLabelsFor(sig.evidence) : uniqueSorted(result.blastRadius.importEdgeCrossings.map((e) => e.toTag));
+        summary = `This ${lane} change crosses into ${joinList(areas)} — operational scope it does not declare.`;
+    }
+    else if (result.level === 'review') {
+        if (central)
+            summary = statements.find((s) => s.code === 'centrality').text;
+        else if (docsrc)
+            summary = `This documentation change widens into runtime source.`;
+        else if (edge)
+            summary = statements.find((s) => s.code === 'new-operational-edge').text;
+        else if (wide)
+            summary = `This ${lane} change spreads across ${wide.evidence.length} ${profile ? 'modules' : 'subsystems'} — wider than its label suggests.`;
+        else if (gen)
+            summary = `This ${lane} change modifies generated code.`;
+        else
+            summary = `This ${lane} change is worth a glance.`;
+    }
+    else if (result.mechanical?.isMechanical) {
+        summary = `Recognised as a ${result.mechanical.mechanicalClass} change — a wide diff is expected, and operational scope checks were suppressed.`;
+    }
+    else if (codeModules.length === 1) {
+        summary = `Changes stayed within the \`${codeModules[0]}\` module.`;
+    }
+    else {
+        const areas = uniqueSorted(allFiles.map((f) => AREA_LABEL[operationalArea(f)]));
+        summary = areas.length === 1
+            ? `Changes stayed within ${areas[0]}.`
+            : `Changes stayed within the expected operational boundary for ${lane} changes.`;
+    }
+    return { summary, statements: statements.slice(0, 3) };
+}
+
+
+/***/ }),
+
+/***/ 4098:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Day-Zero Replay Bootstrap (deterministic)
+ * =========================================
+ *
+ * Every observability mode (report / digest / cartography / dynamics) reads the
+ * append-only ledger. On first adoption that ledger is empty — so this module
+ * RECONSTRUCTS the same operational records by replaying recent merged-PR
+ * history. Because a record is a pure projection of a (deterministic) coherence
+ * result, the bootstrapped ledger is byte-identical to one accumulated PR-by-PR
+ * over months — only the timing differs. No history wait, no DB, no LLM.
+ *
+ * The pure builder here takes already-fetched PR data; the Action does the
+ * (bounded) API fetch and calls it. Replay-safe by construction.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.bootstrapRecords = bootstrapRecords;
+const scope_coherence_1 = __nccwpck_require__(6334);
+const operational_memory_1 = __nccwpck_require__(6481);
+/** Reconstruct operational records from replayed PR history (pure, deterministic). */
+function bootstrapRecords(prs, topology) {
+    return prs
+        .filter((p) => Array.isArray(p.files) && p.files.length > 0)
+        .map((p) => (0, operational_memory_1.recordFromResult)((0, scope_coherence_1.evaluateScopeCoherence)({
+        title: p.title,
+        body: p.body,
+        labels: p.labels ?? [],
+        changedFiles: p.files,
+        topology,
+    }), { pr: p.number, author: p.author ?? '', mergedAt: p.mergedAt }, topology))
+        .sort((a, b) => a.pr - b.pr);
+}
+
+
+/***/ }),
+
+/***/ 315:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Repository Operational Cartography (deterministic)
+ * ==================================================
+ *
+ * A repository is not a bag of files; it is an operational terrain. This layer
+ * derives that geography from the co-change structure latent in the records —
+ * no graph viz, no embeddings, no node-link spaghetti. Just deterministic folds:
+ *
+ *   module co-change edges  →  CORRIDORS (paths work flows along)
+ *   corridors (connected)   →  REGIONS  (clusters that co-evolve)
+ *   module touch frequency  →  PRESSURE ZONES (where activity concentrates)
+ *   cross-area co-occurrence →  BOUNDARY POROSITY (how separate territories are)
+ *   release-over-release Δ   →  FRACTURES / migration fronts / centralization
+ *
+ * Regions are labelled by their dominant operational AREA, taken from the real
+ * areas of the PRs that touched them (grounded, not path-guessing). Everything
+ * is sparse: a compartmentalised repo yields an almost-empty map, and that is
+ * the correct, calm output. Replay-safe: pure over deterministic records.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.deriveGeography = deriveGeography;
+exports.compareGeography = compareGeography;
+exports.renderGeographyReport = renderGeographyReport;
+const node_crypto_1 = __nccwpck_require__(7598);
+// ── Deterministic thresholds ──────────────────────────────────────────────────
+const CORRIDOR_MIN_COUNT = 3; // module pair must co-change in ≥3 PRs
+const CORRIDOR_MIN_SHARE = 0.08; // …and in ≥8% of the window
+const PRESSURE_MIN_SHARE = 0.30; // module touched in ≥30% of PRs = pressure zone
+const PRESSURE_MIN_COUNT = 4;
+const BOUNDARY_MIN_SHARE = 0.10; // two specialised areas co-change in ≥10% of PRs
+const BOUNDARY_MIN_COUNT = 3;
+const FRACTURE_DELTA = 0.12; // boundary porosity must rise ≥12pp to be a fracture
+/** runtime-source is the generic "mainland"; specialised areas are the territories. */
+const GENERIC_AREA = 'runtime-source';
+function pairKey(a, b) { return a < b ? `${a} ${b}` : `${b} ${a}`; }
+function pct(x) { return `${Math.round(x * 100)}%`; }
+/** Dominant specialised operational area among a set of records (excludes the mainland). */
+function dominantArea(records) {
+    const counts = new Map();
+    for (const r of records)
+        for (const a of r.areas)
+            if (a !== GENERIC_AREA)
+                counts.set(a, (counts.get(a) ?? 0) + 1);
+    const top = [...counts.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0];
+    return top ? top[0] : 'source';
+}
+// Deterministic connected components over corridor edges.
+function components(modules, edges) {
+    const parent = new Map();
+    const find = (x) => { while (parent.get(x) !== x) {
+        parent.set(x, parent.get(parent.get(x)));
+        x = parent.get(x);
+    } return x; };
+    for (const m of modules)
+        parent.set(m, m);
+    for (const [a, b] of edges) {
+        if (!parent.has(a))
+            parent.set(a, a);
+        if (!parent.has(b))
+            parent.set(b, b);
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb)
+            parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
+    }
+    const groups = new Map();
+    for (const m of modules) {
+        const root = find(m);
+        (groups.get(root) ?? groups.set(root, []).get(root)).push(m);
+    }
+    return [...groups.values()].map((g) => g.sort()).sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]));
+}
+function deriveGeography(records, staticEdges = []) {
+    const n = records.length;
+    const staticPairs = new Set(staticEdges.map((e) => pairKey(e.fromModule, e.toModule)));
+    const touch = new Map();
+    const recordsByModule = new Map();
+    const coChange = new Map();
+    const areaPair = new Map();
+    for (const r of records) {
+        const mods = [...new Set(r.modules)].sort();
+        for (const m of mods) {
+            touch.set(m, (touch.get(m) ?? 0) + 1);
+            (recordsByModule.get(m) ?? recordsByModule.set(m, []).get(m)).push(r);
+        }
+        for (let i = 0; i < mods.length; i++)
+            for (let j = i + 1; j < mods.length; j++) {
+                const k = pairKey(mods[i], mods[j]);
+                coChange.set(k, (coChange.get(k) ?? 0) + 1);
+            }
+        const specialised = [...new Set(r.areas.filter((a) => a !== GENERIC_AREA))].sort();
+        for (let i = 0; i < specialised.length; i++)
+            for (let j = i + 1; j < specialised.length; j++) {
+                const k = pairKey(specialised[i], specialised[j]);
+                areaPair.set(k, (areaPair.get(k) ?? 0) + 1);
+            }
+    }
+    const centralSet = new Set(records.flatMap((r) => r.central));
+    // Corridors: strong module co-change edges.
+    const corridors = [...coChange.entries()]
+        .map(([k, c]) => { const [a, b] = k.split(' '); return { a, b, coChange: c, share: n === 0 ? 0 : c / n, structural: staticPairs.has(k) }; })
+        .filter((e) => e.coChange >= CORRIDOR_MIN_COUNT && e.share >= CORRIDOR_MIN_SHARE)
+        .sort((x, y) => y.coChange - x.coChange || x.a.localeCompare(y.a));
+    // Regions: connected components over corridor edges.
+    const corridorModules = [...new Set(corridors.flatMap((c) => [c.a, c.b]))];
+    const comps = components(corridorModules, corridors.map((c) => [c.a, c.b]));
+    const regions = comps.filter((g) => g.length >= 2).map((mods) => {
+        const anchor = mods.slice().sort((a, b) => (touch.get(b) ?? 0) - (touch.get(a) ?? 0) || a.localeCompare(b))[0];
+        const regionRecords = [...new Set(mods.flatMap((m) => recordsByModule.get(m) ?? []))];
+        return {
+            anchor,
+            modules: mods,
+            pressure: n === 0 ? 0 : Math.max(...mods.map((m) => (touch.get(m) ?? 0))) / n,
+            area: dominantArea(regionRecords),
+            central: mods.some((m) => centralSet.has(m)),
+        };
+    });
+    const pressureRegions = [...touch.entries()]
+        .map(([module, c]) => ({ module, share: n === 0 ? 0 : c / n, count: c }))
+        .filter((p) => p.count >= PRESSURE_MIN_COUNT && p.share >= PRESSURE_MIN_SHARE)
+        .sort((a, b) => b.share - a.share || a.module.localeCompare(b.module))
+        .map(({ module, share }) => ({ module, share }));
+    const boundaries = [...areaPair.entries()]
+        .map(([k, c]) => { const [areaA, areaB] = k.split(' '); return { areaA, areaB, coChangePRs: c, porosity: n === 0 ? 0 : c / n }; })
+        .filter((b) => b.coChangePRs >= BOUNDARY_MIN_COUNT && b.porosity >= BOUNDARY_MIN_SHARE)
+        .sort((x, y) => y.porosity - x.porosity || x.areaA.localeCompare(y.areaA));
+    const centralAnchors = regions.filter((r) => r.central).map((r) => r.anchor).sort();
+    // Latent structural coupling: static dependency edges between two TOUCHED
+    // modules that did NOT co-change — structurally coupled but operationally isolated.
+    const corridorPairs = new Set(corridors.map((c) => pairKey(c.a, c.b)));
+    const seenLatent = new Set();
+    const latentStructural = [];
+    for (const e of staticEdges) {
+        if (e.fromModule === e.toModule)
+            continue;
+        const k = pairKey(e.fromModule, e.toModule);
+        if (corridorPairs.has(k) || seenLatent.has(k))
+            continue;
+        if (touch.has(e.fromModule) && touch.has(e.toModule)) {
+            seenLatent.add(k);
+            const [a, b] = e.fromModule < e.toModule ? [e.fromModule, e.toModule] : [e.toModule, e.fromModule];
+            latentStructural.push({ a, b });
+        }
+    }
+    latentStructural.sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
+    const mapHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
+        corridors: corridors.map((c) => `${c.a}|${c.b}:${c.coChange}${c.structural ? '*' : ''}`),
+        regions: regions.map((r) => `${r.anchor}[${r.area}${r.central ? '*' : ''}]:${r.modules.length}`),
+        boundaries: boundaries.map((b) => `${b.areaA}|${b.areaB}:${Math.round(b.porosity * 100)}`),
+        pressure: pressureRegions.map((p) => `${p.module}:${Math.round(p.share * 100)}`),
+        latent: latentStructural.map((l) => `${l.a}|${l.b}`),
+    })).digest('hex').slice(0, 12);
+    return { window: n, pressureRegions, corridors, regions, boundaries, centralAnchors, latentStructural, mapHash };
+}
+function compareGeography(label, prior, cur) {
+    const shifts = [];
+    const priorBoundary = new Map(prior.boundaries.map((b) => [pairKey(b.areaA, b.areaB), b.porosity]));
+    for (const b of cur.boundaries) {
+        const before = priorBoundary.get(pairKey(b.areaA, b.areaB)) ?? 0;
+        if (b.porosity - before >= FRACTURE_DELTA) {
+            shifts.push({ kind: 'fracture', text: `the ${b.areaA} ↔ ${b.areaB} boundary became more porous (${pct(before)} → ${pct(b.porosity)})` });
+        }
+    }
+    const priorCorr = new Map(prior.corridors.map((c) => [pairKey(c.a, c.b), c.share]));
+    for (const c of cur.corridors) {
+        const before = priorCorr.get(pairKey(c.a, c.b));
+        if (before === undefined)
+            shifts.push({ kind: 'corridor-new', text: `a new corridor opened between \`${c.a}\` and \`${c.b}\`` });
+        else if (c.share - before >= FRACTURE_DELTA)
+            shifts.push({ kind: 'corridor-intensified', text: `the \`${c.a}\` ↔ \`${c.b}\` corridor intensified (${pct(before)} → ${pct(c.share)})` });
+    }
+    const priorCentral = new Set(prior.centralAnchors);
+    for (const a of cur.centralAnchors)
+        if (!priorCentral.has(a))
+            shifts.push({ kind: 'region-centralized', text: `the \`${a}\` region became operationally central` });
+    return shifts;
+}
+// ── Rendering (calm, sparse, infrastructural) ─────────────────────────────────
+function renderGeographyReport(map, opts) {
+    const lines = [
+        '## Neurcode — Operational Cartography',
+        '',
+        `_${opts?.repo ? `${opts.repo} · ` : ''}window ${map.window} PRs · map \`${map.mapHash}\`_`,
+        '',
+    ];
+    const empty = map.pressureRegions.length === 0 && map.corridors.length === 0 && map.regions.length === 0 && map.boundaries.length === 0 && map.latentStructural.length === 0;
+    if (empty) {
+        lines.push('Operationally compartmentalised — no pressure zones, corridors, or porous boundaries above threshold.');
+        lines.push('', '---', `Deterministic · ${map.window} records · map \`${map.mapHash}\``, '_Operational geography from co-change primitives. Not an architecture diagram._');
+        return lines.join('\n');
+    }
+    if (map.pressureRegions.length > 0) {
+        lines.push('### Pressure zones', '');
+        for (const p of map.pressureRegions.slice(0, 5))
+            lines.push(`- \`${p.module}\` — touched in ${pct(p.share)} of PRs`);
+        lines.push('');
+    }
+    if (map.regions.length > 0) {
+        lines.push('### Operational regions (co-evolving clusters)', '');
+        for (const r of map.regions.slice(0, 6)) {
+            lines.push(`- **${r.area}**${r.central ? ' · central' : ''}: ${r.modules.slice(0, 5).map((m) => `\`${m}\``).join(', ')}${r.modules.length > 5 ? ', …' : ''} (anchor \`${r.anchor}\`)`);
+        }
+        lines.push('');
+    }
+    if (map.corridors.length > 0) {
+        lines.push('### Corridors (cross-module co-change)', '');
+        for (const c of map.corridors.slice(0, 6))
+            lines.push(`- \`${c.a}\` ↔ \`${c.b}\` — ${c.coChange} PRs (${pct(c.share)})${c.structural ? ' · **structural** (static dep)' : ''}`);
+        lines.push('');
+    }
+    if (map.boundaries.length > 0) {
+        lines.push('### Boundaries (cross-area porosity)', '');
+        for (const b of map.boundaries.slice(0, 6))
+            lines.push(`- ${b.areaA} ↔ ${b.areaB} — ${pct(b.porosity)} of PRs`);
+        lines.push('');
+    }
+    if (map.latentStructural.length > 0) {
+        lines.push('### Latent structural coupling (static dep, not co-changing)', '');
+        for (const l of map.latentStructural.slice(0, 6))
+            lines.push(`- \`${l.a}\` → \`${l.b}\` — structurally coupled but operationally isolated`);
+        lines.push('');
+    }
+    const crossings = opts?.ownershipCrossings ?? [];
+    if (crossings.length > 0) {
+        lines.push('### Ownership-crossing corridors', '');
+        for (const c of crossings.slice(0, 6))
+            lines.push(`- \`${c.a}\` ↔ \`${c.b}\` — co-change crosses ownership (${c.ownerA} ↔ ${c.ownerB})`);
+        lines.push('');
+    }
+    lines.push('---', `Deterministic · ${map.window} records · map \`${map.mapHash}\``, '_Operational + structural coupling from co-change and static dependency edges. Not an architecture diagram._');
+    return lines.join('\n');
+}
+
+
+/***/ }),
+
+/***/ 134:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Deterministic Repository Operational Memory — Delta Engine
+ * ==========================================================
+ *
+ * The PR layer is a rare alarm. This is the opposite surface: an ACCUMULATING,
+ * pull-first operational history — "git log for repository operational structure".
+ *
+ * It never restates standing state ("still 78 modules", "remains coherent").
+ * It emits ONLY meaningful operational DELTAS between two operational snapshots
+ * (typically release-over-release): a latent coupling becoming active, a corridor
+ * cooling, operational pressure migrating, a boundary eroding.
+ *
+ * A snapshot is a pure projection of a GeographyMap (itself a pure fold over the
+ * records up to a boundary). Diffing two snapshots is pure. Accumulating the
+ * diffs is append-only and re-derivable from the record history — so the whole
+ * ledger is replay-safe: re-running over the same history yields byte-identical
+ * events. No embeddings, no LLM, no scores, no dashboards.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.snapshotFromGeography = snapshotFromGeography;
+exports.diffSnapshots = diffSnapshots;
+exports.deriveMemory = deriveMemory;
+exports.serializeMemoryJsonl = serializeMemoryJsonl;
+exports.parseMemoryJsonl = parseMemoryJsonl;
+exports.serializeMemory = serializeMemory;
+exports.parseMemory = parseMemory;
+exports.memoryHash = memoryHash;
+exports.renderReleaseSummary = renderReleaseSummary;
+exports.renderOperationalMemory = renderOperationalMemory;
+const node_crypto_1 = __nccwpck_require__(7598);
+// ── Deltas worth a human's attention (hysteresis against flapping) ────────────
+const INTENSIFY_DELTA = 0.12; // corridor / boundary share must move ≥12pp
+const PRESSURE_DELTA = 0.10; // pressure share move to call a migration
+function pairKey(a, b) { return a < b ? `${a} ${b}` : `${b} ${a}`; }
+function ordered(a, b) { return a < b ? [a, b] : [b, a]; }
+function pct(x) { return `${Math.round(x * 100)}%`; }
+function snapshotFromGeography(label, map) {
+    return {
+        label,
+        window: map.window,
+        pressure: map.pressureRegions.map((p) => ({ module: p.module, share: p.share })),
+        corridors: map.corridors
+            .map((c) => { const [a, b] = ordered(c.a, c.b); return { a, b, share: c.share, structural: c.structural === true }; })
+            .sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b)),
+        boundaries: map.boundaries
+            .map((b) => { const [areaA, areaB] = ordered(b.areaA, b.areaB); return { areaA, areaB, porosity: b.porosity }; })
+            .sort((x, y) => x.areaA.localeCompare(y.areaA) || x.areaB.localeCompare(y.areaB)),
+        centralAnchors: [...map.centralAnchors].sort(),
+        hash: map.mapHash,
+    };
+}
+/** Coupling kinds that put an edge/cluster into the ACTIVE state (for reactivation tracking). */
+const COUPLING_ACTIVE = new Set(['coupling-activated', 'coupling-emerged', 'coupling-reactivated', 'coupling-intensified', 'coupling-cluster-activated']);
+const COUPLING_DORMANT = new Set(['coupling-dormant', 'coupling-cluster-dormant']);
+// ── The diff: prev → cur, emitting only meaningful deltas ─────────────────────
+/** Does a coupling event (pairwise or cluster) concern the pair (a,b)? */
+function eventCoversPair(e, a, b) {
+    if (e.subject.length === 2)
+        return pairKey(e.subject[0], e.subject[1]) === pairKey(a, b);
+    if (e.subject.length > 2)
+        return e.subject.includes(a) && e.subject.includes(b); // cluster membership
+    return false;
+}
+/** Most recent active/dormant state of a coupling pair from accumulated history. */
+function lastCouplingState(history, a, b) {
+    for (let i = history.length - 1; i >= 0; i--) {
+        const e = history[i];
+        if (!eventCoversPair(e, a, b))
+            continue;
+        if (COUPLING_DORMANT.has(e.kind))
+            return 'dormant';
+        if (COUPLING_ACTIVE.has(e.kind))
+            return 'active';
+    }
+    return 'unseen';
+}
+/** Boundary label at which a pair most recently became active (or null). */
+function becameActiveAt(history, a, b) {
+    for (let i = history.length - 1; i >= 0; i--) {
+        const e = history[i];
+        if (!eventCoversPair(e, a, b))
+            continue;
+        if (COUPLING_ACTIVE.has(e.kind))
+            return e.at;
+        if (COUPLING_DORMANT.has(e.kind))
+            return null;
+    }
+    return null;
+}
+// ── Deterministic clustering: collapse a pairwise co-change flood into one event ──
+/** Connected components over a set of undirected edges (deterministic). */
+function connectedComponents(edges) {
+    const parent = new Map();
+    const find = (x) => { while (parent.get(x) !== x) {
+        parent.set(x, parent.get(parent.get(x)));
+        x = parent.get(x);
+    } return x; };
+    for (const [a, b] of edges) {
+        if (!parent.has(a))
+            parent.set(a, a);
+        if (!parent.has(b))
+            parent.set(b, b);
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb)
+            parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
+    }
+    const groups = new Map();
+    for (const k of parent.keys()) {
+        const r = find(k);
+        (groups.get(r) ?? groups.set(r, []).get(r)).push(k);
+    }
+    return [...groups.values()].map((g) => g.sort()).sort((x, y) => y.length - x.length || x[0].localeCompare(y[0]));
+}
+/** Longest common directory prefix of a set of module paths (or '' if none). */
+function commonPrefix(modules) {
+    if (modules.length === 0)
+        return '';
+    const split = modules.map((m) => m.split('/'));
+    const first = split[0];
+    let i = 0;
+    for (; i < first.length; i++)
+        if (!split.every((s) => s[i] === first[i]))
+            break;
+    return first.slice(0, i).join('/');
+}
+/**
+ * Turn a set of newly-active (or newly-dormant) corridor edges into events,
+ * collapsing any connected component of ≥3 modules into ONE cluster event.
+ * `direction` selects activation vs cooling phrasing; `history` lets a 2-module
+ * component still resolve activated/emerged/reactivated correctly.
+ */
+function couplingEvents(edges, at, prevLabel, history, direction) {
+    if (edges.length === 0)
+        return [];
+    const comps = connectedComponents(edges.map((e) => [e.a, e.b]));
+    const edgeByKey = new Map(edges.map((e) => [pairKey(e.a, e.b), e]));
+    const out = [];
+    for (const comp of comps) {
+        const compEdges = edges.filter((e) => comp.includes(e.a) && comp.includes(e.b));
+        if (comp.length >= 3) {
+            const maxShare = Math.max(...compEdges.map((e) => e.share));
+            const structural = compEdges.filter((e) => e.structural).length * 2 >= compEdges.length;
+            const prefix = commonPrefix(comp);
+            const where = prefix ? `the \`${prefix}\` cluster` : `a cluster of ${comp.length} modules`;
+            if (direction === 'active') {
+                const text = structural
+                    ? `${where} began co-changing together — ${comp.length} structurally-coupled modules now move as one (up to ${pct(maxShare)} of PRs).`
+                    : `${where} began co-changing together — ${comp.length} modules now move as one with no shared structural dependency (up to ${pct(maxShare)} of PRs).`;
+                out.push({ at, kind: 'coupling-cluster-activated', subject: comp, text });
+            }
+            else {
+                out.push({ at, kind: 'coupling-cluster-dormant', subject: comp, text: `${where} cooled — ${comp.length} modules no longer co-changing together.` });
+            }
+            continue;
+        }
+        // 2-module component → a single pairwise event.
+        const e = compEdges[0] ?? edgeByKey.get(pairKey(comp[0], comp[1] ?? comp[0]));
+        if (!e)
+            continue;
+        if (direction === 'dormant') {
+            out.push({ at, kind: 'coupling-dormant', subject: [e.a, e.b], text: `\`${e.a}\` ↔ \`${e.b}\` coupling cooled — no longer co-changing above threshold.` });
+            continue;
+        }
+        const reactivated = lastCouplingState(history, e.a, e.b) === 'dormant';
+        if (reactivated) {
+            out.push({ at, kind: 'coupling-reactivated', subject: [e.a, e.b], text: `\`${e.a}\` ↔ \`${e.b}\` coupling reactivated after going dormant — co-changing again (${pct(e.share)} of PRs).` });
+        }
+        else if (e.structural) {
+            out.push({ at, kind: 'coupling-activated', subject: [e.a, e.b], text: `latent coupling between \`${e.a}\` and \`${e.b}\` became operationally active — a structural dependency that now co-changes (${pct(e.share)} of PRs).` });
+        }
+        else {
+            out.push({ at, kind: 'coupling-emerged', subject: [e.a, e.b], text: `\`${e.a}\` and \`${e.b}\` began co-changing with no structural dependency — operational-only coupling (${pct(e.share)} of PRs).` });
+        }
+    }
+    void prevLabel;
+    return out;
+}
+function diffSnapshots(prev, cur, history = []) {
+    const out = [];
+    const at = cur.label;
+    // ── Coupling lifecycle ──
+    const prevCorr = new Map(prev.corridors.map((c) => [pairKey(c.a, c.b), c]));
+    const curCorr = new Map(cur.corridors.map((c) => [pairKey(c.a, c.b), c]));
+    // Intensification stays pairwise (a strong, specific signal).
+    for (const c of cur.corridors) {
+        const before = prevCorr.get(pairKey(c.a, c.b));
+        if (before && c.share - before.share >= INTENSIFY_DELTA) {
+            out.push({ at, kind: 'coupling-intensified', subject: [c.a, c.b], text: `the \`${c.a}\` ↔ \`${c.b}\` corridor intensified (${pct(before.share)} → ${pct(c.share)}).` });
+        }
+    }
+    // Newly-active edges → activated / emerged / reactivated, clustered if ≥3 modules.
+    const newEdges = cur.corridors
+        .filter((c) => !prevCorr.has(pairKey(c.a, c.b)))
+        .map((c) => ({ a: c.a, b: c.b, share: c.share, structural: c.structural }));
+    out.push(...couplingEvents(newEdges, at, prev.label, history, 'active'));
+    // Newly-dormant edges → cooled, clustered if ≥3 modules; flaps suppressed.
+    const goneEdges = prev.corridors
+        .filter((c) => !curCorr.has(pairKey(c.a, c.b)) && becameActiveAt(history, c.a, c.b) !== prev.label)
+        .map((c) => ({ a: c.a, b: c.b, share: c.share, structural: c.structural }));
+    out.push(...couplingEvents(goneEdges, at, prev.label, history, 'dormant'));
+    // ── Boundary drift ──
+    const prevB = new Map(prev.boundaries.map((b) => [pairKey(b.areaA, b.areaB), b.porosity]));
+    const curB = new Map(cur.boundaries.map((b) => [pairKey(b.areaA, b.areaB), b.porosity]));
+    for (const b of cur.boundaries) {
+        const before = prevB.get(pairKey(b.areaA, b.areaB)) ?? 0;
+        if (b.porosity - before >= INTENSIFY_DELTA) {
+            out.push({ at, kind: 'boundary-eroded', subject: [b.areaA, b.areaB], text: `the ${b.areaA} ↔ ${b.areaB} boundary became more porous (${pct(before)} → ${pct(b.porosity)}).` });
+        }
+    }
+    for (const b of prev.boundaries) {
+        const after = curB.get(pairKey(b.areaA, b.areaB)) ?? 0;
+        if (b.porosity - after >= INTENSIFY_DELTA) {
+            out.push({ at, kind: 'boundary-tightened', subject: [b.areaA, b.areaB], text: `the ${b.areaA} ↔ ${b.areaB} boundary tightened (${pct(b.porosity)} → ${pct(after)}).` });
+        }
+    }
+    // ── Pressure migration / emergence ──
+    const prevPressure = new Map(prev.pressure.map((p) => [p.module, p.share]));
+    for (const p of cur.pressure) {
+        if (!prevPressure.has(p.module)) {
+            out.push({ at, kind: 'pressure-emerged', subject: [p.module], text: `\`${p.module}\` emerged as an operational pressure zone (${pct(p.share)} of PRs).` });
+        }
+    }
+    const topPrev = prev.pressure[0];
+    const topCur = cur.pressure[0];
+    if (topPrev && topCur && topPrev.module !== topCur.module && topCur.share - (prevPressure.get(topCur.module) ?? 0) >= PRESSURE_DELTA) {
+        out.push({ at, kind: 'pressure-migrated', subject: ordered(topPrev.module, topCur.module), text: `operational pressure migrated from \`${topPrev.module}\` toward \`${topCur.module}\`.` });
+    }
+    // ── Region centralization ──
+    const prevCentral = new Set(prev.centralAnchors);
+    for (const a of cur.centralAnchors) {
+        if (!prevCentral.has(a))
+            out.push({ at, kind: 'region-centralized', subject: [a], text: `the \`${a}\` region became operationally central.` });
+    }
+    // Stable, deterministic ordering.
+    return out.sort((x, y) => x.kind.localeCompare(y.kind) || x.subject.join().localeCompare(y.subject.join()));
+}
+/**
+ * Re-derive the full operational memory from an ordered sequence of snapshots.
+ *
+ * Two noise-suppressors:
+ *  1. The first kept snapshot is a SILENT baseline (no delta from nothing) — a
+ *     fresh install never emits a flood of "new" events.
+ *  2. `minWindow` raises the baseline to the first snapshot whose cumulative
+ *     window is statistically meaningful. Snapshots below it are absorbed into
+ *     the baseline, so the cold-start (a sampling window opening mid-history,
+ *     where the whole standing co-change structure "appears at once") is
+ *     suppressed rather than dumped as events. Default 0 = full day-zero replay.
+ */
+function deriveMemory(snapshots, opts = {}) {
+    const minWindow = opts.minWindow ?? 0;
+    const seq = minWindow > 0 ? snapshots.filter((s) => s.window >= minWindow) : snapshots;
+    const events = [];
+    for (let i = 1; i < seq.length; i++) {
+        events.push(...diffSnapshots(seq[i - 1], seq[i], events));
+    }
+    return { v: 1, events };
+}
+const MEM_PREFIX = '<!-- neurcode-operational-memory:';
+const MEM_SUFFIX = '-->';
+/** Compact, append-friendly JSONL store (one event per line) for an in-repo artifact. */
+function serializeMemoryJsonl(mem) {
+    return mem.events.map((e) => JSON.stringify({ at: e.at, k: e.kind, s: e.subject, t: e.text })).join('\n');
+}
+function parseMemoryJsonl(text) {
+    if (!text)
+        return null;
+    const events = [];
+    for (const line of text.split('\n')) {
+        const t = line.trim();
+        if (!t || t.startsWith('#'))
+            continue;
+        try {
+            const o = JSON.parse(t);
+            if (o.at && o.k && Array.isArray(o.s))
+                events.push({ at: o.at, kind: o.k, subject: o.s, text: o.t });
+        }
+        catch { /* skip malformed line */ }
+    }
+    return { v: 1, events };
+}
+/** Hidden round-trippable block (for embedding in a comment/PR if ever needed). */
+function serializeMemory(mem) {
+    const compact = { v: 1, e: mem.events.map((e) => ({ a: e.at, k: e.kind, s: e.subject, t: e.text })) };
+    return `${MEM_PREFIX}${JSON.stringify(compact)}${MEM_SUFFIX}`;
+}
+function parseMemory(text) {
+    if (!text)
+        return null;
+    const start = text.indexOf(MEM_PREFIX);
+    if (start === -1)
+        return null;
+    const end = text.indexOf(MEM_SUFFIX, start);
+    if (end === -1)
+        return null;
+    try {
+        const obj = JSON.parse(text.slice(start + MEM_PREFIX.length, end).trim());
+        if (!Array.isArray(obj.e))
+            return null;
+        return { v: 1, events: obj.e.map((e) => ({ at: e.a, kind: e.k, subject: e.s, text: e.t })) };
+    }
+    catch {
+        return null;
+    }
+}
+function memoryHash(mem) {
+    return (0, node_crypto_1.createHash)('sha256').update(mem.events.map((e) => `${e.at}|${e.kind}|${e.subject.join(',')}`).join(';')).digest('hex').slice(0, 12);
+}
+// ── Release operational summary (delta-only; null when nothing changed) ────────
+const KIND_GROUP = {
+    'coupling-activated': 'Coupling', 'coupling-emerged': 'Coupling', 'coupling-dormant': 'Coupling',
+    'coupling-reactivated': 'Coupling', 'coupling-intensified': 'Coupling',
+    'coupling-cluster-activated': 'Coupling', 'coupling-cluster-dormant': 'Coupling',
+    'pressure-emerged': 'Pressure', 'pressure-migrated': 'Pressure',
+    'boundary-eroded': 'Boundaries', 'boundary-tightened': 'Boundaries',
+    'region-centralized': 'Regions',
+};
+const GROUP_ORDER = ['Coupling', 'Pressure', 'Boundaries', 'Regions'];
+/**
+ * Render the operational deltas for a single release boundary.
+ * Returns null when there is no operationally meaningful change — the caller
+ * then emits NOTHING (the release note gains no operational appendix).
+ */
+const RELEASE_SUMMARY_MAX = 6; // a release note must stay scannable
+function renderReleaseSummary(events, opts) {
+    if (events.length === 0)
+        return null;
+    const byGroup = new Map();
+    for (const e of events) {
+        const g = KIND_GROUP[e.kind];
+        (byGroup.get(g) ?? byGroup.set(g, []).get(g)).push(e);
+    }
+    const lines = [
+        '### Neurcode — Operational changes',
+        '',
+        `_${opts.repo ? `${opts.repo} · ` : ''}${opts.from} → ${opts.to}_`,
+        '',
+    ];
+    // Push-surface stays calm: show at most RELEASE_SUMMARY_MAX, summarise the rest.
+    let shown = 0;
+    let omitted = 0;
+    for (const g of GROUP_ORDER) {
+        const evs = byGroup.get(g);
+        if (!evs || evs.length === 0)
+            continue;
+        for (const e of evs) {
+            if (shown < RELEASE_SUMMARY_MAX) {
+                lines.push(`- ${e.text}`);
+                shown += 1;
+            }
+            else
+                omitted += 1;
+        }
+    }
+    if (omitted > 0)
+        lines.push(`- _+${omitted} more operational delta${omitted === 1 ? '' : 's'} — see the full operational memory._`);
+    lines.push('', '_Deterministic operational deltas vs the previous release. Standing state is intentionally omitted. Full history accumulates in `.neurcode/reports/operational-memory.md`._');
+    return lines.join('\n');
+}
+/** Compact, scannable rendering of the whole accumulated memory (pull surface). */
+function renderOperationalMemory(mem, opts) {
+    const intro = 'How this repository\'s operational structure has changed over time — which modules start (and stop) moving together, where activity concentrates. Read it like a changelog.';
+    if (mem.events.length === 0) {
+        return [
+            '## Neurcode — Operational Memory',
+            '',
+            `_${opts?.repo ? `${opts.repo} · ` : ''}no operational evolution recorded yet._`,
+            '',
+            'Nothing has shifted operationally yet — which is normal for a stable or young repository. As releases accumulate, meaningful changes (a new coupling, pressure migrating, a cluster cooling) will appear here. Standing state is never restated.',
+        ].join('\n');
+    }
+    const byBoundary = new Map();
+    const order = [];
+    for (const e of mem.events) {
+        if (!byBoundary.has(e.at)) {
+            byBoundary.set(e.at, []);
+            order.push(e.at);
+        }
+        byBoundary.get(e.at).push(e);
+    }
+    const lines = [
+        '## Neurcode — Operational Memory',
+        '',
+        `_${opts?.repo ? `${opts.repo} · ` : ''}${mem.events.length} operational events · memory \`${memoryHash(mem)}\`_`,
+        '',
+        `> ${intro}`,
+        '',
+    ];
+    // Most-recent boundary first — a maintainer reads top-down like a changelog.
+    for (const at of order.slice().reverse()) {
+        lines.push(`### ${at}`, '');
+        for (const e of byBoundary.get(at))
+            lines.push(`- ${e.text}`);
+        lines.push('');
+    }
+    lines.push('---', '_Append-only operational history, re-derivable from your merge history (nothing to trust or lose). Not an architecture diagram, not a score._');
+    if (opts?.path)
+        lines.push(`_Lives at \`${opts.path}\` in your repo._`);
+    return lines.join('\n');
+}
+
+
+/***/ }),
+
+/***/ 7460:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Operational Momentum & Stability Dynamics (deterministic)
+ * =========================================================
+ *
+ * Prior layers answer "what is the operational shape now / how did it drift?".
+ * This layer answers "how is it MOVING?" across a sequence of release eras —
+ * is a pattern intensifying, cooling, stabilising, dissipating, or persistent?
+ *
+ * This is MOVEMENT ANALYSIS over observed history, NOT prediction. Every state
+ * is a deterministic classification of a value series the engine already
+ * produced. Requires ≥3 eras (2 = drift, already covered). Sparse: flat and
+ * volatile series are suppressed. Replay-safe: pure over the era bundles, which
+ * are pure over the deterministic records.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.eraFromRecords = eraFromRecords;
+exports.classifyTrajectory = classifyTrajectory;
+exports.deriveMomentum = deriveMomentum;
+exports.synthesizeDynamicsReport = synthesizeDynamicsReport;
+const node_crypto_1 = __nccwpck_require__(7598);
+const GENERIC_AREA = 'runtime-source';
+function pairKey(a, b) { return a < b ? `${a} ${b}` : `${b} ${a}`; }
+/** Build one era's metric bundle from its records (single deterministic pass). */
+function eraFromRecords(label, records) {
+    const n = records.length;
+    const rate = (p) => (n === 0 ? 0 : records.filter(p).length / n);
+    const touch = new Map();
+    const coChange = new Map();
+    const areaPair = new Map();
+    for (const r of records) {
+        const mods = [...new Set(r.modules)].sort();
+        for (const m of mods)
+            touch.set(m, (touch.get(m) ?? 0) + 1);
+        for (let i = 0; i < mods.length; i++)
+            for (let j = i + 1; j < mods.length; j++)
+                coChange.set(pairKey(mods[i], mods[j]), (coChange.get(pairKey(mods[i], mods[j])) ?? 0) + 1);
+        const sp = [...new Set(r.areas.filter((a) => a !== GENERIC_AREA))].sort();
+        for (let i = 0; i < sp.length; i++)
+            for (let j = i + 1; j < sp.length; j++)
+                areaPair.set(pairKey(sp[i], sp[j]), (areaPair.get(pairKey(sp[i], sp[j])) ?? 0) + 1);
+    }
+    const totalTouches = [...touch.values()].reduce((a, b) => a + b, 0);
+    const sortedMods = [...touch.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const concentration = totalTouches === 0 ? 0 : sortedMods.slice(0, 3).reduce((a, m) => a + m[1], 0) / totalTouches;
+    const pressure = {};
+    for (const [m, c] of touch)
+        pressure[m] = n === 0 ? 0 : c / n;
+    const corridors = {};
+    for (const [k, c] of coChange)
+        corridors[k] = n === 0 ? 0 : c / n;
+    const boundaries = {};
+    for (const [k, c] of areaPair)
+        boundaries[k] = n === 0 ? 0 : c / n;
+    return {
+        label, window: n, concentration,
+        signals: {
+            widening: rate((r) => r.codes.includes('widening')),
+            generatedSpillover: rate((r) => r.codes.includes('generated-spillover')),
+            boundaryCrossing: rate((r) => r.codes.includes('boundary-crossing')),
+            flagged: rate((r) => r.verdict !== 'coherent'),
+        },
+        pressure, corridors, boundaries,
+        central: [...new Set(records.flatMap((r) => r.central))].sort(),
+        topModule: sortedMods[0]?.[0] ?? null,
+    };
+}
+const STEP_EPS = 0.03; // per-step noise floor (3pp)
+const MIN_NET = 0.12; // net change to call intensifying/cooling (12pp)
+const STABLE_RANGE = 0.05; // recent points within 5pp = stable
+function classifyTrajectory(values) {
+    const n = values.length;
+    if (n < 3)
+        return { state: 'flat' };
+    const deltas = [];
+    for (let i = 1; i < n; i++)
+        deltas.push(values[i] - values[i - 1]);
+    const net = values[n - 1] - values[0];
+    const first = values[0];
+    const last = values[n - 1];
+    const peak = Math.max(...values);
+    const range = peak - Math.min(...values);
+    const rises = deltas.filter((d) => d > STEP_EPS).length;
+    const falls = deltas.filter((d) => d < -STEP_EPS).length;
+    // Trailing flat run: how many of the most recent steps are within the noise
+    // floor. ≥2 small steps = the series has levelled off ("plateau").
+    let trailingFlat = 0;
+    for (let i = deltas.length - 1; i >= 0; i--) {
+        if (Math.abs(deltas[i]) <= STEP_EPS)
+            trailingFlat += 1;
+        else
+            break;
+    }
+    const recentPlateau = trailingFlat >= 2;
+    // Plateau cases take precedence — distinguishes "rose then settled" from
+    // "still rising", which a net-only test cannot.
+    if (recentPlateau && range > STABLE_RANGE) {
+        if (peak - last >= MIN_NET && last <= first + STEP_EPS)
+            return { state: 'dissipated' };
+        if (Math.abs(last - first) >= MIN_NET)
+            return { state: 'stabilized', sinceIndex: n - 1 - trailingFlat };
+        return { state: 'flat' };
+    }
+    // Active trend.
+    if (net >= MIN_NET && rises >= falls)
+        return { state: 'intensifying' };
+    if (net <= -MIN_NET && falls >= rises)
+        return { state: 'cooling' };
+    if (rises > 0 && falls > 0 && Math.abs(net) < MIN_NET && range > STABLE_RANGE * 2)
+        return { state: 'volatile' };
+    return { state: 'flat' };
+}
+const SIGNAL_LABEL = {
+    widening: 'blast-radius widening',
+    generatedSpillover: 'generated-code spillover',
+    boundaryCrossing: 'undeclared boundary crossings',
+    flagged: 'flagged-PR rate',
+};
+const PROMINENCE = { corridor: 0.10, boundary: 0.10, pressure: 0.30 };
+function pct(x) { return `${Math.round(x * 100)}%`; }
+function path(series) { return series.map(pct).join(' → '); }
+function subjectsAboveProminence(eras, pick, min) {
+    const max = new Map();
+    for (const e of eras)
+        for (const [k, v] of Object.entries(pick(e)))
+            max.set(k, Math.max(max.get(k) ?? 0, v));
+    return [...max.entries()].filter(([, v]) => v >= min).map(([k]) => k).sort();
+}
+function deriveMomentum(eras) {
+    if (eras.length < 3)
+        return [];
+    const out = [];
+    const n = eras.length;
+    const emit = (subject, kind, series, labelFor) => {
+        const t = classifyTrajectory(series);
+        const presentAll = series.every((v) => v > 0);
+        const persistent = presentAll && (t.state === 'flat' || t.state === 'stabilized');
+        // A present-in-every-era flat series is "persistent", not nothing.
+        const state = persistent && t.state === 'flat' ? 'persistent' : t.state;
+        if (state === 'flat')
+            return; // suppress noise
+        if (state === 'volatile')
+            return; // suppress oscillation
+        const sinceLabel = t.sinceIndex !== undefined ? eras[t.sinceIndex].label : undefined;
+        out.push({ subject, kind, state, series, persistent, sinceLabel, text: phrase(subject, kind, labelFor, state, series, sinceLabel, persistent, n) });
+    };
+    emit('concentration', 'concentration', eras.map((e) => e.concentration), 'operational concentration');
+    for (const sig of ['widening', 'generatedSpillover', 'boundaryCrossing', 'flagged']) {
+        emit(sig, 'signal', eras.map((e) => e.signals[sig]), SIGNAL_LABEL[sig]);
+    }
+    for (const b of subjectsAboveProminence(eras, (e) => e.boundaries, PROMINENCE.boundary)) {
+        emit(b, 'boundary', eras.map((e) => e.boundaries[b] ?? 0), `the ${b.replace(' ', ' ↔ ')} boundary`);
+    }
+    for (const c of subjectsAboveProminence(eras, (e) => e.corridors, PROMINENCE.corridor)) {
+        emit(c, 'corridor', eras.map((e) => e.corridors[c] ?? 0), `the \`${c.split(' ').join('` ↔ `')}\` corridor`);
+    }
+    for (const p of subjectsAboveProminence(eras, (e) => e.pressure, PROMINENCE.pressure)) {
+        emit(p, 'pressure', eras.map((e) => e.pressure[p] ?? 0), `pressure on \`${p}\``);
+    }
+    // Order: intensifying/cooling first (most kinetic), then stabilized/dissipated/persistent.
+    const rank = { intensifying: 0, cooling: 1, dissipated: 2, stabilized: 3, persistent: 4, volatile: 5, flat: 6 };
+    return out.sort((a, b) => rank[a.state] - rank[b.state] || a.kind.localeCompare(b.kind) || a.subject.localeCompare(b.subject));
+}
+function phrase(_subject, _kind, label, state, series, sinceLabel, persistent, eraCount) {
+    const cap = label.charAt(0).toUpperCase() + label.slice(1);
+    switch (state) {
+        case 'intensifying': return `${cap} has risen across ${eraCount} release eras (${path(series)}).`;
+        case 'cooling': return `${cap} momentum cooled across ${eraCount} release eras (${path(series)}).`;
+        case 'stabilized': return `${cap} stabilized${sinceLabel ? ` after ${sinceLabel}` : ''} (around ${pct(series[series.length - 1])}).`;
+        case 'dissipated': return `${cap} dissipated (peaked ${pct(Math.max(...series))}, now ${pct(series[series.length - 1])}).`;
+        case 'persistent': return `${cap} has persisted across ${eraCount} release eras (around ${pct(series[series.length - 1])}).`;
+        default: return `${cap}: ${path(series)}.`;
+    }
+}
+function synthesizeDynamicsReport(input) {
+    const findings = deriveMomentum(input.eras);
+    const momentumHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
+        repo: input.repo ?? null,
+        eras: input.eras.map((e) => e.label),
+        findings: findings.map((f) => `${f.kind}:${f.subject}:${f.state}`),
+    })).digest('hex').slice(0, 12);
+    const lines = [
+        '## Neurcode — Operational Dynamics',
+        '',
+        `_${input.repo ? `${input.repo} · ` : ''}${input.eras.length} release eras (${input.eras.map((e) => e.label).join(' → ')}) · momentum \`${momentumHash}\`_`,
+        '',
+    ];
+    if (input.eras.length < 3) {
+        lines.push('Not enough release history for momentum analysis (need ≥3 eras).');
+    }
+    else if (findings.length === 0) {
+        lines.push('Operationally steady — no sustained momentum, cooling, or stabilization above threshold across these eras.');
+    }
+    else {
+        const kinetic = findings.filter((f) => f.state === 'intensifying' || f.state === 'cooling' || f.state === 'dissipated');
+        const settled = findings.filter((f) => f.state === 'stabilized' || f.state === 'persistent');
+        if (kinetic.length > 0) {
+            lines.push('### Movement', '');
+            for (const f of kinetic.slice(0, 6))
+                lines.push(`- ${f.text}`);
+            lines.push('');
+        }
+        if (settled.length > 0) {
+            lines.push('### Settled', '');
+            for (const f of settled.slice(0, 6))
+                lines.push(`- ${f.text}`);
+            lines.push('');
+        }
+    }
+    lines.push('---', `Deterministic movement analysis across ${input.eras.length} eras · momentum \`${momentumHash}\``, '_Observed-history momentum from replay-safe primitives. Not a forecast._');
+    return { eras: input.eras.length, findings, momentumHash, markdown: lines.join('\n') };
+}
+
+
+/***/ }),
+
+/***/ 6481:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Longitudinal Operational Memory (deterministic)
+ * ===============================================
+ *
+ * Per-PR coherence understands one PR. This layer understands how the
+ * repository's operational topology *evolves* across many PRs — drift,
+ * volatility, hotspot emergence, widening concentration, generated spillover,
+ * boundary-crossing trends, contributor patterns.
+ *
+ * It is built only from primitives the engine already emits. Each PR projects
+ * to a tiny, deterministic `OperationalRecord`; a window of records is reduced
+ * to trend metrics by pure functions; trends become sparse temporal narratives
+ * only when they cross significance thresholds.
+ *
+ * Replay-safety: a record is a pure projection of a (deterministic) coherence
+ * result, and the timeline is a pure fold over records. The on-disk ledger
+ * (`.neurcode/operational-ledger.jsonl`, one record per line) is therefore a
+ * CACHE — it can always be rebuilt by replaying history, and each line's
+ * `scopeHash` lets you verify the cache against a re-derivation. No DB, no
+ * embeddings, no probabilistic scoring, no AI summaries.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.recordFromResult = recordFromResult;
+exports.serializeRecord = serializeRecord;
+exports.parseLedger = parseLedger;
+exports.deriveTimeline = deriveTimeline;
+exports.synthesizeTemporalNarrative = synthesizeTemporalNarrative;
+const repo_topology_1 = __nccwpck_require__(7383);
+const narrative_1 = __nccwpck_require__(9047);
+// ── Projection: coherence result → operational record ─────────────────────────
+function recordFromResult(result, meta, profile) {
+    const files = [...new Set(result.blastRadius.subsystems.flatMap((s) => s.files))];
+    // Operational files = code + infra + generated. Housekeeping (docs/test/build/
+    // config/ci) doesn't define operational reach and would dilute the trends.
+    const opFiles = files.filter((f) => { const r = (0, repo_topology_1.roleOf)(f); return r === 'source' || r === 'entrypoint' || r === 'infra' || r === 'generated'; });
+    const codeFiles = files.filter((f) => { const r = (0, repo_topology_1.roleOf)(f); return r === 'source' || r === 'entrypoint'; });
+    const areas = [...new Set(opFiles.map(narrative_1.operationalArea))].sort();
+    const codes = [...new Set((result.narrative?.statements ?? []).map((s) => s.code))].sort();
+    const modules = profile
+        ? [...new Set(codeFiles.map((f) => (0, repo_topology_1.subsystemOf)(f, profile)))].filter((m) => m !== '(root)').sort()
+        : [];
+    const central = profile
+        ? [...new Set(codeFiles.map((f) => (0, repo_topology_1.subsystemOf)(f, profile)).filter((m) => profile.centralModules.includes(m)))].sort()
+        : [];
+    return {
+        pr: meta.pr,
+        author: meta.author ?? '',
+        ...(meta.mergedAt ? { mergedAt: meta.mergedAt } : {}),
+        kind: result.declared.changeKind,
+        verdict: result.level,
+        mechanical: result.mechanical?.isMechanical ? (result.mechanical.mechanicalClass ?? null) : null,
+        modules,
+        areas,
+        codes,
+        central,
+        scopeHash: result.scopeHash,
+    };
+}
+// JSONL ledger helpers — the ledger is an append-only cache of records.
+function serializeRecord(r) {
+    // Stable key order for byte-deterministic ledger lines.
+    return JSON.stringify({
+        pr: r.pr, author: r.author, ...(r.mergedAt ? { mergedAt: r.mergedAt } : {}),
+        kind: r.kind, verdict: r.verdict, mechanical: r.mechanical,
+        modules: r.modules, areas: r.areas, codes: r.codes, central: r.central, scopeHash: r.scopeHash,
+    });
+}
+function parseLedger(text) {
+    return text.split('\n').map((l) => l.trim()).filter(Boolean)
+        .map((l) => { try {
+        return JSON.parse(l);
+    }
+    catch {
+        return null;
+    } })
+        .filter((r) => r !== null && typeof r.pr === 'number')
+        .sort((a, b) => a.pr - b.pr);
+}
+// ── Trend significance thresholds (deterministic, conservative) ───────────────
+const MIN_WINDOW = 12; // below this, no trend claims (too little signal)
+const MIN_HALF = 5; // each half of a split must have this many PRs
+const RATE_DELTA = 0.15; // recent-vs-prior rate must move ≥15pp to be a trend
+const HOTSPOT_MIN_SHARE = 0.30; // module touched in ≥30% of recent PRs
+const HOTSPOT_MIN_TOUCHES = 4;
+const CONTRIBUTOR_MIN_EVENTS = 3; // an author must repeat a pattern ≥3× to be flagged
+const TOP_CONCENTRATION_K = 3;
+function rate(records, pred) {
+    return records.length === 0 ? 0 : records.filter(pred).length / records.length;
+}
+function dominantArea(records, pred) {
+    const counts = new Map();
+    for (const r of records.filter(pred))
+        for (const a of r.areas)
+            counts.set(a, (counts.get(a) ?? 0) + 1);
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    return top ? top[0] : undefined;
+}
+function buildTrend(metric, recent, prior, pred) {
+    if (recent.length < MIN_HALF || prior.length < MIN_HALF)
+        return null;
+    const rRecent = rate(recent, pred);
+    const rPrior = rate(prior, pred);
+    if (Math.abs(rRecent - rPrior) < RATE_DELTA)
+        return null;
+    return {
+        metric,
+        recent: rRecent,
+        prior: rPrior,
+        recentCount: recent.filter(pred).length,
+        priorCount: prior.filter(pred).length,
+        direction: rRecent > rPrior ? 'rising' : 'falling',
+        area: dominantArea(recent, pred),
+    };
+}
+function deriveTimeline(all, windowSize = 30) {
+    const records = [...all].sort((a, b) => a.pr - b.pr).slice(-windowSize);
+    const window = records.length;
+    const verdict = {
+        coherent: records.filter((r) => r.verdict === 'coherent').length,
+        review: records.filter((r) => r.verdict === 'review').length,
+        incoherent: records.filter((r) => r.verdict === 'incoherent').length,
+    };
+    const trends = [];
+    if (window >= MIN_WINDOW) {
+        const mid = Math.floor(window / 2);
+        const prior = records.slice(0, mid);
+        const recent = records.slice(mid);
+        const candidates = [
+            ['widening', (r) => r.codes.includes('widening')],
+            ['boundary-crossing', (r) => r.codes.includes('boundary-crossing')],
+            ['generated-spillover', (r) => r.codes.includes('generated-spillover')],
+            ['new-operational-edge', (r) => r.codes.includes('new-operational-edge')],
+            ['flagged', (r) => r.verdict !== 'coherent'],
+        ];
+        for (const [metric, pred] of candidates) {
+            const t = buildTrend(metric, recent, prior, pred);
+            if (t)
+                trends.push(t);
+        }
+    }
+    // Hotspots: modules touched in a large share of the recent window.
+    const touchCounts = new Map();
+    for (const r of records)
+        for (const m of r.modules)
+            touchCounts.set(m, (touchCounts.get(m) ?? 0) + 1);
+    const hotspots = [...touchCounts.entries()]
+        .map(([module, touches]) => ({ module, touches, share: touches / Math.max(1, window) }))
+        .filter((h) => h.touches >= HOTSPOT_MIN_TOUCHES && h.share >= HOTSPOT_MIN_SHARE)
+        .sort((a, b) => b.touches - a.touches || a.module.localeCompare(b.module));
+    // Contributor patterns: an author repeating an operational primitive.
+    const byAuthorCode = new Map();
+    for (const r of records) {
+        if (!r.author)
+            continue;
+        for (const code of r.codes) {
+            if (code === 'mechanical' || code === 'containment')
+                continue; // not risk patterns
+            const key = `${r.author} ${code}`;
+            const e = byAuthorCode.get(key) ?? { events: 0, areas: new Set() };
+            e.events += 1;
+            for (const a of r.areas)
+                e.areas.add(a);
+            byAuthorCode.set(key, e);
+        }
+    }
+    const contributors = [...byAuthorCode.entries()]
+        .filter(([, e]) => e.events >= CONTRIBUTOR_MIN_EVENTS)
+        .map(([key, e]) => { const [author, code] = key.split(' '); return { author, code, events: e.events, areas: [...e.areas].sort() }; })
+        .sort((a, b) => b.events - a.events || a.author.localeCompare(b.author));
+    // Concentration: share of all module-touches held by the top-K modules.
+    const totalTouches = [...touchCounts.values()].reduce((a, b) => a + b, 0);
+    const topModules = [...touchCounts.entries()].map(([module, touches]) => ({ module, touches }))
+        .sort((a, b) => b.touches - a.touches || a.module.localeCompare(b.module)).slice(0, TOP_CONCENTRATION_K);
+    const topShare = totalTouches === 0 ? 0 : topModules.reduce((a, m) => a + m.touches, 0) / totalTouches;
+    // Emerging central: central modules that appear in the recent half but not the prior half.
+    let emergingCentral = [];
+    if (window >= MIN_WINDOW) {
+        const mid = Math.floor(window / 2);
+        const priorCentral = new Set(records.slice(0, mid).flatMap((r) => r.central));
+        const recentCentral = new Set(records.slice(mid).flatMap((r) => r.central));
+        emergingCentral = [...recentCentral].filter((m) => !priorCentral.has(m)).sort();
+    }
+    return { window, verdict, trends, hotspots, contributors, concentration: { topModules, topShare }, emergingCentral };
+}
+const METRIC_PHRASE = {
+    widening: 'blast-radius widening',
+    'boundary-crossing': 'undeclared boundary crossings',
+    'generated-spillover': 'generated-code spillover',
+    'new-operational-edge': 'new operational edges into sensitive boundaries',
+    flagged: 'flagged (review/incoherent) PRs',
+};
+function pct(x) { return `${Math.round(x * 100)}%`; }
+function synthesizeTemporalNarrative(metrics) {
+    const statements = [];
+    if (metrics.window < MIN_WINDOW) {
+        return { window: metrics.window, statements: [] }; // too little history — stay silent
+    }
+    for (const t of metrics.trends) {
+        const phrase = METRIC_PHRASE[t.metric] ?? t.metric;
+        const areaClause = t.area && (t.metric === 'generated-spillover' || t.metric === 'boundary-crossing')
+            ? `, concentrated in ${t.area === 'runtime-source' ? 'runtime source' : t.area.replace(/-/g, ' ')}`
+            : '';
+        statements.push({
+            code: `trend:${t.metric}`,
+            text: `${t.direction === 'rising' ? 'Rising' : 'Falling'}: ${phrase} ${t.direction === 'rising' ? 'rose' : 'fell'} from ${pct(t.prior)} to ${pct(t.recent)} of PRs over the last ${metrics.window}${areaClause}.`,
+        });
+    }
+    for (const h of metrics.hotspots.slice(0, 2)) {
+        statements.push({ code: 'hotspot', text: `Hotspot: \`${h.module}\` was touched by ${h.touches} of the last ${metrics.window} PRs (${pct(h.share)}).` });
+    }
+    for (const m of metrics.emergingCentral.slice(0, 2)) {
+        statements.push({ code: 'emerging-central', text: `\`${m}\` is becoming operationally central — it began receiving cross-module dependency in the recent window.` });
+    }
+    for (const c of metrics.contributors.slice(0, 2)) {
+        const phrase = METRIC_PHRASE[c.code] ?? c.code.replace(/-/g, ' ');
+        statements.push({ code: 'contributor', text: `\`${c.author}\` shows a repeated ${phrase} pattern (${c.events} PRs)${c.areas.length ? ` touching ${c.areas.slice(0, 3).join(', ')}` : ''}.` });
+    }
+    if (metrics.concentration.topShare >= 0.6 && metrics.concentration.topModules.length > 0) {
+        const mods = metrics.concentration.topModules.map((m) => `\`${m.module}\``).join(', ');
+        statements.push({ code: 'concentration', text: `Operational activity is concentrating: ${mods} account for ${pct(metrics.concentration.topShare)} of module touches.` });
+    }
+    return { window: metrics.window, statements: statements.slice(0, 6) };
+}
+
+
+/***/ }),
+
+/***/ 6794:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Pilot Trust & Survivability instrumentation (deterministic)
+ * ===========================================================
+ *
+ * The architecture is complete; the open question is sociology — does a
+ * maintainer keep trusting the Action after weeks of real usage? This derives
+ * the answer from the operational ledger itself (no dashboards, no scoring, no
+ * analytics theatre):
+ *
+ *   silent-rate     coherent PRs (no comment)        — is presence staying low?
+ *   flag-rate       review + incoherent              — review-fatigue proxy
+ *   FAIL-eligible   incoherent                       — does FAIL stay rare?
+ *   mechanical      reverts/bumps/codemods suppressed — the calm work
+ *   override-rate   incoherent records in the ledger  — merged WHILE incoherent
+ *                                                       (a finding the maintainer
+ *                                                        accepted/overrode)
+ *   trend           recent vs prior flag-rate         — TRUST DECAY detection
+ *
+ * A ledger record is a MERGED PR, so an incoherent record means a maintainer
+ * merged despite the ⛔ — the deterministic override/false-positive signal.
+ * Rising flag-rate over the window = the system is getting noisier = trust at
+ * risk. Pure over the ledger ⇒ replay-safe.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.derivePilotMetrics = derivePilotMetrics;
+exports.synthesizePilotReport = synthesizePilotReport;
+const node_crypto_1 = __nccwpck_require__(7598);
+// Deterministic sociology thresholds.
+const TREND_MIN_WINDOW = 24;
+const TREND_DELTA = 0.08; // flag-rate move ≥8pp = a trend
+const WATCH_FLAG_RATE = 0.12; // >12% of PRs flagged → fatigue risk
+const ATRISK_FLAG_RATE = 0.25; // >25% flagged → review fatigue / noise
+const ATRISK_INCOHERENT_RATE = 0.10;
+const ATRISK_TREND_DELTA = 0.15; // flag-rate rising ≥15pp → decay
+function rate(records, pred) {
+    return records.length === 0 ? 0 : records.filter(pred).length / records.length;
+}
+function derivePilotMetrics(all, windowSize = 120) {
+    const records = [...all].sort((a, b) => a.pr - b.pr).slice(-windowSize);
+    const window = records.length;
+    const isFlag = (r) => r.verdict !== 'coherent';
+    const silentRate = rate(records, (r) => r.verdict === 'coherent');
+    const reviewRate = rate(records, (r) => r.verdict === 'review');
+    const incoherentRate = rate(records, (r) => r.verdict === 'incoherent');
+    const flagRate = rate(records, isFlag);
+    const mechanicalRate = rate(records, (r) => r.mechanical !== null);
+    const overrideRate = incoherentRate;
+    let flagTrend = 'n/a';
+    let trendDelta = 0;
+    if (window >= TREND_MIN_WINDOW) {
+        const mid = Math.floor(window / 2);
+        const prior = rate(records.slice(0, mid), isFlag);
+        const recent = rate(records.slice(mid), isFlag);
+        trendDelta = recent - prior;
+        flagTrend = Math.abs(trendDelta) < TREND_DELTA ? 'stable' : trendDelta > 0 ? 'rising' : 'falling';
+    }
+    const reasons = [];
+    let survivability = 'healthy';
+    if (flagRate >= ATRISK_FLAG_RATE) {
+        survivability = 'at-risk';
+        reasons.push(`flag-rate ${pct(flagRate)} — review fatigue risk`);
+    }
+    else if (incoherentRate >= ATRISK_INCOHERENT_RATE) {
+        survivability = 'at-risk';
+        reasons.push(`FAIL-eligible ${pct(incoherentRate)} — ⛔ no longer rare`);
+    }
+    else if (flagTrend === 'rising' && trendDelta >= ATRISK_TREND_DELTA) {
+        survivability = 'at-risk';
+        reasons.push(`flag-rate rising sharply (+${pct(trendDelta)}) — trust decay`);
+    }
+    else if (flagRate >= WATCH_FLAG_RATE) {
+        survivability = 'watch';
+        reasons.push(`flag-rate ${pct(flagRate)} — watch for fatigue`);
+    }
+    else if (flagTrend === 'rising') {
+        survivability = 'watch';
+        reasons.push(`flag-rate creeping up (+${pct(trendDelta)})`);
+    }
+    return { window, silentRate, reviewRate, incoherentRate, flagRate, mechanicalRate, overrideRate, flagTrend, survivability, reasons };
+}
+function pct(x) { return `${Math.round(x * 100)}%`; }
+function synthesizePilotReport(input) {
+    const metrics = derivePilotMetrics(input.records, input.windowSize ?? 120);
+    const pilotHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
+        repo: input.repo ?? null, window: metrics.window,
+        s: Math.round(metrics.silentRate * 100), f: Math.round(metrics.flagRate * 100),
+        i: Math.round(metrics.incoherentRate * 100), trend: metrics.flagTrend, surv: metrics.survivability,
+    })).digest('hex').slice(0, 12);
+    const trendWord = metrics.flagTrend === 'stable' ? 'holding'
+        : metrics.flagTrend === 'falling' ? 'improving'
+            : metrics.flagTrend === 'rising' ? 'rising — watch' : '';
+    const lines = [
+        '## Neurcode — Pilot Trust & Survivability',
+        '',
+        `_${input.repo ? `${input.repo} · ` : ''}window ${metrics.window} merged PRs · pilot \`${pilotHash}\`_`,
+        '',
+    ];
+    if (metrics.window < 8) {
+        lines.push('Not enough history yet for a trust profile (need ≥8 merged PRs).');
+    }
+    else {
+        lines.push(`**Trust profile:** ${metrics.survivability}`, '');
+        lines.push(`- Silence: ${pct(metrics.silentRate)} of merged PRs coherent — no comment${trendWord ? ` · presence ${trendWord}` : ''}.`);
+        lines.push(`- Review-class: ${pct(metrics.reviewRate)} · FAIL-eligible (incoherent): ${pct(metrics.incoherentRate)}${metrics.incoherentRate < 0.05 ? ' — rare' : ''}.`);
+        if (metrics.mechanicalRate > 0)
+            lines.push(`- Mechanical PRs auto-suppressed: ${pct(metrics.mechanicalRate)} (reverts / bumps / codemods stayed quiet).`);
+        if (metrics.overrideRate > 0)
+            lines.push(`- Overrides (merged while incoherent): ${pct(metrics.overrideRate)}.`);
+        if (metrics.reasons.length === 0)
+            lines.push('- No trust-decay detected — flag-rate low and stable across the window.');
+        else
+            for (const r of metrics.reasons)
+                lines.push(`- ⚠ ${r}.`);
+    }
+    lines.push('', '---', `Deterministic · ${metrics.window} ledger records · pilot \`${pilotHash}\``, '_Operational trust dynamics from the replay-safe ledger. Not analytics, not scoring._');
+    return { metrics, pilotHash, markdown: lines.join('\n') };
+}
+
+
+/***/ }),
+
+/***/ 3664:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Deterministic Operational Evolution Reports
+ * ===========================================
+ *
+ * Longitudinal memory exposes per-PR records and intra-window trends. This layer
+ * synthesises them into a calm, sparse, periodic REPORT that answers one
+ * question: "how is this repository operationally evolving?"
+ *
+ * The report axis is current-window vs prior-window (real before/after), so it
+ * can state genuine drift — "concentration rose from 80% to 85%", "widening
+ * narrowed", or, just as importantly, "spillover remained stable". Unlike the
+ * per-PR comment (which stays silent when nothing is wrong), a periodic report
+ * is allowed to affirm stability — but every line is one factual, infrastructure-
+ * native sentence. No KPIs, no scoring, no AI prose.
+ *
+ * Replay-safe: a snapshot is a pure reduction of (deterministic) records and the
+ * report is a pure function of two snapshots, so the same windows always yield
+ * the same report and the same `reportHash`.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.snapshotFromRecords = snapshotFromRecords;
+exports.synthesizeDriftReport = synthesizeDriftReport;
+exports.renderReportMarkdown = renderReportMarkdown;
+const node_crypto_1 = __nccwpck_require__(7598);
+const operational_memory_1 = __nccwpck_require__(6481);
+const HOTSPOT_MIN_SHARE = 0.30;
+const TOP_K = 3;
+function snapshotFromRecords(records) {
+    const n = records.length;
+    const rate = (p) => (n === 0 ? 0 : records.filter(p).length / n);
+    const touch = new Map();
+    for (const r of records)
+        for (const m of r.modules)
+            touch.set(m, (touch.get(m) ?? 0) + 1);
+    const totalTouches = [...touch.values()].reduce((a, b) => a + b, 0);
+    const sortedMods = [...touch.entries()]
+        .map(([module, c]) => ({ module, touches: c, share: n === 0 ? 0 : c / n }))
+        .sort((a, b) => b.touches - a.touches || a.module.localeCompare(b.module));
+    const areaCount = new Map();
+    for (const r of records)
+        for (const a of r.areas)
+            areaCount.set(a, (areaCount.get(a) ?? 0) + 1);
+    const areaShare = {};
+    for (const [a, c] of [...areaCount.entries()].sort())
+        areaShare[a] = n === 0 ? 0 : c / n;
+    return {
+        window: n,
+        verdict: { coherent: rate((r) => r.verdict === 'coherent'), review: rate((r) => r.verdict === 'review'), incoherent: rate((r) => r.verdict === 'incoherent') },
+        signals: {
+            widening: rate((r) => r.codes.includes('widening')),
+            boundaryCrossing: rate((r) => r.codes.includes('boundary-crossing')),
+            generatedSpillover: rate((r) => r.codes.includes('generated-spillover')),
+            newEdge: rate((r) => r.codes.includes('new-operational-edge')),
+            flagged: rate((r) => r.verdict !== 'coherent'),
+        },
+        hotspots: sortedMods.filter((m) => m.share >= HOTSPOT_MIN_SHARE).map(({ module, share }) => ({ module, share })),
+        topModules: sortedMods.slice(0, TOP_K).map(({ module, share }) => ({ module, share })),
+        concentrationTopShare: totalTouches === 0 ? 0 : sortedMods.slice(0, TOP_K).reduce((a, m) => a + m.touches, 0) / totalTouches,
+        centralModules: [...new Set(records.flatMap((r) => r.central))].sort(),
+        areaShare,
+    };
+}
+const RATE_THRESHOLD = 0.10; // signal-rate move ≥10pp to be drift
+const CONCENTRATION_THRESHOLD = 0.05; // concentration move ≥5pp
+function dir(cur, prior, thr) {
+    const d = cur - prior;
+    if (Math.abs(d) < thr)
+        return 'stable';
+    return d > 0 ? 'rising' : 'falling';
+}
+function pct(x) { return `${Math.round(x * 100)}%`; }
+/** widening reads as widening/narrowing; other signals as rising/falling. */
+function signalWord(metric, d) {
+    if (d === 'stable')
+        return 'stable';
+    if (metric === 'widening')
+        return d === 'rising' ? 'widening' : 'narrowing';
+    return d;
+}
+function withPrior(label, cur, prior, thr, metric) {
+    if (prior === undefined)
+        return { code: metric, text: `${label}: ${pct(cur)}.` };
+    const d = dir(cur, prior, thr);
+    const word = signalWord(metric, d);
+    const wasClause = Math.round(cur * 100) === Math.round(prior * 100) ? '' : ` (was ${pct(prior)})`;
+    return { code: metric, text: `${label}: ${pct(cur)}${wasClause} — ${word}.` };
+}
+function synthesizeDriftReport(input) {
+    const cur = snapshotFromRecords(input.current);
+    const prior = input.prior && input.prior.length > 0 ? snapshotFromRecords(input.prior) : undefined;
+    const periodLabel = input.periodLabel ?? `last ${cur.window} PRs${prior ? ` vs prior ${prior.window}` : ''}`;
+    const sections = [];
+    // Posture
+    sections.push({
+        heading: 'Posture',
+        lines: [withPrior('Flagged (review + incoherent)', cur.signals.flagged, prior?.signals.flagged, RATE_THRESHOLD, 'flagged')],
+    });
+    // Operational signals — always render the three headline signals so the report
+    // can calmly affirm stability; that is the report's job.
+    sections.push({
+        heading: 'Operational signals',
+        lines: [
+            withPrior('Blast-radius widening', cur.signals.widening, prior?.signals.widening, RATE_THRESHOLD, 'widening'),
+            withPrior('Generated-code spillover', cur.signals.generatedSpillover, prior?.signals.generatedSpillover, RATE_THRESHOLD, 'generated-spillover'),
+            withPrior('Undeclared boundary crossings', cur.signals.boundaryCrossing, prior?.signals.boundaryCrossing, RATE_THRESHOLD, 'boundary-crossing'),
+        ],
+    });
+    // Concentration
+    const concLines = [withPrior('Top-3 module concentration', cur.concentrationTopShare, prior?.concentrationTopShare, CONCENTRATION_THRESHOLD, 'concentration')];
+    if (cur.topModules.length > 0) {
+        concLines.push({ code: 'top-modules', text: `Top modules: ${cur.topModules.map((m) => `\`${m.module}\` (${pct(m.share)})`).join(', ')}.` });
+    }
+    sections.push({ heading: 'Concentration', lines: concLines });
+    // Hotspots + emergence/cooling vs prior
+    const hotspotLines = cur.hotspots.slice(0, 4).map((h) => ({ code: 'hotspot', text: `\`${h.module}\` — touched in ${pct(h.share)} of PRs.` }));
+    if (prior) {
+        const priorSet = new Set(prior.hotspots.map((h) => h.module));
+        const curSet = new Set(cur.hotspots.map((h) => h.module));
+        const emerged = cur.hotspots.filter((h) => !priorSet.has(h.module)).map((h) => h.module);
+        const cooled = prior.hotspots.filter((h) => !curSet.has(h.module)).map((h) => h.module);
+        if (emerged.length)
+            hotspotLines.push({ code: 'hotspot-emerged', text: `New this period: ${emerged.map((m) => `\`${m}\``).join(', ')}.` });
+        if (cooled.length)
+            hotspotLines.push({ code: 'hotspot-cooled', text: `Cooled: ${cooled.map((m) => `\`${m}\``).join(', ')}.` });
+    }
+    if (hotspotLines.length > 0)
+        sections.push({ heading: 'Hotspots', lines: hotspotLines });
+    // Contributor operational spread (current window)
+    const contributors = (0, operational_memory_1.deriveTimeline)(input.current, input.current.length).contributors;
+    if (contributors.length > 0) {
+        sections.push({
+            heading: 'Contributor operational spread',
+            lines: contributors.slice(0, 4).map((c) => ({
+                code: 'contributor',
+                text: `\`${c.author}\` — repeated ${c.code.replace(/-/g, ' ')} (${c.events} PRs)${c.areas.length ? ` in ${c.areas.slice(0, 3).join(', ')}` : ''}.`,
+            })),
+        });
+    }
+    const hashInput = JSON.stringify({ periodLabel, window: cur.window, priorWindow: prior?.window ?? null, sections, profile: input.repoProfileHash ?? null });
+    const reportHash = (0, node_crypto_1.createHash)('sha256').update(hashInput).digest('hex').slice(0, 12);
+    return { title: 'Operational Evolution Report', periodLabel, window: cur.window, priorWindow: prior?.window ?? null, sections, reportHash };
+}
+// ── Calm markdown rendering ───────────────────────────────────────────────────
+function renderReportMarkdown(report, opts) {
+    const lines = [
+        '## Neurcode — Operational Evolution Report',
+        '',
+        `_${report.periodLabel}${opts?.repoProfileHash ? ` · repo profile \`${opts.repoProfileHash}\`` : ''} · report \`${report.reportHash}\`_`,
+        '',
+    ];
+    for (const section of report.sections) {
+        if (section.lines.length === 0)
+            continue;
+        lines.push(`### ${section.heading}`, '');
+        for (const line of section.lines)
+            lines.push(`- ${line.text}`);
+        lines.push('');
+    }
+    lines.push('---', `Deterministic · derived from ${opts?.recordCount ?? report.window} operational records · report \`${report.reportHash}\``, '_Operational observability, not developer metrics. Derived from replay-safe topology primitives._');
+    return lines.join('\n');
+}
+
+
+/***/ }),
+
+/***/ 5194:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Operational Synthesis (deterministic fusion)
+ * ============================================
+ *
+ * The platform now has many operational layers — drift, geography, momentum,
+ * release transitions. Each is correct but FRAGMENTED. This layer fuses them
+ * into ONE coherent, sparse operational digest.
+ *
+ * It is fusion, not summarisation: each statement is a deterministic
+ * reconciliation of structured findings the other layers already produced. When
+ * three layers point at the same fact (concentration rising + a pressure zone +
+ * intensifying momentum, all on the same module) it emits ONE consolidated
+ * sentence and lists which layers reinforced it. When a short-window drift and a
+ * release-era momentum disagree, it says so plainly. When everything is quiet,
+ * the digest is one calm line. Replay-safe: pure over the layer outputs, which
+ * are pure over deterministic records.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.synthesizeOperationalDigest = synthesizeOperationalDigest;
+const node_crypto_1 = __nccwpck_require__(7598);
+const operational_report_1 = __nccwpck_require__(3664);
+const operational_cartography_1 = __nccwpck_require__(315);
+const operational_dynamics_1 = __nccwpck_require__(7460);
+const DRIFT_THRESHOLD = 0.10;
+function drift(cur, prior) {
+    const d = cur - prior;
+    if (Math.abs(d) < DRIFT_THRESHOLD)
+        return 'stable';
+    return d > 0 ? 'rising' : 'falling';
+}
+function areaOfModule(module, geo) {
+    return geo.regions.find((r) => r.modules.includes(module))?.area;
+}
+function synthesizeOperationalDigest(input) {
+    const cur = (0, operational_report_1.snapshotFromRecords)(input.current);
+    const prior = input.prior && input.prior.length > 0 ? (0, operational_report_1.snapshotFromRecords)(input.prior) : undefined;
+    const geo = (0, operational_cartography_1.deriveGeography)(input.current, input.staticEdges ?? []);
+    const momentum = input.eras && input.eras.length >= 3 ? (0, operational_dynamics_1.deriveMomentum)(input.eras) : [];
+    const mom = (kind, subject) => momentum.find((m) => m.kind === kind && (subject === undefined || m.subject === subject));
+    const statements = [];
+    const topModule = geo.pressureRegions[0]?.module ?? cur.topModules?.[0]?.module;
+    // ── 1. Concentration / pressure: consolidation · migration · dispersal · stabilization
+    const concMom = mom('concentration');
+    const concDrift = prior ? drift(cur.concentrationTopShare, prior.concentrationTopShare) : undefined;
+    const migrated = prior && geo.pressureRegions.length > 0 && cur.topModules[0] && prior.topModules[0]
+        && cur.topModules[0].module !== prior.topModules[0].module
+        && cur.topModules[0].share - (prior.topModules.find((m) => m.module === cur.topModules[0].module)?.share ?? 0) >= DRIFT_THRESHOLD;
+    if (migrated && topModule) {
+        const area = areaOfModule(topModule, geo);
+        statements.push({ state: 'migrating', text: `Operational pressure has migrated toward \`${topModule}\`${area ? ` (the ${area} region)` : ''}.`, provenance: prov(['drift', concMom ? 'momentum' : null]) });
+    }
+    else if (topModule && (concDrift === 'rising' || concMom?.state === 'intensifying')) {
+        // Reinforcement vs conflict between short-window drift and release-era momentum.
+        if (concDrift === 'rising' && concMom?.state === 'cooling') {
+            statements.push({ state: 'conflicting', text: `Operational concentration rose recently, but across release eras it is cooling — recent pressure may not persist.`, provenance: ['drift', 'momentum'] });
+        }
+        else {
+            const area = areaOfModule(topModule, geo);
+            statements.push({ state: 'consolidating', text: `Operational pressure is consolidating around \`${topModule}\`${area ? ` (the ${area} region)` : ''}.`, provenance: prov(['geography', concDrift === 'rising' ? 'drift' : null, concMom?.state === 'intensifying' ? 'momentum' : null]) });
+        }
+    }
+    else if (concMom?.state === 'stabilized') {
+        statements.push({ state: 'stabilizing', text: `Operational concentration has stabilized${concMom.sinceLabel ? ` after ${concMom.sinceLabel}` : ''} (around ${pct(cur.concentrationTopShare)}).`, provenance: ['momentum'] });
+    }
+    else if (concDrift === 'falling' || concMom?.state === 'cooling') {
+        statements.push({ state: 'dispersing', text: `Operational pressure is dispersing — concentration is ${concMom?.state === 'cooling' ? 'cooling across release eras' : 'falling'}.`, provenance: prov([concDrift === 'falling' ? 'drift' : null, concMom?.state === 'cooling' ? 'momentum' : null]) });
+    }
+    // ── 2. Signals: widening + generated spillover (dissipation / intensification / containment)
+    for (const [sig, label] of [['widening', 'Blast-radius widening'], ['generatedSpillover', 'Generated-code spillover']]) {
+        const m = mom('signal', sig);
+        const d = prior ? drift(cur.signals[sig], prior.signals[sig]) : undefined;
+        if (m?.state === 'dissipated' || m?.state === 'cooling' || d === 'falling') {
+            statements.push({ state: 'dispersing', text: `${label} has ${m?.state === 'dissipated' ? 'dissipated' : 'cooled'}.`, provenance: prov([d === 'falling' ? 'drift' : null, m ? 'momentum' : null]) });
+        }
+        else if (m?.state === 'intensifying' || d === 'rising') {
+            statements.push({ state: 'consolidating', text: `${label} is intensifying.`, provenance: prov([d === 'rising' ? 'drift' : null, m ? 'momentum' : null]) });
+        }
+        else if (sig === 'generatedSpillover' && cur.signals.generatedSpillover > 0 && cur.signals.generatedSpillover < 0.1 && (m === undefined || m.state === 'persistent')) {
+            statements.push({ state: 'contained', text: `Generated-code spillover stayed contained (${pct(cur.signals.generatedSpillover)}).`, provenance: ['drift'] });
+        }
+    }
+    // ── 3. Corridors: co-evolution of regions (momentum-confirmed, else geography-present)
+    const corridorMom = momentum.filter((m) => m.kind === 'corridor' && (m.state === 'intensifying' || m.state === 'persistent'));
+    const corridorSubject = corridorMom[0]?.subject ?? (geo.corridors[0] ? `${geo.corridors[0].a} ${geo.corridors[0].b}` : undefined);
+    if (corridorSubject) {
+        const [a, b] = corridorSubject.split(' ');
+        const aa = areaOfModule(a, geo);
+        const ba = areaOfModule(b, geo);
+        const regionClause = aa && ba && aa !== ba ? ` — ${aa} and ${ba} regions increasingly co-evolve` : '';
+        const phrase = corridorMom[0]?.state === 'intensifying' ? 'continues to strengthen'
+            : corridorMom[0]?.state === 'persistent' ? 'remains a sustained co-change path'
+                : 'is an active co-change path';
+        const structural = geo.corridors.find((c) => (c.a === a && c.b === b) || (c.a === b && c.b === a))?.structural === true;
+        const reinforced = structural ? ' — reinforced by both replay evolution and static dependency topology' : '';
+        statements.push({ state: 'co-evolving', text: `The \`${a}\` ↔ \`${b}\` corridor ${phrase}${regionClause}${reinforced}.`, provenance: prov([corridorMom[0] ? 'momentum' : null, 'geography', structural ? 'static' : null]) });
+    }
+    // Order by kineticness; cap.
+    const rank = { migrating: 0, consolidating: 1, conflicting: 2, 'co-evolving': 3, dispersing: 4, stabilizing: 5, contained: 6 };
+    const ordered = statements.sort((x, y) => rank[x.state] - rank[y.state]).slice(0, 6);
+    const digestHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
+        repo: input.repo ?? null, window: cur.window, eras: input.eras?.length ?? 0,
+        s: ordered.map((s) => `${s.state}:${s.text}`),
+    })).digest('hex').slice(0, 12);
+    return { window: cur.window, eras: input.eras?.length ?? 0, statements: ordered, digestHash, markdown: render(ordered, cur.window, input.eras?.length ?? 0, input.repo, digestHash) };
+}
+function pct(x) { return `${Math.round(x * 100)}%`; }
+function prov(parts) { return parts.filter((p) => !!p); }
+function render(statements, window, eras, repo, hash) {
+    const lines = [
+        '## Neurcode — Operational Digest',
+        '',
+        `_${repo ? `${repo} · ` : ''}window ${window} PRs${eras >= 3 ? ` · ${eras} release eras` : ''} · digest \`${hash}\`_`,
+        '',
+    ];
+    if (statements.length === 0) {
+        lines.push('Operationally quiet — no consolidation, migration, co-evolution, or dissipation above threshold across this window.');
+    }
+    else {
+        for (const s of statements) {
+            const reinforced = s.provenance.length >= 2 ? ` _(reinforced across ${s.provenance.join(' + ')})_` : '';
+            lines.push(`- ${s.text}${reinforced}`);
+        }
+    }
+    lines.push('', '---', `Deterministic synthesis of drift + geography + momentum · digest \`${hash}\``, '_One coherent operational picture, fused from replay-safe primitives. Not a summary._');
+    return lines.join('\n');
+}
+
+
+/***/ }),
+
+/***/ 7881:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Compact OSS PR comment.
+ *
+ * Maintainers skim PR checks in seconds. This renderer optimises for that:
+ * one verdict, one sentence, a tiny declared-vs-touched table, the few reasons
+ * that matter, and a deduped advisory list of reliability findings. No A–F
+ * grade, no score, no governance-posture / replay / evidence / decision-lineage
+ * sections — those are enterprise concerns and are intentionally absent here.
+ *
+ * It reuses the same comment marker as the enterprise formatter so a repo that
+ * later turns enterprise mode on upgrades the same PR comment in place.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NEURCODE_RUN_ID_PLACEHOLDER = exports.NEURCODE_GOVERNANCE_REPORT_MARKER = void 0;
+exports.dedupeStructural = dedupeStructural;
+exports.formatOssScopeComment = formatOssScopeComment;
+exports.formatOssStepSummary = formatOssStepSummary;
+exports.shouldComment = shouldComment;
+exports.resolveOssExit = resolveOssExit;
+const pr_lifecycle_1 = __nccwpck_require__(4638);
+exports.NEURCODE_GOVERNANCE_REPORT_MARKER = '<!-- neurcode-governance-report -->';
+exports.NEURCODE_RUN_ID_PLACEHOLDER = '{{NEURCODE_RUN_ID}}';
+const MAX_REASONS = 3;
+const MAX_EVIDENCE_PER_REASON = 3;
+const MAX_STRUCTURAL_ROWS = 6;
+const SUBSYSTEM_LABEL = {
+    docs: 'docs',
+    test: 'tests',
+    ci: 'CI',
+    build: 'build/deps',
+    config: 'config',
+    frontend: 'frontend',
+    generated: 'generated code',
+    sensitive: 'sensitive',
+    source: 'source',
+};
+function esc(value) {
+    return value.replace(/\|/g, '\\|').replace(/`/g, '\\`');
+}
+function verdictBadge(level) {
+    if (level === 'incoherent')
+        return '⛔ **Scope mismatch**';
+    if (level === 'review')
+        return '⚠️ **Worth a look**';
+    return '✅ **Scope coherent**';
+}
+/** Dedupe structural findings by file+line+rule — collapses the policy-engine mirror. */
+function dedupeStructural(findings) {
+    const seen = new Set();
+    const out = [];
+    for (const f of findings) {
+        const key = `${f.file}:${f.line ?? ''}:${f.ruleId.toUpperCase()}`;
+        if (seen.has(key))
+            continue;
+        seen.add(key);
+        out.push(f);
+    }
+    return out.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0) || a.ruleId.localeCompare(b.ruleId));
+}
+function renderTouched(result) {
+    const subs = result.blastRadius.subsystems;
+    if (subs.length === 0)
+        return '_(no files classified)_';
+    return subs
+        .map((s) => {
+        const label = SUBSYSTEM_LABEL[s.subsystem] ?? s.subsystem;
+        const tagSuffix = s.tags.length > 0 ? ` (${s.tags.join(', ')})` : '';
+        const bold = s.significant === true || s.subsystem === 'sensitive';
+        const text = `${label}${tagSuffix} ×${s.files.length}`;
+        return bold ? `**${esc(text)}**` : esc(text);
+    })
+        .join(' · ');
+}
+function formatOssScopeComment(input) {
+    const { result } = input;
+    const declared = result.declared;
+    const structural = dedupeStructural(input.structural);
+    const kindLabel = declared.changeKind === 'unknown' ? 'unlabeled' : declared.changeKind;
+    const issueRef = declared.linkedIssues.length > 0
+        ? ` · linked #${declared.linkedIssues.join(', #')}`
+        : '';
+    // The operational narrative (deterministic) is the headline when present.
+    const summary = result.narrative?.summary || result.headline;
+    const statements = result.narrative?.statements ?? [];
+    const lines = [
+        exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
+        '## Neurcode — PR Scope Coherence',
+        '',
+        `${verdictBadge(result.level)} — ${esc(summary)}`,
+        '',
+        `> **Reads as:** \`${esc(kindLabel)}\`${issueRef}` + (declared.title ? ` — “${esc(declared.title)}”` : ''),
+        `> **Actually touches:** ${renderTouched(result)}`,
+        '',
+    ];
+    // Lifecycle: how operational coherence evolved across pushes (only when there's a story).
+    if (input.lifecycle && input.lifecycle.pushes.length >= 2) {
+        const a = (0, pr_lifecycle_1.analyzeLifecycle)(input.lifecycle);
+        if (a.narrative)
+            lines.push(`> **Lifecycle:** ${esc(a.narrative)}`, '');
+    }
+    // Sparse "operational read" — only when the narrative has something to say
+    // beyond the verdict (i.e. flagged or mechanically-suppressed PRs).
+    if (statements.length > 0) {
+        lines.push('### Operational read', '');
+        for (const s of statements.slice(0, MAX_REASONS)) {
+            lines.push(`- ${esc(s.text)}`);
+            const ev = (s.evidence ?? []).slice(0, MAX_EVIDENCE_PER_REASON).map((e) => `\`${esc(e)}\``);
+            if (ev.length > 0) {
+                const more = (s.evidence ?? []).length > MAX_EVIDENCE_PER_REASON
+                    ? ` _+${(s.evidence ?? []).length - MAX_EVIDENCE_PER_REASON} more_` : '';
+                lines.push(`  ${ev.join(', ')}${more}`);
+            }
+        }
+        lines.push('');
+    }
+    if (structural.length > 0) {
+        const shown = structural.slice(0, MAX_STRUCTURAL_ROWS);
+        const omitted = structural.length - shown.length;
+        lines.push('### Reliability checks (advisory)', '');
+        for (const f of shown) {
+            const loc = f.line ? `${f.file}:${f.line}` : f.file;
+            lines.push(`- \`${esc(loc)}\` — ${esc(f.ruleId)} ${esc(f.title)}`);
+        }
+        if (omitted > 0)
+            lines.push('', `> +${omitted} more in the CI log.`);
+        lines.push('');
+    }
+    lines.push('---', `Deterministic · scope \`${result.scopeHash}\` · re-run on this commit to reproduce · run ${exports.NEURCODE_RUN_ID_PLACEHOLDER}`, '_Advisory — this never blocks your merge unless a maintainer turns that on. Neurcode checks operational boundaries (scope vs. blast radius), not code style; it runs alongside your code reviewer._');
+    // Hidden, machine-readable per-PR lifecycle store (read on the next push).
+    if (input.lifecycle && input.lifecycle.pushes.length > 0) {
+        lines.push('', (0, pr_lifecycle_1.serializeLifecycle)(input.lifecycle));
+    }
+    return lines.join('\n');
+}
+/**
+ * GitHub step-summary variant. Level-aware so a first-time maintainer is never
+ * confused by silence: on a coherent PR it states plainly that "no comment" is
+ * the EXPECTED result — not a broken or skipped run.
+ */
+function formatOssStepSummary(result) {
+    const facts = [
+        `- Reads as: \`${esc(result.declared.changeKind)}\``,
+        `- Touches: ${result.blastRadius.subsystems.map((s) => `${s.subsystem}×${s.files.length}`).join(', ') || 'none'}`,
+        `- Scope hash: \`${result.scopeHash}\` — re-run on the same commit to reproduce this exact verdict.`,
+    ];
+    if (result.level === 'coherent') {
+        return [
+            '## Neurcode — PR Scope Coherence',
+            '',
+            '✅ **Scope coherent — no PR comment posted. This is the expected result.**',
+            '',
+            "Neurcode stays silent on healthy PRs and speaks only when a change's actual blast radius diverges from what it says it does. It is advisory and never blocks your merge.",
+            '',
+            ...facts,
+        ].join('\n');
+    }
+    return [
+        '## Neurcode — PR Scope Coherence',
+        '',
+        `${verdictBadge(result.level)} — ${result.narrative?.summary || result.headline}`,
+        '',
+        'Neurcode posted one advisory comment on this PR. It is advisory and never blocks your merge unless a maintainer turns that on.',
+        '',
+        ...facts,
+    ].join('\n');
+}
+/**
+ * Silent-success comment policy: HIGH SIGNAL, LOW PRESENCE.
+ * - 'flagged' (default): comment only on review/incoherent; coherent PRs stay
+ *   quiet (a prior comment is still updated to resolved, but none is created).
+ * - 'always': comment on every PR.  - 'never': CI outputs / step-summary only.
+ */
+function shouldComment(level, commentOn) {
+    if (commentOn === 'never')
+        return false;
+    if (commentOn === 'always')
+        return true;
+    return level !== 'coherent';
+}
+/**
+ * OSS exit semantics. Advisory by default — trust is the priority for a first
+ * install. A maintainer can opt into hard-failing on mismatch once they trust
+ * the signal (`scope_coherence_fail: true`).
+ */
+function resolveOssExit(input) {
+    if (input.level === 'incoherent') {
+        return input.failOnIncoherent
+            ? { shouldFail: true, warning: 'Neurcode: PR scope mismatch (configured to block).' }
+            : { shouldFail: false, warning: 'Neurcode: PR scope mismatch — advisory only.' };
+    }
+    if (input.level === 'review') {
+        return { shouldFail: false, warning: 'Neurcode: PR scope worth a review.' };
+    }
+    return { shouldFail: false, warning: null };
+}
+
+
+/***/ }),
+
+/***/ 4638:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * PR Operational Lifecycle (deterministic, per-push)
+ * ==================================================
+ *
+ * The merged state alone can't tell "flagged then fixed" from "always coherent".
+ * This tracks how a single PR's operational coherence evolves ACROSS PUSHES and
+ * derives the convergence story — converged, fix-loop, persistent, or unresolved.
+ *
+ * The lifecycle is stored IN the PR comment itself (a hidden block), so there is
+ * no separate telemetry pipeline: each run reads the prior lifecycle, appends the
+ * current push's state, and re-derives the story. Only DISTINCT operational
+ * states count (re-pushing the same diff — same scopeHash — is not a new state),
+ * which keeps the timeline sparse. Pure ⇒ replay-safe.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.emptyLifecycle = emptyLifecycle;
+exports.appendPush = appendPush;
+exports.analyzeLifecycle = analyzeLifecycle;
+exports.serializeLifecycle = serializeLifecycle;
+exports.parseLifecycle = parseLifecycle;
+const EMBED_PREFIX = '<!-- neurcode-lifecycle:';
+const EMBED_SUFFIX = '-->';
+function emptyLifecycle() { return { v: 1, pushes: [] }; }
+/** Append the current push, collapsing no-op re-pushes (identical scopeHash). */
+function appendPush(prior, current) {
+    const pushes = prior?.pushes ? [...prior.pushes] : [];
+    const last = pushes[pushes.length - 1];
+    if (last && last.hash === current.hash)
+        return { v: 1, pushes }; // no operational change
+    pushes.push({ seq: pushes.length, verdict: current.verdict, codes: [...current.codes].sort(), hash: current.hash });
+    return { v: 1, pushes };
+}
+function analyzeLifecycle(state) {
+    const pushes = state.pushes;
+    const distinctStates = pushes.length;
+    const flag = (p) => p.verdict !== 'coherent';
+    let fixes = 0;
+    let regressions = 0;
+    for (let i = 1; i < pushes.length; i++) {
+        if (flag(pushes[i - 1]) && !flag(pushes[i]))
+            fixes += 1;
+        if (!flag(pushes[i - 1]) && flag(pushes[i]))
+            regressions += 1;
+    }
+    const everFlagged = pushes.some(flag);
+    const last = pushes[pushes.length - 1];
+    const lastFlagged = last ? flag(last) : false;
+    // Transient codes: signals that appeared at some point but are gone in the last state.
+    const everCodes = new Set(pushes.flatMap((p) => p.codes));
+    const lastCodes = new Set(last?.codes ?? []);
+    const transientCodes = [...everCodes].filter((c) => !lastCodes.has(c)).sort();
+    let convergence;
+    if (distinctStates <= 1 && !everFlagged)
+        convergence = 'clean';
+    else if (!lastFlagged && everFlagged)
+        convergence = (regressions >= 1 || fixes >= 2) ? 'fix-loop' : 'converged';
+    else if (lastFlagged && pushes.every(flag))
+        convergence = 'persistent';
+    else if (lastFlagged)
+        convergence = 'unresolved';
+    else
+        convergence = 'clean';
+    return { convergence, distinctStates, fixes, regressions, transientCodes, narrative: narrate(convergence, distinctStates, fixes, regressions, transientCodes) };
+}
+function transientClause(codes) {
+    if (codes.length === 0)
+        return '';
+    const label = {
+        'generated-spillover': 'generated-code spillover', 'boundary-crossing': 'the boundary crossing',
+        'new-operational-edge': 'the new operational edge', widening: 'operational widening',
+        'low-surface-touches-significant': 'the significant-boundary touch', 'docs-change-touches-source': 'the docs/source widening',
+    };
+    const named = codes.map((c) => label[c] ?? c).slice(0, 2);
+    return ` — ${named.join(' and ')} resolved along the way`;
+}
+function narrate(convergence, distinct, fixes, regressions, transient) {
+    switch (convergence) {
+        case 'clean': return null; // no story — silence
+        case 'converged': return `Converged before merge — flagged earlier, resolved across ${distinct} operational states${transientClause(transient)}.`;
+        case 'fix-loop': return `Entered repeated remediation loops (${fixes} fix / ${regressions} regression cycle${fixes + regressions === 1 ? '' : 's'}) before converging.`;
+        case 'persistent': return `Operational incoherence has persisted across ${distinct} pushes — not yet converged.`;
+        case 'unresolved': return `Not yet converged — re-flagged after an earlier coherent state.`;
+        default: return null;
+    }
+}
+// ── Hidden-comment serialisation (the per-PR store) ───────────────────────────
+function serializeLifecycle(state) {
+    // Compact: drop full hashes to short prefixes to keep the block small.
+    const compact = { v: 1, pushes: state.pushes.map((p) => ({ s: p.seq, v: p.verdict, c: p.codes, h: p.hash.slice(0, 8) })) };
+    return `${EMBED_PREFIX}${JSON.stringify(compact)}${EMBED_SUFFIX}`;
+}
+function parseLifecycle(commentBody) {
+    if (!commentBody)
+        return null;
+    const start = commentBody.indexOf(EMBED_PREFIX);
+    if (start === -1)
+        return null;
+    const end = commentBody.indexOf(EMBED_SUFFIX, start);
+    if (end === -1)
+        return null;
+    const json = commentBody.slice(start + EMBED_PREFIX.length, end).trim();
+    try {
+        const obj = JSON.parse(json);
+        if (!Array.isArray(obj.pushes))
+            return null;
+        return { v: 1, pushes: obj.pushes.map((p) => ({ seq: p.s, verdict: p.v, codes: Array.isArray(p.c) ? p.c : [], hash: p.h })) };
+    }
+    catch {
+        return null;
+    }
+}
+
+
+/***/ }),
+
+/***/ 9006:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Release-aware operational intelligence (deterministic)
+ * ======================================================
+ *
+ * Rolling windows capture continuous drift; software actually evolves in EPOCHS
+ * — releases, migrations, architectural transitions. This layer groups the
+ * longitudinal records by release boundary (git tag + date), snapshots each
+ * release, and compares release-to-release to surface architectural transitions
+ * and migration epochs.
+ *
+ * The narratives are release-ANCHORED FACTS, never causal claims. The system
+ * states "v2.8: operational concentration rose 71% → 78%"; it does NOT guess
+ * *why* (that would be prose). The maintainer knows what shipped in v2.8.
+ *
+ * Replay-safe: buckets are a pure grouping of (deterministic) records by a
+ * release list, snapshots/transitions are pure folds, so the same (records,
+ * releases) always yield the same report and the same reportHash.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isPreRelease = isPreRelease;
+exports.groupByReleases = groupByReleases;
+exports.detectTransitions = detectTransitions;
+exports.detectEpochs = detectEpochs;
+exports.synthesizeReleaseReport = synthesizeReleaseReport;
+const node_crypto_1 = __nccwpck_require__(7598);
+const operational_report_1 = __nccwpck_require__(3664);
+/**
+ * Pre-release tags (alpha/beta/rc/dev/nightly) are not stable architectural
+ * boundaries — they fragment the timeline into tiny, noisy windows. Excluded by
+ * default; their PRs roll into the next stable release.
+ */
+function isPreRelease(tag) {
+    return /(?:[-.]|^)(?:alpha|beta|rc|pre|preview|dev|snapshot|nightly|canary)\b/i.test(tag) ||
+        /\d(?:a|b|rc|alpha|beta)\d+$/i.test(tag) ||
+        /[-.](?:a|b|rc)\d+$/i.test(tag);
+}
+const MIN_RELEASE_PRS = 5;
+const CONCENTRATION_SHIFT = 0.10;
+const SIGNAL_SHIFT = 0.12;
+const COUPLING_SHIFT = 0.15;
+const EPOCH_RATE = 0.15;
+// ── Grouping ──────────────────────────────────────────────────────────────────
+/** Assign each record (by mergedAt) to the first release whose date is >= it. */
+function groupByReleases(records, releases) {
+    const sortedReleases = [...releases].filter((r) => r.tag && r.date).sort((a, b) => a.date.localeCompare(b.date));
+    const dated = records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
+    const byTag = new Map();
+    for (const rel of sortedReleases)
+        byTag.set(rel.tag, []);
+    const unreleased = [];
+    for (const rec of dated) {
+        const m = rec.mergedAt;
+        const rel = sortedReleases.find((r) => r.date >= m);
+        if (rel)
+            byTag.get(rel.tag).push(rec);
+        else
+            unreleased.push(rec);
+    }
+    const buckets = sortedReleases
+        .map((rel) => ({ tag: rel.tag, date: rel.date, records: byTag.get(rel.tag).sort((a, b) => a.pr - b.pr) }))
+        .filter((b) => b.records.length > 0)
+        .map((b) => ({ ...b, snapshot: (0, operational_report_1.snapshotFromRecords)(b.records) }));
+    if (unreleased.length > 0) {
+        buckets.push({ tag: 'unreleased', date: '9999', records: unreleased.sort((a, b) => a.pr - b.pr), snapshot: (0, operational_report_1.snapshotFromRecords)(unreleased) });
+    }
+    return buckets;
+}
+function pct(x) { return `${Math.round(x * 100)}%`; }
+function pairRates(records) {
+    const counts = new Map();
+    for (const r of records) {
+        const areas = [...new Set(r.areas)].sort();
+        for (let i = 0; i < areas.length; i++) {
+            for (let j = i + 1; j < areas.length; j++)
+                counts.set(`${areas[i]} + ${areas[j]}`, (counts.get(`${areas[i]} + ${areas[j]}`) ?? 0) + 1);
+        }
+    }
+    const out = new Map();
+    const n = Math.max(1, records.length);
+    for (const [k, c] of counts)
+        out.set(k, { rate: c / n, count: c });
+    return out;
+}
+function detectTransitions(buckets) {
+    const out = [];
+    const real = buckets.filter((b) => b.tag !== 'unreleased');
+    for (let i = 1; i < real.length; i++) {
+        const cur = real[i];
+        const prior = real[i - 1];
+        if (cur.records.length < MIN_RELEASE_PRS || prior.records.length < MIN_RELEASE_PRS)
+            continue;
+        const cs = cur.snapshot;
+        const ps = prior.snapshot;
+        if (Math.abs(cs.concentrationTopShare - ps.concentrationTopShare) >= CONCENTRATION_SHIFT) {
+            const rising = cs.concentrationTopShare > ps.concentrationTopShare;
+            const top = cs.topModules[0]?.module;
+            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'concentration-shift', architectural: true,
+                text: `operational concentration ${rising ? 'rose' : 'fell'} ${pct(ps.concentrationTopShare)} → ${pct(cs.concentrationTopShare)}${top ? ` (top \`${top}\`)` : ''}` });
+        }
+        const curTop = cs.topModules[0]?.module;
+        const priorTop = ps.topModules[0]?.module;
+        if (curTop && priorTop && curTop !== priorTop && cs.hotspots.length > 0) {
+            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'hotspot-shift', architectural: true,
+                text: `the dominant module shifted from \`${priorTop}\` to \`${curTop}\`` });
+        }
+        const priorCentral = new Set(ps.centralModules);
+        const curCentral = new Set(cs.centralModules);
+        for (const m of cs.centralModules.filter((x) => !priorCentral.has(x))) {
+            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'new-central', architectural: true, text: `\`${m}\` became operationally central` });
+        }
+        for (const m of ps.centralModules.filter((x) => !curCentral.has(x))) {
+            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'lost-central', architectural: true, text: `\`${m}\` is no longer operationally central` });
+        }
+        if (Math.abs(cs.signals.widening - ps.signals.widening) >= SIGNAL_SHIFT) {
+            const narrowed = cs.signals.widening < ps.signals.widening;
+            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'widening-shift', architectural: false,
+                text: `blast-radius widening ${narrowed ? 'narrowed' : 'widened'} ${pct(ps.signals.widening)} → ${pct(cs.signals.widening)}` });
+        }
+        if (Math.abs(cs.signals.generatedSpillover - ps.signals.generatedSpillover) >= SIGNAL_SHIFT) {
+            const rising = cs.signals.generatedSpillover > ps.signals.generatedSpillover;
+            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'spillover-shift', architectural: false,
+                text: `generated-code spillover ${rising ? 'rose' : 'fell'} ${pct(ps.signals.generatedSpillover)} → ${pct(cs.signals.generatedSpillover)}` });
+        }
+        // Coupling: an area-pair that co-changes markedly more than the prior release.
+        const curPairs = pairRates(cur.records);
+        const priorPairs = pairRates(prior.records);
+        const rising = [...curPairs.entries()]
+            .filter(([k, v]) => v.count >= 2 && v.rate - (priorPairs.get(k)?.rate ?? 0) >= COUPLING_SHIFT)
+            .sort((a, b) => b[1].rate - a[1].rate);
+        if (rising.length > 0) {
+            const [pairKey, v] = rising[0];
+            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'coupling-shift', architectural: false,
+                text: `${pairKey.replace(/-/g, ' ')} increasingly co-change (${pct(priorPairs.get(pairKey)?.rate ?? 0)} → ${pct(v.rate)} of PRs)` });
+        }
+    }
+    return out;
+}
+function detectEpochs(buckets) {
+    const real = buckets.filter((b) => b.tag !== 'unreleased' && b.records.length >= MIN_RELEASE_PRS);
+    const epochs = [];
+    for (const metric of ['generated-spillover', 'widening']) {
+        const rateOf = (b) => metric === 'widening' ? b.snapshot.signals.widening : b.snapshot.signals.generatedSpillover;
+        let runStart = -1;
+        for (let i = 0; i <= real.length; i++) {
+            const elevated = i < real.length && rateOf(real[i]) >= EPOCH_RATE;
+            if (elevated && runStart === -1)
+                runStart = i;
+            else if (!elevated && runStart !== -1) {
+                if (i - runStart >= 2)
+                    epochs.push({ fromTag: real[runStart].tag, toTag: real[i - 1].tag, metric, releases: i - runStart });
+                runStart = -1;
+            }
+        }
+    }
+    return epochs;
+}
+function synthesizeReleaseReport(input) {
+    const releases = input.includePreReleases ? input.releases : input.releases.filter((r) => !isPreRelease(r.tag));
+    const buckets = groupByReleases(input.records, releases);
+    const transitions = detectTransitions(buckets);
+    const epochs = detectEpochs(buckets);
+    const transitionTags = new Set(transitions.filter((t) => t.architectural).map((t) => t.tag));
+    const reportHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
+        repo: input.repo ?? null,
+        buckets: buckets.map((b) => ({ tag: b.tag, w: b.records.length, c: Math.round(b.snapshot.concentrationTopShare * 100), top: b.snapshot.topModules[0]?.module ?? null })),
+        transitions: transitions.map((t) => `${t.tag}:${t.kind}`),
+        epochs: epochs.map((e) => `${e.fromTag}-${e.toTag}:${e.metric}`),
+    })).digest('hex').slice(0, 12);
+    const lines = [
+        '## Neurcode — Release Operational History',
+        '',
+        `_${input.repo ? `${input.repo} · ` : ''}${buckets.length} release window(s) · report \`${reportHash}\`_`,
+        '',
+        '### Topology by release',
+        '',
+    ];
+    // Newest first for readability.
+    for (const b of [...buckets].reverse()) {
+        const s = b.snapshot;
+        const top = s.topModules[0]?.module;
+        const marker = transitionTags.has(b.tag) ? '  ⟳ transition' : '';
+        lines.push(`- **${b.tag}** (${b.records.length} PRs): concentration ${pct(s.concentrationTopShare)}${top ? ` · top \`${top}\`` : ''} · flagged ${pct(s.signals.flagged)}${marker}`);
+    }
+    lines.push('');
+    lines.push('### Transitions', '');
+    if (transitions.length === 0) {
+        lines.push('- No architectural or operational transitions detected across these releases.');
+    }
+    else {
+        for (const t of transitions)
+            lines.push(`- **${t.priorTag} → ${t.tag}:** ${t.text}.`);
+    }
+    lines.push('');
+    if (epochs.length > 0) {
+        lines.push('### Migration epochs', '');
+        for (const e of epochs) {
+            lines.push(`- **${e.fromTag} → ${e.toTag}:** ${e.metric.replace(/-/g, ' ')} stayed elevated across ${e.releases} releases.`);
+        }
+        lines.push('');
+    }
+    lines.push('---', `Deterministic · ${input.records.filter((r) => r.mergedAt).length} dated records across ${buckets.length} releases · report \`${reportHash}\``, '_Release-anchored operational facts, derived from replay-safe topology primitives. Not causal claims._');
+    return { repo: input.repo, buckets: buckets.length, transitions, epochs, reportHash, markdown: lines.join('\n') };
+}
+
+
+/***/ }),
+
+/***/ 7383:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Repository Operational Topology (deterministic, language-agnostic)
+ * ==================================================================
+ *
+ * The current scope-coherence ontology classifies files against a hardcoded,
+ * web-backend-shaped token list (auth/scheduler/payments/runtime/…). A replay
+ * audit over real repos showed why that is insufficient: 25–80% of every repo's
+ * code lands in an undifferentiated `source` bucket, and Rust/Dart/Go monorepos
+ * (AppFlowy, CrewAI, Supabase) carry rich module structure the ontology never
+ * sees.
+ *
+ * This module derives a repository's operational topology from the file tree
+ * itself — no hardcoded ecosystem semantics, no LLM, no embeddings, no network.
+ * The unit of structure is the **module**, defined the way each ecosystem
+ * already defines it: a directory containing a package manifest (Cargo.toml,
+ * pubspec.yaml, go.mod, package.json, pyproject.toml, …). Everything is a pure
+ * function of a sorted path list, so the same tree yields the same profile and
+ * the same `profileHash` — replay-stable by construction.
+ *
+ * What stays hardcoded (intentionally): a SMALL set of *universal* security
+ * tokens (auth/crypto/secrets/payments/migrations). Those are genuinely
+ * cross-language sensitive. What becomes derived: module boundaries, runtime
+ * entrypoints, generated regions, and which modules are operationally
+ * significant. The web-backend *architectural* tokens (scheduler/runtime/
+ * executor/kernel) are deliberately dropped here — that role is now inferred
+ * from entrypoints and (optionally) import centrality.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.normalizePath = normalizePath;
+exports.securityTagFor = securityTagFor;
+exports.significantSecurityTagFor = significantSecurityTagFor;
+exports.roleOf = roleOf;
+exports.deriveTopology = deriveTopology;
+exports.subsystemOf = subsystemOf;
+exports.isSignificant = isSignificant;
+exports.withCentrality = withCentrality;
+exports.findManifestPaths = findManifestPaths;
+exports.deriveManifestEdges = deriveManifestEdges;
+const node_crypto_1 = __nccwpck_require__(7598);
+// ── Universal security overlay (intentionally hardcoded, cross-language) ───────
+// Token-exact match on path segments. Deliberately excludes architectural
+// role words (scheduler/runtime/executor/kernel) — those are derived.
+const SECURITY_TOKENS = {
+    auth: 'auth', authn: 'auth', authz: 'authz', oauth: 'auth', sso: 'auth', saml: 'auth',
+    credential: 'credentials', credentials: 'credentials',
+    secret: 'secrets', secrets: 'secrets',
+    security: 'security', crypto: 'crypto', cryptography: 'crypto', encryption: 'crypto', jwt: 'auth',
+    rbac: 'permissions', permission: 'permissions', permissions: 'permissions',
+    payment: 'payments', payments: 'payments', billing: 'billing', checkout: 'payments',
+    migration: 'migrations', migrations: 'migrations',
+};
+// A directory is a "module root" if it directly contains one of these manifests.
+const MANIFESTS = new Set([
+    'package.json', 'cargo.toml', 'go.mod', 'pubspec.yaml',
+    'pyproject.toml', 'setup.py', 'setup.cfg', 'pom.xml',
+    'build.gradle', 'build.gradle.kts', 'composer.json', 'gemfile', 'mix.exs',
+    'cmakelists.txt',
+]);
+// Monorepo container segments — when a manifest is absent, a child of one of
+// these is still a recognisable module boundary.
+const MONOREPO_CONTAINERS = new Set([
+    'packages', 'apps', 'services', 'crates', 'libs', 'lib', 'modules', 'plugins', 'cmd', 'projects',
+]);
+const CODE_EXTS = new Set([
+    'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'go', 'rs', 'dart',
+    'java', 'kt', 'kts', 'rb', 'php', 'c', 'cc', 'cpp', 'h', 'hpp', 'cs', 'scala', 'swift', 'ex', 'exs',
+]);
+const DOC_EXTS = new Set(['md', 'mdx', 'rst', 'adoc', 'mdc']);
+const CONFIG_EXTS = new Set(['yml', 'yaml', 'json', 'toml', 'ini', 'cfg', 'properties', 'env']);
+// ── Path helpers (self-contained — no dependency on scope-coherence) ──────────
+function normalizePath(p) {
+    return (p || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').trim();
+}
+function dirOf(path) {
+    const i = path.lastIndexOf('/');
+    return i === -1 ? '' : path.slice(0, i);
+}
+function baseOf(path) {
+    return path.split('/').pop() || path;
+}
+function extOf(path) {
+    const b = baseOf(path);
+    const d = b.lastIndexOf('.');
+    return d > 0 ? b.slice(d + 1).toLowerCase() : '';
+}
+function segsOf(path) {
+    return path.toLowerCase().split('/').filter(Boolean);
+}
+function tokensOf(path) {
+    return path.toLowerCase().split(/[/\\._\-]+/).filter(Boolean);
+}
+/** Universal security tag for a path, or null. Token-exact (no "author"⊃"auth"). */
+function securityTagFor(path) {
+    for (const tok of tokensOf(path)) {
+        if (SECURITY_TOKENS[tok])
+            return SECURITY_TOKENS[tok];
+    }
+    return null;
+}
+const FRONTEND_EXTS_T = new Set(['tsx', 'jsx', 'vue', 'svelte', 'css', 'scss', 'less', 'html']);
+const SOFT_SECURITY_TAGS = new Set(['auth', 'authz', 'permissions']);
+function isFrontendPath(path) {
+    const segs = segsOf(path);
+    return FRONTEND_EXTS_T.has(extOf(path)) ||
+        segs.includes('components') || segs.includes('ui') || segs.includes('pages') || segs.includes('views');
+}
+/**
+ * Security tag for OPERATIONAL significance — like securityTagFor, but a soft
+ * tag (auth/authz/permissions) in a frontend file is NOT significant: an
+ * `Auth/` UI component tree is not the authentication runtime. Hard tags
+ * (secrets/crypto/payments/migrations) stay significant everywhere. Evidenced
+ * by supabase#46222 (a Modal→Dialog UI codemod under Auth/Policies/).
+ */
+function significantSecurityTagFor(rawPath) {
+    const path = normalizePath(rawPath);
+    const tag = securityTagFor(path);
+    if (!tag)
+        return null;
+    if (SOFT_SECURITY_TAGS.has(tag) && isFrontendPath(path))
+        return null;
+    return tag;
+}
+// ── Structural role (path-based, language-agnostic, profile-independent) ──────
+// Runtime entrypoints only. NOT lib.rs/mod.rs — a Rust library root is touched
+// routinely and is not operationally critical the way a binary entrypoint is.
+// (Real-PR evidence: AppFlowy#7996 over-fired on lib-log/src/lib.rs.)
+const ENTRYPOINT_BASENAMES = new Set([
+    'main.rs', 'main.go', 'main.py', '__main__.py', 'main.dart',
+]);
+// A main.* under a tooling/test/example path is a helper binary, NOT the
+// product runtime entrypoint — it must not count as operationally significant.
+// (Real-PR evidence: hashicorp/terraform#38606, a CI checker tool's main.go.)
+// NB: 'cmd' is intentionally absent — Go product entrypoints live in cmd/ (e.g.
+// cmd/terraform). A tooling binary lives under tools/hack/scripts/testdata.
+const TOOLING_SEGS = new Set([
+    'test', 'tests', 'testdata', 'example', 'examples', 'hack', 'tools', 'tool',
+    'scripts', 'mocks', 'fixtures', 'e2e', 'bench', 'benchmarks', 'demo', 'demos',
+]);
+function isToolingPath(path) {
+    return segsOf(path).some((s) => TOOLING_SEGS.has(s));
+}
+function roleOf(rawPath) {
+    const path = normalizePath(rawPath);
+    const lower = path.toLowerCase();
+    const segs = segsOf(lower);
+    const base = baseOf(lower);
+    const ext = extOf(lower);
+    const nameNoExt = base.includes('.') ? base.slice(0, base.indexOf('.')) : base;
+    // Generated (strong, cross-language signals). Broadened for Go/k8s/proto/mocks
+    // codegen so generated churn is recognised, not mistaken for source.
+    if (segs.includes('generated') || segs.includes('__generated__') || segs.includes('openapi-gen') || segs.includes('mocks') ||
+        base.startsWith('zz_generated') ||
+        /(_pb2(_grpc)?\.py|\.pb\.(go|cc|h|dart)|\.g\.dart|\.freezed\.dart|\.gr\.dart|\.config\.dart|\.generated\.[a-z]+|\.designer\.cs|_generated\.go|\.gen\.go|_gen\.go|_swagger_doc_generated\.go)$/.test(base)) {
+        return 'generated';
+    }
+    // CI
+    if (lower.startsWith('.github/workflows/') || lower.startsWith('.circleci/') ||
+        base === 'jenkinsfile' || base === '.travis.yml' || base === '.gitlab-ci.yml' || base === 'azure-pipelines.yml') {
+        return 'ci';
+    }
+    // Infra surfaces
+    if (segs.includes('terraform') || segs.includes('k8s') || segs.includes('kubernetes') ||
+        segs.includes('helm') || segs.includes('charts') || segs.includes('ansible') ||
+        segs.includes('deploy') || segs.includes('deployment') ||
+        ext === 'tf' || /^dockerfile/.test(base) || /^docker-compose/.test(base)) {
+        return 'infra';
+    }
+    // Docs (+ examples/cursor rules)
+    if (DOC_EXTS.has(ext) || segs.includes('docs') || segs.includes('doc') || segs.includes('.cursor') ||
+        segs.includes('examples') || segs.includes('example_dags') || segs.includes('samples') ||
+        ['readme', 'changelog', 'contributing', 'license', 'notice', 'authors', 'thanks', 'maintainers', 'codeowners', 'support', 'todo'].includes(nameNoExt)) {
+        return 'docs';
+    }
+    // Tests
+    if (segs.includes('test') || segs.includes('tests') || segs.includes('__tests__') ||
+        segs.includes('spec') || segs.includes('e2e') ||
+        base === 'conftest.py' || /(^test_|_test\.|\.test\.|\.spec\.)/.test(base)) {
+        return 'test';
+    }
+    // Build / dependency manifests
+    if (MANIFESTS.has(base) || /^requirements.*\.txt$/.test(base) || base === 'makefile' ||
+        base === 'tsconfig.json' || ext === 'lock' || base.endsWith('.lock')) {
+        return 'build';
+    }
+    // Runtime entrypoints
+    if (ENTRYPOINT_BASENAMES.has(base) || segs.includes('cmd') || segs.includes('bin')) {
+        return 'entrypoint';
+    }
+    // Security-tool baselines are config, not security code
+    if (base.endsWith('.baseline') || base === '.gitleaks.toml' || base === '.trivyignore') {
+        return 'config';
+    }
+    // Config
+    if (CONFIG_EXTS.has(ext) || base.startsWith('.env') || segs.includes('config')) {
+        return 'config';
+    }
+    // First-party source
+    return 'source';
+}
+// ── Topology derivation ───────────────────────────────────────────────────────
+function deriveTopology(rawPaths) {
+    const paths = [...new Set(rawPaths.map(normalizePath).filter(Boolean))].sort();
+    // 1. Module roots = directories that hold a package manifest (excluding the
+    //    repo root, which would swallow everything). Plus monorepo-container
+    //    children that hold source, as a fallback for repos without nested manifests.
+    const manifestDirs = new Set();
+    for (const p of paths) {
+        if (MANIFESTS.has(baseOf(p.toLowerCase()))) {
+            const d = dirOf(p);
+            if (d)
+                manifestDirs.add(d);
+        }
+    }
+    const containerChildren = new Set();
+    for (const p of paths) {
+        const segs = p.split('/');
+        if (segs.length >= 3 && MONOREPO_CONTAINERS.has(segs[0].toLowerCase()) && CODE_EXTS.has(extOf(p))) {
+            containerChildren.add(`${segs[0]}/${segs[1]}`);
+        }
+    }
+    let moduleRoots = [...new Set([...manifestDirs, ...containerChildren])];
+    // If we found essentially no structure, fall back to top-level directories
+    // that contain code (so even a flat repo gets *some* partition).
+    if (moduleRoots.length <= 1) {
+        const topDirs = new Set();
+        for (const p of paths) {
+            const segs = p.split('/');
+            if (segs.length >= 2 && CODE_EXTS.has(extOf(p)))
+                topDirs.add(segs[0]);
+        }
+        moduleRoots = [...new Set([...moduleRoots, ...topDirs])];
+    }
+    // Longest-first so subsystemOf() matches the deepest (most specific) module.
+    moduleRoots.sort((a, b) => b.length - a.length || a.localeCompare(b));
+    // 2. Record which modules contain a runtime entrypoint — informational, for
+    //    explanation only. Significance is FILE-level (see isSignificant), so a
+    //    2000-file app is not "all significant" just because it has a main.*.
+    const entrypointModules = new Set();
+    for (const p of paths) {
+        if (roleOf(p) === 'entrypoint') {
+            const mod = matchModuleRoot(p, moduleRoots);
+            if (mod)
+                entrypointModules.add(mod);
+        }
+    }
+    const profileHash = (0, node_crypto_1.createHash)('sha256')
+        .update(JSON.stringify({ m: moduleRoots }))
+        .digest('hex').slice(0, 12);
+    return {
+        moduleRoots,
+        entrypointModules: [...entrypointModules].sort(),
+        centralModules: [],
+        centralFanIn: {},
+        fileCount: paths.length,
+        profileHash,
+    };
+}
+function matchModuleRoot(path, moduleRoots) {
+    const dir = dirOf(path);
+    for (const root of moduleRoots) {
+        if (dir === root || dir.startsWith(`${root}/`) || path.startsWith(`${root}/`))
+            return root;
+    }
+    return null;
+}
+/** The repo-specific module a file belongs to (or its top-level dir as fallback). */
+function subsystemOf(rawPath, profile) {
+    const path = normalizePath(rawPath);
+    const mod = matchModuleRoot(path, profile.moduleRoots);
+    if (mod)
+        return mod;
+    const segs = path.split('/');
+    return segs.length >= 2 ? segs[0] : '(root)';
+}
+/**
+ * Operationally significant = a runtime entrypoint, a universal security zone,
+ * a module flagged significant by derivation, or a centrality hotspot. This is
+ * the generalized, repo-derived replacement for the hardcoded "sensitive" tag.
+ */
+function isSignificant(rawPath, profile) {
+    const path = normalizePath(rawPath);
+    if (roleOf(path) === 'entrypoint' && !isToolingPath(path))
+        return true; // product entrypoint (not a tools/test/example binary)
+    if (significantSecurityTagFor(path) !== null)
+        return true; // file-level: universal security overlay (soft tags exempt in UI)
+    const mod = matchModuleRoot(path, profile.moduleRoots); // module-level: only via import centrality
+    return mod !== null && profile.centralModules.includes(mod);
+}
+/**
+ * Layer fan-in centrality onto an existing profile. A module imported by many
+ * distinct other modules is high-blast-radius. Threshold is the 90th-percentile
+ * of fan-in (min 3), so "central" stays a small, high-signal set. Pure and
+ * deterministic given the edge list; callers supply edges however they like.
+ */
+function withCentrality(profile, edges) {
+    const fanIn = new Map();
+    for (const e of edges) {
+        if (e.fromModule === e.toModule)
+            continue;
+        if (!fanIn.has(e.toModule))
+            fanIn.set(e.toModule, new Set());
+        fanIn.get(e.toModule).add(e.fromModule);
+    }
+    const counts = [...fanIn.entries()].map(([m, s]) => ({ m, n: s.size })).sort((a, b) => b.n - a.n);
+    if (counts.length === 0)
+        return profile;
+    const sorted = counts.map((c) => c.n).sort((a, b) => a - b);
+    const p90 = sorted[Math.floor(sorted.length * 0.9)] ?? sorted[sorted.length - 1];
+    const threshold = Math.max(3, p90);
+    const centralCounts = counts.filter((c) => c.n >= threshold);
+    const central = centralCounts.map((c) => c.m).sort();
+    const centralFanIn = {};
+    for (const c of centralCounts)
+        centralFanIn[c.m] = c.n;
+    const profileHash = (0, node_crypto_1.createHash)('sha256')
+        .update(JSON.stringify({ m: profile.moduleRoots, c: central }))
+        .digest('hex').slice(0, 12);
+    return { ...profile, centralModules: central, centralFanIn, profileHash };
+}
+/** Manifest file paths in a tree (so a caller knows the minimal set to read). */
+function findManifestPaths(rawPaths) {
+    return [...new Set(rawPaths.map(normalizePath).filter((p) => p && MANIFESTS.has(baseOf(p.toLowerCase()))))].sort();
+}
+function joinRelative(baseDir, rel) {
+    const stack = baseDir.split('/').filter(Boolean);
+    for (const seg of rel.replace(/\\/g, '/').split('/').filter(Boolean)) {
+        if (seg === '.')
+            continue;
+        else if (seg === '..')
+            stack.pop();
+        else
+            stack.push(seg);
+    }
+    return stack.join('/');
+}
+function deriveManifestEdges(manifests, moduleRoots) {
+    const moduleOfDir = (dir) => {
+        let best = null;
+        for (const r of moduleRoots) {
+            if ((dir === r || dir.startsWith(`${r}/`)) && (!best || r.length > best.length))
+                best = r;
+        }
+        return best;
+    };
+    // package.json "name" → module index (for `workspace:` deps referenced by name).
+    const nameToModule = new Map();
+    for (const m of manifests) {
+        if (baseOf(normalizePath(m.path).toLowerCase()) !== 'package.json')
+            continue;
+        try {
+            const json = JSON.parse(m.content);
+            const dir = dirOf(normalizePath(m.path));
+            const mod = moduleOfDir(dir) ?? dir;
+            if (typeof json.name === 'string' && mod)
+                nameToModule.set(json.name, mod);
+        }
+        catch { /* tolerate malformed manifests */ }
+    }
+    // Module basename → module root (for Gradle `project(':foo:bar')` refs).
+    const basenameToModule = new Map();
+    for (const r of moduleRoots) {
+        const b = r.split('/').pop();
+        if (b && !basenameToModule.has(b))
+            basenameToModule.set(b, r);
+    }
+    const edges = [];
+    const seen = new Set();
+    const add = (from, to) => {
+        if (!from || !to || from === to)
+            return;
+        const key = `${from}->${to}`;
+        if (seen.has(key))
+            return;
+        seen.add(key);
+        edges.push({ fromModule: from, toModule: to });
+    };
+    for (const m of manifests) {
+        const path = normalizePath(m.path);
+        const base = baseOf(path.toLowerCase());
+        const dir = dirOf(path);
+        const fromModule = moduleOfDir(dir) ?? dir;
+        if (base === 'cargo.toml' || base === 'pubspec.yaml' || base === 'go.mod') {
+            // path = "../x"  ·  path: ../x  ·  => ../x   (relative, first-party only)
+            const re = /(?:path\s*[=:]\s*["']?|=>\s*)(\.\.?\/[^\s"'),]+)/g;
+            let mm;
+            while ((mm = re.exec(m.content)) !== null)
+                add(fromModule, moduleOfDir(joinRelative(dir, mm[1])));
+        }
+        else if (base === 'package.json') {
+            try {
+                const json = JSON.parse(m.content);
+                const deps = { ...(json.dependencies ?? {}), ...(json.devDependencies ?? {}), ...(json.peerDependencies ?? {}) };
+                for (const [name, ver] of Object.entries(deps)) {
+                    const v = String(ver);
+                    if (/^(file:|link:)/.test(v))
+                        add(fromModule, moduleOfDir(joinRelative(dir, v.replace(/^(file:|link:)/, ''))));
+                    else if (/^workspace:/.test(v))
+                        add(fromModule, nameToModule.get(name) ?? null);
+                }
+            }
+            catch { /* tolerate malformed manifests */ }
+        }
+        else if (base === 'build.gradle' || base === 'build.gradle.kts') {
+            // Gradle inter-module deps: project(':foo:bar') / project(path: ':foo')
+            const re = /project\(\s*(?:path\s*[:=]\s*)?['"]:?([\w:.\-]+)['"]\s*\)/g;
+            let mm;
+            while ((mm = re.exec(m.content)) !== null) {
+                const name = mm[1].split(':').filter(Boolean).pop();
+                if (name)
+                    add(fromModule, basenameToModule.get(name) ?? null);
+            }
+        }
+        else if (base === 'cmakelists.txt') {
+            // CMake: add_subdirectory(rel) declares a structural sub-module edge.
+            const re = /add_subdirectory\(\s*([^\s)]+)/g;
+            let mm;
+            while ((mm = re.exec(m.content)) !== null) {
+                const rel = mm[1].replace(/['"]/g, '');
+                if (!rel.startsWith('${') && !rel.startsWith('/'))
+                    add(fromModule, moduleOfDir(joinRelative(dir, rel)));
+            }
+        }
+    }
+    return edges.sort((a, b) => a.fromModule.localeCompare(b.fromModule) || a.toModule.localeCompare(b.toModule));
+}
+
+
+/***/ }),
+
+/***/ 6334:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Deterministic PR Scope Coherence
+ * ================================
+ *
+ * The OSS wedge. Answers one question, deterministically and with no LLM:
+ *
+ *   "Did this PR stay within a coherent operational boundary?"
+ *
+ * It compares the DECLARED scope of a PR (derived from its title, body,
+ * labels, and linked-issue references) against the ACTUAL blast radius of the
+ * diff (which subsystems the changed files belong to, plus newly-added
+ * import edges that cross into sensitive boundaries).
+ *
+ * Design constraints (non-negotiable — this is the brand):
+ *   - Pure functions over sorted inputs. Same PR ⇒ same verdict ⇒ same hash.
+ *   - No embeddings, no vector DB, no probabilistic scoring, no network.
+ *   - Conservative escalation: ⛔ incoherent is reserved for the one
+ *     emotionally-unambiguous case (a low-surface change — docs/test/chore —
+ *     that quietly modifies sensitive code). Everything else maxes out at
+ *     ⚠️ review, and the default is ✅ coherent. This keeps signal high and
+ *     false-positive blast-back low on real OSS repos.
+ *
+ * This module imports nothing from @actions/* so it stays trivially testable
+ * and portable into the CLI runtime later.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.classifyFile = classifyFile;
+exports.deriveDeclaredScope = deriveDeclaredScope;
+exports.parseImportEdgeCrossings = parseImportEdgeCrossings;
+exports.deriveBlastRadius = deriveBlastRadius;
+exports.assessScopeCoherence = assessScopeCoherence;
+exports.evaluateScopeCoherence = evaluateScopeCoherence;
+const node_crypto_1 = __nccwpck_require__(7598);
+const repo_topology_1 = __nccwpck_require__(7383);
+const mechanical_signals_1 = __nccwpck_require__(4050);
+const narrative_1 = __nccwpck_require__(9047);
+// ── Subsystem taxonomy ────────────────────────────────────────────────────────
+/**
+ * High-signal, deliberately TIGHT sensitive-boundary tokens. Matched against
+ * whole path tokens (split on /\._-) so "author" never matches "auth" and
+ * "session"/"worker"/"token"/"net" are intentionally excluded — they are too
+ * common in queue/transport codebases (Celery, Kombu) and would generate
+ * exactly the false positives that erode maintainer trust.
+ */
+const SENSITIVE_TOKENS = {
+    auth: 'auth',
+    authn: 'auth',
+    authz: 'authz',
+    oauth: 'auth',
+    sso: 'auth',
+    saml: 'auth',
+    credential: 'credentials',
+    credentials: 'credentials',
+    secret: 'secrets',
+    secrets: 'secrets',
+    security: 'security',
+    crypto: 'crypto',
+    cryptography: 'crypto',
+    encryption: 'crypto',
+    jwt: 'auth',
+    rbac: 'permissions',
+    permission: 'permissions',
+    permissions: 'permissions',
+    payment: 'payments',
+    payments: 'payments',
+    billing: 'billing',
+    checkout: 'payments',
+    scheduler: 'scheduler',
+    executor: 'executor',
+    runtime: 'runtime',
+    kernel: 'kernel',
+    migration: 'migrations',
+    migrations: 'migrations',
+};
+/**
+ * "Soft" sensitive tags are common as frontend folder names (an `Auth/` UI
+ * component tree, a `permissions` settings page). They are downgraded to
+ * frontend when the file is clearly a UI file — only the auth *runtime* should
+ * trip the sensitive boundary, not the screen that configures it. Hard tags
+ * (secrets, crypto, payments, scheduler, runtime, …) stay sensitive everywhere.
+ */
+const SOFT_SENSITIVE_TAGS = new Set(['auth', 'authz', 'permissions']);
+const DOC_FILENAMES = new Set([
+    'readme', 'changelog', 'contributing', 'license', 'notice', 'authors',
+    'thanks', 'maintainers', 'codeowners', 'security', 'support', 'todo',
+]);
+const BUILD_FILENAMES = new Set([
+    'package.json', 'pnpm-lock.yaml', 'yarn.lock', 'package-lock.json',
+    'pyproject.toml', 'setup.py', 'setup.cfg', 'pipfile', 'pipfile.lock',
+    'poetry.lock', 'cargo.toml', 'cargo.lock', 'go.mod', 'go.sum',
+    'build.gradle', 'pom.xml', 'makefile', 'tsconfig.json', 'webpack.config.js',
+    'rollup.config.js', 'manifest.in',
+]);
+// 'mdc' = Cursor rule files; they are agent documentation, not load-bearing source.
+const DOC_EXTS = new Set(['md', 'mdx', 'rst', 'adoc', 'mdc']);
+const FRONTEND_EXTS = new Set(['tsx', 'jsx', 'vue', 'svelte', 'css', 'scss', 'less', 'html']);
+const CONFIG_EXTS = new Set(['yml', 'yaml', 'json', 'toml', 'ini', 'cfg', 'properties']);
+function normalizePath(p) {
+    return (p || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').trim();
+}
+function tokensOf(path) {
+    return path.toLowerCase().split(/[/\\._\-]+/).filter(Boolean);
+}
+function basename(path) {
+    const parts = path.split('/');
+    return parts[parts.length - 1] || path;
+}
+function extOf(path) {
+    const base = basename(path);
+    const dot = base.lastIndexOf('.');
+    return dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
+}
+/** Returns the sensitive tag for a path, or null. Token-exact to avoid substrings. */
+function sensitiveTagFor(path) {
+    for (const tok of tokensOf(path)) {
+        if (SENSITIVE_TOKENS[tok])
+            return SENSITIVE_TOKENS[tok];
+    }
+    return null;
+}
+/** Deterministic single-subsystem classification. First match wins. */
+function classifyFile(rawPath) {
+    const path = normalizePath(rawPath);
+    const lower = path.toLowerCase();
+    const segs = lower.split('/');
+    const base = basename(lower);
+    const ext = extOf(lower);
+    const nameNoExt = base.includes('.') ? base.slice(0, base.indexOf('.')) : base;
+    // 1. Generated code (strong signals only)
+    if (segs.includes('generated') || segs.includes('__generated__') ||
+        /(_pb2\.py|\.pb\.go|\.generated\.[a-z]+|\.g\.dart|\.designer\.cs)$/.test(base)) {
+        return { subsystem: 'generated' };
+    }
+    // 2. CI
+    if (lower.startsWith('.github/workflows/') || lower.startsWith('.circleci/') ||
+        base === 'jenkinsfile' || base === '.travis.yml' || base === '.gitlab-ci.yml' ||
+        base === 'azure-pipelines.yml') {
+        return { subsystem: 'ci' };
+    }
+    // 3. Docs — and example/sample code, which accompanies docs rather than
+    // being load-bearing source (e.g. Airflow's example_dags/).
+    if (DOC_EXTS.has(ext) || segs.includes('docs') || segs.includes('doc') ||
+        segs.includes('.cursor') ||
+        segs.includes('examples') || segs.includes('example_dags') || segs.includes('samples') ||
+        DOC_FILENAMES.has(nameNoExt) || (ext === 'txt' && segs.includes('docs'))) {
+        return { subsystem: 'docs' };
+    }
+    // 4. Tests
+    if (segs.includes('test') || segs.includes('tests') || segs.includes('__tests__') ||
+        segs.includes('spec') || segs.includes('e2e') ||
+        base === 'conftest.py' || /(^test_|_test\.|\.test\.|\.spec\.)/.test(base)) {
+        return { subsystem: 'test' };
+    }
+    // 5. Build / dependency manifests
+    if (BUILD_FILENAMES.has(base) || /^dockerfile/.test(base) || /^requirements.*\.txt$/.test(base) ||
+        ext === 'gradle' || base === '.babelrc') {
+        return { subsystem: 'build' };
+    }
+    // 5b. Security-TOOL artifacts. A `.secrets.baseline` (detect-secrets),
+    // `.gitleaks.toml`, or `.trivyignore` names a security tool but is config, not
+    // security CODE. Without this a routine baseline refresh reads as "touches secrets".
+    if (base === '.secrets.baseline' || base.endsWith('.baseline') ||
+        base === '.gitleaks.toml' || base === '.gitleaksignore' || base === '.trivyignore') {
+        return { subsystem: 'config' };
+    }
+    // 6 / 7. Sensitive boundary vs frontend. A sensitive token in a UI file is
+    // downgraded for the soft tags (auth/authz/permissions) — an `Auth/` component
+    // tree is not the authentication runtime. Hard tags stay sensitive everywhere.
+    const isFrontend = FRONTEND_EXTS.has(ext) || segs.includes('components') ||
+        segs.includes('ui') || segs.includes('pages') || segs.includes('views');
+    const tag = sensitiveTagFor(path);
+    if (tag && !(isFrontend && SOFT_SENSITIVE_TAGS.has(tag))) {
+        return { subsystem: 'sensitive', tag };
+    }
+    if (isFrontend) {
+        return { subsystem: 'frontend' };
+    }
+    // 8. Config
+    if (CONFIG_EXTS.has(ext) || base.startsWith('.env') || segs.includes('config')) {
+        return { subsystem: 'config' };
+    }
+    // 9. First-party source (fallback)
+    return { subsystem: 'source' };
+}
+// ── Declared-scope derivation ─────────────────────────────────────────────────
+const CONVENTIONAL_KIND = {
+    docs: 'docs', doc: 'docs',
+    test: 'test', tests: 'test',
+    chore: 'chore', build: 'chore', ci: 'chore', deps: 'chore', release: 'chore',
+    fix: 'fix', bugfix: 'fix', hotfix: 'fix', patch: 'fix',
+    refactor: 'refactor', perf: 'refactor', style: 'refactor',
+    feat: 'feature', feature: 'feature',
+};
+const LABEL_KIND = [
+    { match: /^(documentation|docs?)$/, kind: 'docs' },
+    { match: /^(bug|bugfix|defect)$/, kind: 'fix' },
+    { match: /^(enhancement|feature|feat)$/, kind: 'feature' },
+    { match: /^(dependencies|deps|chore|build|ci)$/, kind: 'chore' },
+    { match: /^(tests?|testing)$/, kind: 'test' },
+    { match: /^(refactor|refactoring|cleanup)$/, kind: 'refactor' },
+];
+// Ordered keyword fallback. Lower-surface kinds first so an ambiguous title
+// like "fix typo in docs" classifies as docs (the safer, higher-signal call).
+// Boundaries are stricter than \b: a keyword must not be embedded in a
+// hyphenated/underscored identifier, so branch names ("v3-2-test") and compound
+// words ("publish-docs") do NOT mislabel a PR. Evidenced by apache/airflow#67233.
+const KEYWORD_KIND = [
+    { kind: 'docs', words: /(?<![\w-])(typo|readme|changelog|docs?|documentation|comments?|spelling|grammar|wording)(?![\w-])/ },
+    { kind: 'test', words: /(?<![\w-])(tests?|specs?|coverage|flaky|fixtures?)(?![\w-])/ },
+    { kind: 'chore', words: /(?<![\w-])(bump|upgrade|dependency|dependencies|lockfile|formatting|lint|linting|release|version)(?![\w-])/ },
+    { kind: 'refactor', words: /(?<![\w-])(refactor|cleanup|rename|restructure|simplify|dedupe|deduplicate|tidy)(?![\w-])/ },
+    { kind: 'fix', words: /(?<![\w-])(fix|fixes|fixed|bug|regression|hotfix|broken|crash|error|patch)(?![\w-])/ },
+    { kind: 'feature', words: /(?<![\w-])(add|adds|implement|introduce|support|new|feature|enable)(?![\w-])/ },
+];
+function detectDeclaredSensitiveTags(text) {
+    const found = new Set();
+    const lower = ` ${text.toLowerCase()} `;
+    for (const [token, tag] of Object.entries(SENSITIVE_TOKENS)) {
+        const re = new RegExp(`(^|[^a-z0-9])${token}([^a-z0-9]|$)`, 'i');
+        if (re.test(lower))
+            found.add(tag);
+    }
+    return [...found].sort();
+}
+function parseLinkedIssues(body) {
+    const nums = new Set();
+    const re = /#(\d{1,7})\b/g;
+    let m;
+    while ((m = re.exec(body)) !== null) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > 0)
+            nums.add(n);
+    }
+    return [...nums].sort((a, b) => a - b);
+}
+function deriveDeclaredScope(input) {
+    const title = (input.title || '').trim();
+    const body = (input.body || '').trim();
+    const labels = (input.labels || []).map((l) => l.toLowerCase().trim()).filter(Boolean).sort();
+    const haystack = `${title}\n${body}`;
+    let changeKind = 'unknown';
+    let changeKindSource = 'default';
+    const conv = title.match(/^([a-z]+)(?:\([^)]*\))?!?:/i);
+    if (conv && CONVENTIONAL_KIND[conv[1].toLowerCase()]) {
+        changeKind = CONVENTIONAL_KIND[conv[1].toLowerCase()];
+        changeKindSource = 'conventional-prefix';
+    }
+    if (changeKind === 'unknown') {
+        for (const label of labels) {
+            const hit = LABEL_KIND.find((l) => l.match.test(label));
+            if (hit) {
+                changeKind = hit.kind;
+                changeKindSource = 'label';
+                break;
+            }
+        }
+    }
+    if (changeKind === 'unknown') {
+        const lowerTitle = title.toLowerCase();
+        for (const k of KEYWORD_KIND) {
+            if (k.words.test(lowerTitle)) {
+                changeKind = k.kind;
+                changeKindSource = 'keyword';
+                break;
+            }
+        }
+    }
+    return {
+        changeKind,
+        changeKindSource,
+        declaredSensitiveTags: detectDeclaredSensitiveTags(haystack),
+        linkedIssues: parseLinkedIssues(body),
+        title: title.length > 120 ? `${title.slice(0, 119)}…` : title,
+    };
+}
+// ── Blast-radius derivation ───────────────────────────────────────────────────
+/**
+ * Parse a unified diff for ADDED import statements that cross into a sensitive
+ * boundary. Conservative by construction: only first-party signals (relative
+ * JS/TS imports, or dotted module paths whose segments name a sensitive token)
+ * count, and only when the importing file is NOT itself sensitive.
+ */
+function parseImportEdgeCrossings(diffText) {
+    if (!diffText)
+        return [];
+    const crossings = [];
+    const seen = new Set();
+    let currentFile = '';
+    for (const line of diffText.split('\n')) {
+        if (line.startsWith('+++ ')) {
+            const m = line.match(/^\+\+\+ b\/(.+)$/);
+            currentFile = m ? normalizePath(m[1]) : '';
+            continue;
+        }
+        if (!line.startsWith('+') || line.startsWith('+++'))
+            continue;
+        if (!currentFile)
+            continue;
+        if (classifyFile(currentFile).subsystem === 'sensitive')
+            continue; // sensitive→sensitive is expected
+        const added = line.slice(1);
+        const modules = [];
+        // JS / TS
+        const jsFrom = added.match(/\bfrom\s+['"]([^'"]+)['"]/);
+        const jsReq = added.match(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/);
+        const jsBare = added.match(/^\s*import\s+['"]([^'"]+)['"]/);
+        if (jsFrom)
+            modules.push(jsFrom[1]);
+        if (jsReq)
+            modules.push(jsReq[1]);
+        if (jsBare)
+            modules.push(jsBare[1]);
+        // Python
+        const pyFrom = added.match(/^\s*from\s+([.\w]+)\s+import\b/);
+        const pyImport = added.match(/^\s*import\s+([.\w]+)/);
+        if (pyFrom)
+            modules.push(pyFrom[1]);
+        if (pyImport && !jsBare)
+            modules.push(pyImport[1]);
+        for (const mod of modules) {
+            const tag = sensitiveTagFor(mod);
+            if (!tag)
+                continue;
+            const key = `${currentFile}|${mod}|${tag}`;
+            if (seen.has(key))
+                continue;
+            seen.add(key);
+            crossings.push({ fromFile: currentFile, importedModule: mod, toTag: tag });
+        }
+    }
+    return crossings.sort((a, b) => a.fromFile.localeCompare(b.fromFile) || a.importedModule.localeCompare(b.importedModule));
+}
+function deriveBlastRadius(changedFiles, diffText = '') {
+    const files = [...new Set(changedFiles.map(normalizePath).filter(Boolean))].sort();
+    const bySubsystem = new Map();
+    for (const file of files) {
+        const { subsystem, tag } = classifyFile(file);
+        if (!bySubsystem.has(subsystem))
+            bySubsystem.set(subsystem, { files: new Set(), tags: new Set() });
+        const entry = bySubsystem.get(subsystem);
+        entry.files.add(file);
+        if (tag)
+            entry.tags.add(tag);
+    }
+    const subsystems = [...bySubsystem.entries()]
+        .map(([subsystem, v]) => ({
+        subsystem,
+        files: [...v.files].sort(),
+        tags: [...v.tags].sort(),
+    }))
+        .sort((a, b) => a.subsystem.localeCompare(b.subsystem));
+    const sensitiveTags = [...new Set(subsystems.flatMap((s) => s.tags))].sort();
+    return {
+        fileCount: files.length,
+        subsystems,
+        distinctSubsystemCount: subsystems.length,
+        sensitiveTags,
+        touchedGenerated: subsystems.some((s) => s.subsystem === 'generated'),
+        importEdgeCrossings: parseImportEdgeCrossings(diffText),
+    };
+}
+// ── Coherence assessment ──────────────────────────────────────────────────────
+const LOW_SURFACE = new Set(['docs', 'test', 'chore']);
+/**
+ * A docs/test/chore PR is only "low-surface" while it stays small. A 100-file
+ * release sync labelled `chore`/`test` is a bulk operation, not the small
+ * innocuous change that hides a sensitive edit — flagging it is noise.
+ * Evidenced by apache/airflow#67233. The headline case is always a few files.
+ */
+const LOW_SURFACE_MAX_FILES = 20;
+/**
+ * A docs PR editing a single source file is almost always a docstring/comment
+ * fix — benign. Only flag when it edits several source files (a clearer "this
+ * is actually code work mislabelled as docs" signal). Evidenced by the run:
+ * apache/airflow#67101/#67114 (1-file docstring typos) were noise.
+ */
+const DOCS_SOURCE_MIN = 3;
+/** First-party subsystems that count toward "blast radius spread". */
+const SPREAD_SUBSYSTEMS = new Set(['source', 'sensitive', 'frontend', 'generated']);
+const WIDE_SPREAD_THRESHOLD = 4;
+function maxLevel(a, b) {
+    const rank = { coherent: 0, review: 1, incoherent: 2 };
+    return rank[a] >= rank[b] ? a : b;
+}
+function stableHash(declared, blast, level, mechanicalClass) {
+    const shape = {
+        kind: declared.changeKind,
+        level,
+        subs: blast.subsystems.map((s) => `${s.subsystem}:${s.files.length}:${s.tags.join('+')}`),
+        sensitive: blast.sensitiveTags,
+        edges: blast.importEdgeCrossings.map((e) => `${e.fromFile}->${e.toTag}`),
+        generated: blast.touchedGenerated,
+        mechanical: mechanicalClass ?? null,
+    };
+    return (0, node_crypto_1.createHash)('sha256').update(JSON.stringify(shape)).digest('hex').slice(0, 12);
+}
+function assessScopeCoherence(declared, blast, mechanical) {
+    const reasons = [];
+    let level = 'coherent';
+    // Mechanical/bulk PRs (reverts, bumps, codemods…) are legitimately wide.
+    // Suppress only the spread / generated / docs-source signals — never the
+    // significance (Rule 1) or import-edge (Rule 2) signals.
+    const mech = mechanical?.isMechanical === true;
+    const sensitiveHit = blast.subsystems.find((s) => s.subsystem === 'sensitive');
+    const undeclaredSensitiveTags = (sensitiveHit?.tags ?? [])
+        .filter((tag) => !declared.declaredSensitiveTags.includes(tag));
+    const sourceHit = blast.subsystems.find((s) => s.subsystem === 'source');
+    const spread = blast.subsystems.filter((s) => SPREAD_SUBSYSTEMS.has(s.subsystem)).length;
+    const isLowSurface = LOW_SURFACE.has(declared.changeKind) && blast.fileCount <= LOW_SURFACE_MAX_FILES;
+    // RULE 1 — the headline. A small low-surface change quietly touching sensitive code.
+    if (isLowSurface && undeclaredSensitiveTags.length > 0) {
+        level = maxLevel(level, 'incoherent');
+        reasons.push({
+            code: 'low-surface-touches-sensitive',
+            message: `A ${declared.changeKind} change modifies ${undeclaredSensitiveTags.join(', ')} code that the PR never mentions.`,
+            evidence: sensitiveHit.files.filter((f) => undeclaredSensitiveTags.includes(classifyFile(f).tag || '')),
+        });
+    }
+    // RULE 2 — import edge newly reaching into a sensitive boundary.
+    const undeclaredEdges = blast.importEdgeCrossings.filter((e) => !declared.declaredSensitiveTags.includes(e.toTag));
+    if (undeclaredEdges.length > 0) {
+        level = maxLevel(level, isLowSurface ? 'incoherent' : 'review');
+        reasons.push({
+            code: 'import-edge-into-sensitive',
+            message: `New import edge(s) reach into ${[...new Set(undeclaredEdges.map((e) => e.toTag))].sort().join(', ')}.`,
+            evidence: undeclaredEdges.map((e) => `${e.fromFile} → ${e.importedModule}`),
+        });
+    }
+    // RULE 3 — a docs change editing several real first-party source files.
+    if (!mech && declared.changeKind === 'docs' && sourceHit && sourceHit.files.length >= DOCS_SOURCE_MIN
+        && undeclaredSensitiveTags.length === 0) {
+        level = maxLevel(level, 'review');
+        reasons.push({
+            code: 'docs-change-touches-source',
+            message: `A docs change also edits ${sourceHit.files.length} source files.`,
+            evidence: sourceHit.files,
+        });
+    }
+    // RULE 4 — generated-code spillover in a DOCS/TEST change. Regen accompanying
+    // a real code change (fix/feature/refactor/chore) is normal and not flagged.
+    if (!mech && blast.touchedGenerated && (declared.changeKind === 'docs' || declared.changeKind === 'test')) {
+        const gen = blast.subsystems.find((s) => s.subsystem === 'generated');
+        level = maxLevel(level, 'review');
+        reasons.push({
+            code: 'generated-code-touched',
+            message: `Generated code was modified in a ${declared.changeKind} change.`,
+            evidence: gen.files,
+        });
+    }
+    // RULE 5 — unusually wide blast radius for a non-feature change.
+    if (!mech && spread >= WIDE_SPREAD_THRESHOLD &&
+        (isLowSurface || declared.changeKind === 'fix' || declared.changeKind === 'unknown')) {
+        level = maxLevel(level, 'review');
+        reasons.push({
+            code: 'wide-blast-radius',
+            message: `Touches ${spread} distinct code subsystems — wide for a ${declared.changeKind} change.`,
+            evidence: blast.subsystems.filter((s) => SPREAD_SUBSYSTEMS.has(s.subsystem)).map((s) => s.subsystem),
+        });
+    }
+    let headline = buildHeadline(level, declared, blast, undeclaredSensitiveTags);
+    if (level === 'coherent' && mech && mechanical) {
+        headline = `Recognised as a ${mechanical.mechanicalClass} change — a wide diff is expected here.`;
+    }
+    return {
+        level, declared, blastRadius: blast, reasons, headline,
+        scopeHash: stableHash(declared, blast, level, mechanical?.mechanicalClass),
+        ...(mech && mechanical ? { mechanical } : {}),
+    };
+}
+function buildHeadline(level, declared, blast, undeclaredSensitiveTags) {
+    const kind = declared.changeKind === 'unknown' ? 'unlabeled' : declared.changeKind;
+    if (level === 'incoherent') {
+        const tags = undeclaredSensitiveTags.length > 0 ? undeclaredSensitiveTags.join(', ') : blast.sensitiveTags.join(', ');
+        return `This PR reads as a ${kind} change but modifies ${tags} code.`;
+    }
+    if (level === 'review') {
+        const subs = blast.subsystems.filter((s) => SPREAD_SUBSYSTEMS.has(s.subsystem)).map((s) => s.subsystem);
+        const list = subs.length > 0 ? subs.join(', ') : 'multiple areas';
+        return `This ${kind} change spans ${list} — worth a glance to confirm it's intended.`;
+    }
+    return `Changes stay within the expected boundary for a ${kind} change.`;
+}
+/** Convenience: end-to-end from raw PR signals + changed files + diff. */
+function evaluateScopeCoherence(input) {
+    const declared = deriveDeclaredScope(input);
+    const mechanical = input.disableMechanical
+        ? undefined
+        : (0, mechanical_signals_1.detectMechanical)({
+            title: input.title,
+            body: input.body,
+            labels: input.labels,
+            paths: input.changedFiles,
+            fileStats: input.fileStats,
+        });
+    const result = input.topology
+        ? assessWithTopology(declared, input.changedFiles, input.diffText || '', input.topology, mechanical)
+        : assessScopeCoherence(declared, deriveBlastRadius(input.changedFiles, input.diffText), mechanical);
+    // Narrative is a pure function of the deterministic result — replay-safe.
+    return { ...result, narrative: (0, narrative_1.synthesizeNarrative)(result, input.topology) };
+}
+// ── Topology-aware assessment (repo-derived significance + module spread) ─────
+// A parallel path to assessScopeCoherence, deliberately isolated so the
+// validated default behaviour is untouched. Same conservative rule shape; the
+// difference is WHERE "significant" and "spread" come from — the repo's own
+// module topology rather than the hardcoded token taxonomy.
+const TOPOLOGY_NONCODE_ROLES = new Set(['docs', 'test', 'ci', 'build', 'config', 'infra', 'generated']);
+function assessWithTopology(declared, rawFiles, diffText, topology, mechanical) {
+    const mech = mechanical?.isMechanical === true;
+    const files = [...new Set(rawFiles.map(normalizePath).filter(Boolean))].sort();
+    const byBucket = new Map();
+    const addHit = (bucket, file, tag, significant) => {
+        const e = byBucket.get(bucket) ?? { files: [], tags: new Set(), significant: false };
+        e.files.push(file);
+        if (tag)
+            e.tags.add(tag);
+        e.significant = e.significant || significant;
+        byBucket.set(bucket, e);
+    };
+    const significantHits = [];
+    const sourceFiles = [];
+    const codeModules = new Set();
+    let touchedGenerated = false;
+    for (const f of files) {
+        const role = (0, repo_topology_1.roleOf)(f);
+        if (role === 'generated')
+            touchedGenerated = true;
+        if (TOPOLOGY_NONCODE_ROLES.has(role)) {
+            addHit(role, f, undefined, false);
+            continue;
+        }
+        const moduleId = (0, repo_topology_1.subsystemOf)(f, topology);
+        codeModules.add(moduleId);
+        if ((0, repo_topology_1.isSignificant)(f, topology)) {
+            const tag = (0, repo_topology_1.significantSecurityTagFor)(f) || (role === 'entrypoint' ? 'entrypoint' : 'core');
+            significantHits.push({ file: f, tag });
+            addHit(moduleId, f, tag, true);
+        }
+        else {
+            sourceFiles.push(f);
+            addHit(moduleId, f, undefined, false);
+        }
+    }
+    const subsystems = [...byBucket.entries()]
+        .map(([subsystem, v]) => ({ subsystem, files: v.files.sort(), tags: [...v.tags].sort(), significant: v.significant }))
+        .sort((a, b) => a.subsystem.localeCompare(b.subsystem));
+    const blast = {
+        fileCount: files.length,
+        subsystems,
+        distinctSubsystemCount: subsystems.length,
+        sensitiveTags: [...new Set(significantHits.map((h) => h.tag))].sort(),
+        touchedGenerated,
+        importEdgeCrossings: parseImportEdgeCrossings(diffText),
+    };
+    const reasons = [];
+    let level = 'coherent';
+    const isLowSurface = LOW_SURFACE.has(declared.changeKind) && blast.fileCount <= LOW_SURFACE_MAX_FILES;
+    // A named security area is "declared"; an entrypoint/central-core hit cannot be
+    // named by a PR author, so it always counts as undeclared significance.
+    const undeclaredSig = significantHits.filter((h) => (h.tag === 'entrypoint' || h.tag === 'core') ? true : !declared.declaredSensitiveTags.includes(h.tag));
+    const undeclaredTags = [...new Set(undeclaredSig.map((h) => h.tag))].sort();
+    // HARD significance (security boundary, runtime entrypoint) → incoherent.
+    // SOFT significance (high-centrality 'core' module) → only review. Centrality
+    // subtly raises attention; it never produces the dramatic ⛔ on its own.
+    const hardHits = undeclaredSig.filter((h) => h.tag !== 'core');
+    const softHits = undeclaredSig.filter((h) => h.tag === 'core');
+    const hardTags = [...new Set(hardHits.map((h) => h.tag))].sort();
+    // RULE 1 — small low-surface change touching a hard boundary it never names.
+    if (isLowSurface && hardHits.length > 0) {
+        level = maxLevel(level, 'incoherent');
+        reasons.push({
+            code: 'low-surface-touches-significant',
+            message: `A ${declared.changeKind} change modifies operationally significant code (${hardTags.join(', ')}) the PR never mentions.`,
+            evidence: hardHits.map((h) => h.file),
+        });
+    }
+    // RULE 1b — central-module touch (import centrality): subtler, review-only.
+    if (!mech && isLowSurface && softHits.length > 0 && hardHits.length === 0) {
+        const centralMods = [...new Set(softHits.map((h) => (0, repo_topology_1.subsystemOf)(h.file, topology)))].sort();
+        level = maxLevel(level, 'review');
+        reasons.push({
+            code: 'low-surface-touches-central-module',
+            message: `A ${declared.changeKind} change touches high-centrality module(s) — ${centralMods.join(', ')} — that many other modules depend on.`,
+            evidence: softHits.map((h) => h.file),
+        });
+    }
+    // RULE 2 — new import edge into a security boundary.
+    const undeclaredEdges = blast.importEdgeCrossings.filter((e) => !declared.declaredSensitiveTags.includes(e.toTag));
+    if (undeclaredEdges.length > 0) {
+        level = maxLevel(level, isLowSurface ? 'incoherent' : 'review');
+        reasons.push({
+            code: 'import-edge-into-sensitive',
+            message: `New import edge(s) reach into ${[...new Set(undeclaredEdges.map((e) => e.toTag))].sort().join(', ')}.`,
+            evidence: undeclaredEdges.map((e) => `${e.fromFile} → ${e.importedModule}`),
+        });
+    }
+    // RULE 3 — docs change editing several ordinary source files.
+    if (!mech && declared.changeKind === 'docs' && sourceFiles.length >= DOCS_SOURCE_MIN && undeclaredSig.length === 0) {
+        level = maxLevel(level, 'review');
+        reasons.push({
+            code: 'docs-change-touches-source',
+            message: `A docs change also edits ${sourceFiles.length} source files.`,
+            evidence: sourceFiles,
+        });
+    }
+    // RULE 4 — generated-code spillover in a DOCS/TEST change only (regen
+    // accompanying a real code change is normal).
+    if (!mech && touchedGenerated && (declared.changeKind === 'docs' || declared.changeKind === 'test')) {
+        level = maxLevel(level, 'review');
+        reasons.push({
+            code: 'generated-code-touched',
+            message: `Generated code was modified in a ${declared.changeKind} change.`,
+            evidence: byBucket.get('generated')?.files ?? [],
+        });
+    }
+    // RULE 5 — wide blast radius across the repo's OWN modules.
+    if (!mech && codeModules.size >= WIDE_SPREAD_THRESHOLD &&
+        (isLowSurface || declared.changeKind === 'fix' || declared.changeKind === 'unknown')) {
+        level = maxLevel(level, 'review');
+        reasons.push({
+            code: 'wide-blast-radius',
+            message: `Touches ${codeModules.size} distinct modules — wide for a ${declared.changeKind} change.`,
+            evidence: [...codeModules].sort(),
+        });
+    }
+    const kindLabel = declared.changeKind === 'unknown' ? 'unlabeled' : declared.changeKind;
+    let headline;
+    if (level === 'incoherent') {
+        headline = `This PR reads as a ${kindLabel} change but modifies operationally significant code (${hardTags.join(', ')}).`;
+    }
+    else if (level === 'review') {
+        headline = `This ${kindLabel} change spans ${codeModules.size} module(s) — worth a glance to confirm it's intended.`;
+    }
+    else if (mech && mechanical) {
+        headline = `Recognised as a ${mechanical.mechanicalClass} change — a wide diff is expected here.`;
+    }
+    else {
+        headline = `Changes stay within the expected boundary for a ${kindLabel} change.`;
+    }
+    const scopeHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
+        kind: declared.changeKind, level, sig: undeclaredTags,
+        modules: [...codeModules].sort(), edges: blast.importEdgeCrossings.map((e) => e.toTag).sort(),
+        generated: touchedGenerated, profile: topology.profileHash, mechanical: mechanical?.mechanicalClass ?? null,
+    })).digest('hex').slice(0, 12);
+    return {
+        level, declared, blastRadius: blast, reasons, headline, scopeHash,
+        ...(mech && mechanical ? { mechanical } : {}),
+    };
+}
+
+
+/***/ }),
+
+/***/ 312:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Structural coupling: ownership topology + operational-vs-structural divergence
+ * =============================================================================
+ *
+ * Cartography already reinforces co-change corridors with static dependency
+ * edges (corridor.structural) and surfaces latent structural coupling. This
+ * module adds the OWNERSHIP dimension — parsing CODEOWNERS deterministically —
+ * and detects when operational coupling crosses ownership boundaries
+ * ("operational widening crosses ownership despite clean structural
+ * compartmentalisation").
+ *
+ * Pure, deterministic, sparse. No embeddings, no LLM, no scoring.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parseCodeowners = parseCodeowners;
+exports.ownerOf = ownerOf;
+exports.ownershipCrossings = ownershipCrossings;
+exports.structuralStats = structuralStats;
+/** Parse a CODEOWNERS file into ordered rules (later rules win, GitHub semantics). */
+function parseCodeowners(content) {
+    const rules = [];
+    for (const raw of content.split('\n')) {
+        const line = raw.replace(/#.*$/, '').trim();
+        if (!line)
+            continue;
+        const parts = line.split(/\s+/);
+        const glob = parts[0];
+        const owners = parts.slice(1).filter((o) => o.startsWith('@') || o.includes('@'));
+        if (glob && owners.length > 0)
+            rules.push({ glob, owners });
+    }
+    return rules;
+}
+/** Owner(s) for a path — last matching rule wins (GitHub CODEOWNERS semantics). */
+function ownerOf(path, rules) {
+    let match = null;
+    for (const rule of rules) {
+        if (matchCodeownersGlob(path, rule.glob))
+            match = rule.owners;
+    }
+    return match ? match.slice().sort().join(',') : null;
+}
+// Minimal CODEOWNERS glob: leading '/', '*' (single segment), '**'/dir-prefix.
+function matchCodeownersGlob(path, glob) {
+    const p = path.replace(/^\/+/, '');
+    let g = glob.replace(/^\/+/, '');
+    if (g === '*' || g === '**')
+        return true;
+    if (g.endsWith('/'))
+        return p === g.slice(0, -1) || p.startsWith(g); // directory prefix
+    if (!g.includes('*'))
+        return p === g || p.startsWith(`${g}/`); // exact / dir
+    const re = new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '§').replace(/\*/g, '[^/]*').replace(/§/g, '.*')}(/.*)?$`);
+    return re.test(p);
+}
+/** Co-change corridors whose two modules belong to different owners. */
+function ownershipCrossings(map, rules) {
+    if (rules.length === 0)
+        return [];
+    const out = [];
+    for (const c of map.corridors) {
+        const ownerA = ownerOf(`${c.a}/`, rules);
+        const ownerB = ownerOf(`${c.b}/`, rules);
+        if (ownerA && ownerB && ownerA !== ownerB)
+            out.push({ a: c.a, b: c.b, ownerA, ownerB });
+    }
+    return out.sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
+}
+/** Sparse structural-coupling counts for a digest/report header. */
+function structuralStats(map) {
+    const reinforced = map.corridors.filter((c) => c.structural).length;
+    return { reinforced, latent: map.latentStructural.length, total: map.corridors.length };
 }
 
 

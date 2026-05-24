@@ -1,0 +1,48 @@
+<svg width="900" height="400" viewBox="0 0 900 400" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+  <defs>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .t { fill: #e6edf3; } .m { fill: #8b949e; } .b { fill: #e6edf3; font-weight: 700; }
+      .green { fill: #3fb950; } .amber { fill: #d29922; } .blue { fill: #58a6ff; }
+    </style>
+  </defs>
+  <rect width="900" height="400" rx="10" fill="#0d1117"/>
+  <text x="40" y="46" class="b" font-size="20">Two surfaces, one philosophy</text>
+  <text x="40" y="70" class="m" font-size="13">High signal, low presence — continuous availability without continuous interruption.</text>
+
+  <!-- Panel A: sparse per-PR -->
+  <rect x="40" y="92" width="390" height="236" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="60" y="122" class="b" font-size="14">1 · Per PR — sparse interruption</text>
+  <text x="60" y="142" class="m" font-size="11">comments on ~1% of PRs; otherwise silent</text>
+
+  <g font-size="12" class="mono">
+    <text x="60" y="172"><tspan class="green">✓</tspan><tspan class="m">  #8051  docs: update contributing</tspan></text>
+    <text x="60" y="196"><tspan class="green">✓</tspan><tspan class="m">  #8049  feat: add CSV export</tspan></text>
+    <text x="60" y="220"><tspan class="green">✓</tspan><tspan class="m">  #8044  test: cover folder sync</tspan></text>
+    <text x="60" y="244"><tspan class="amber">⚠</tspan><tspan class="t">  #8023  fix: … → touches migrations</tspan></text>
+    <text x="60" y="268"><tspan class="green">✓</tspan><tspan class="m">  #8019  refactor: rename helpers</tspan></text>
+    <text x="60" y="292"><tspan class="green">✓</tspan><tspan class="m">  #8012  chore: bump deps</tspan></text>
+  </g>
+  <text x="60" y="316" class="m" font-size="11" font-style="italic">one quiet, precise nudge — advisory, never blocks</text>
+
+  <!-- Panel B: accumulating memory -->
+  <rect x="470" y="92" width="390" height="236" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="490" y="122" class="b" font-size="14">2 · Over time — operational memory</text>
+  <text x="490" y="142" class="m" font-size="11">delta-only; never restates standing state</text>
+
+  <!-- release timeline -->
+  <line x1="500" y1="172" x2="500" y2="300" stroke="#30363d" stroke-width="2"/>
+  <circle cx="500" cy="180" r="4" fill="#58a6ff"/>
+  <text x="516" y="184" class="mono blue" font-size="12">0.9.2</text>
+  <text x="516" y="202" class="t" font-size="11">flowy-ai ↔ flowy-server began co-changing</text>
+  <circle cx="500" cy="232" r="4" fill="#30363d"/>
+  <text x="516" y="236" class="mono m" font-size="12">0.9.3 — 0.9.4</text>
+  <text x="516" y="254" class="m" font-size="11" font-style="italic">(silent — no operational change)</text>
+  <circle cx="500" cy="284" r="4" fill="#58a6ff"/>
+  <text x="516" y="288" class="mono blue" font-size="12">0.9.5</text>
+  <text x="516" y="306" class="t" font-size="11">frontend cluster cooled</text>
+
+  <!-- footer band -->
+  <rect x="40" y="346" width="820" height="34" rx="6" fill="#0d1117" stroke="#21262d"/>
+  <text x="450" y="368" class="m" font-size="12" text-anchor="middle">Deterministic · replay-safe · re-derivable from your merge history · no AI, no scores, no telemetry</text>
+</svg>

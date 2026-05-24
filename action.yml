@@ -1,8 +1,8 @@
-name: 'Neurcode Governance Gate'
-description: 'Deterministic governance gate for AI-assisted PRs. Enforces intent contracts, scope + forbidden-boundary guards, dependency-overreach detection, generated-code spillover detection, and replay-grade evidence. Fails merge when the runtime declares a blocking governance verdict.'
+name: 'Neurcode — Repository Operational Memory'
+description: 'Deterministic repository operational memory and observability, as a GitHub Action. Sparse, advisory per-PR scope-coherence checks (does a change stay within a coherent operational boundary?) plus a replay-safe operational history — coupling lifecycle, pressure migration, release-over-release deltas. Mostly silent. No AI prose, no scores, no telemetry.'
 author: 'Neurcode'
 branding:
-  icon: 'shield-check'
+  icon: 'activity'
   color: 'blue'
 
 inputs:
@@ -214,8 +214,82 @@ inputs:
     description: 'Git user.email for remediation commits'
     required: false
     default: 'neurcode-bot@users.noreply.github.com'
+  oss_mode:
+    description: 'Lightweight deterministic OSS gate: derive declared PR scope (title/body/labels/linked issues) vs actual blast radius and post a compact PR Scope Coherence report. Forces the local structural path (no cloud, no plan, no enterprise enforcement) and is advisory by default. Recommended for OSS maintainers and contributor PRs.'
+    required: false
+    default: 'false'
+  scope_coherence_fail:
+    description: 'In oss_mode, fail the check when scope is incoherent (a low-surface change — docs/test/chore — modifies sensitive code it never mentions). Default false (advisory) so the first install builds trust before it blocks.'
+    required: false
+    default: 'false'
+  comment_on:
+    description: 'When to post a PR comment in oss_mode: "flagged" (default — only review/incoherent PRs; coherent PRs stay silent and a prior comment is updated to resolved), "always", or "never" (CI outputs/step-summary only). Overridable per-repo via .neurcode/oss.json. High signal, low presence.'
+    required: false
+    default: 'flagged'
+  topology:
+    description: 'Derive the repository operational topology (module boundaries via package manifests, structural roles, significance) from the repo file tree, so the gate reasons about the project''s OWN modules rather than a hardcoded web-backend ontology. Language-agnostic (Rust/Dart/Go/Python/TS). Default true; set false to use the fixed taxonomy only.'
+    required: false
+    default: 'true'
+  mode:
+    description: 'Action mode: "gate" (default — per-PR scope-coherence gate), "report" (rolling-window Operational Evolution Report), "release-report" (Release Operational History — architectural transitions + migration epochs), "memory" (Operational Memory — delta-only, pull-first "git log for repository operational structure": coupling lifecycle, pressure migration, boundary drift across release boundaries; never restates standing state, never comments on PRs), "cartography" (Operational Cartography — pressure zones, regions, corridors, boundary porosity), "dynamics" (Operational Dynamics — momentum across release eras: intensifying / cooling / stabilized / dissipated / persistent), "digest" (Operational Digest — ONE coherent picture fused from drift + geography + momentum), or "pilot" (Trust & Survivability profile — silent-rate, flag-rate, FAIL-rarity, override-rate, and trust-decay trend from the ledger). Report/memory/cartography/dynamics/digest/pilot modes run on a schedule, no PR required.'
+    required: false
+    default: 'gate'
+  record_merged_at:
+    description: 'Optional ISO merge timestamp stamped onto the emitted operational_record (e.g. ${{ github.event.head_commit.timestamp }} in a push/merge workflow). Enables release-aware grouping by merge date.'
+    required: false
+    default: ''
+  report_window:
+    description: 'mode=report: number of most-recent ledger records in the current window (compared against the prior window of the same size).'
+    required: false
+    default: '60'
+  report_ledger_path:
+    description: 'mode=report: path to the append-only operational ledger (one operational_record JSON per line).'
+    required: false
+    default: '.neurcode/operational-ledger.jsonl'
+  report_output_dir:
+    description: 'mode=report: directory where the archived report markdown is written (<reportHash>.md + latest.md).'
+    required: false
+    default: '.neurcode/reports'
+  memory_min_window:
+    description: 'mode=memory: warm-up baseline — release boundaries with fewer than this many cumulative records are absorbed into the silent baseline (suppresses the mid-history cold-start flood). 0 = full day-zero replay.'
+    required: false
+    default: '40'
 
 outputs:
+  scope_coherence_verdict:
+    description: 'OSS mode: PR scope coherence verdict (coherent|review|incoherent)'
+  declared_change_kind:
+    description: 'OSS mode: change kind derived from PR title/body/labels (docs|test|chore|fix|refactor|feature|unknown)'
+  blast_radius_subsystems:
+    description: 'OSS mode: comma-separated subsystems the diff actually touched'
+  scope_incoherent:
+    description: 'OSS mode: true when the declared scope does not match the actual blast radius'
+  scope_hash:
+    description: 'OSS mode: deterministic short hash of the scope-coherence inputs/outputs (replay anchor)'
+  commented:
+    description: 'OSS mode: true when a PR comment was posted/updated this run (false on silent-success coherent PRs)'
+  convergence:
+    description: 'OSS mode: per-PR operational lifecycle across pushes (clean | converged | fix-loop | persistent | unresolved)'
+  survivability:
+    description: 'pilot mode: trust profile (healthy | watch | at-risk)'
+  silent_rate:
+    description: 'pilot mode: percent of merged PRs that were coherent (no comment)'
+  scope_topology_profile:
+    description: 'OSS mode: deterministic hash of the derived repository topology profile (replay anchor for the module map)'
+  mechanical_class:
+    description: 'OSS mode: recognised mechanical/bulk PR class (revert|release|dependency-bump|generated-refresh|snapshot-refresh|ci-migration|formatting|codemod), or empty'
+  narrative_summary:
+    description: 'OSS mode: deterministic one-line operational narrative describing the PR''s operational shape'
+  operational_record:
+    description: 'OSS mode: a deterministic per-PR operational record (JSON line) for the longitudinal ledger (.neurcode/operational-ledger.jsonl). Re-derivable / replay-safe.'
+  report_status:
+    description: 'mode=report: generated | no_ledger | insufficient_history'
+  report_hash:
+    description: 'mode=report: deterministic content hash of the generated report (archival/replay anchor)'
+  report_path:
+    description: 'mode=report: path to the archived report markdown'
+  operational_events:
+    description: 'mode=memory: number of operational evolution events in the accumulated memory (0 = no operational evolution recorded — the calm, correct default)'
   compatibility_handshake:
     description: 'compatibility handshake status (passed|skipped)'
   compatibility_contract_version:

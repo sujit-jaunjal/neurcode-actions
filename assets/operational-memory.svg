@@ -1,0 +1,40 @@
+<svg width="900" height="430" viewBox="0 0 900 430" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+  <defs>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .t { fill: #e6edf3; } .m { fill: #8b949e; } .b { fill: #e6edf3; font-weight: 700; }
+      .tag { fill: #58a6ff; font-weight: 700; } .code { fill: #79c0ff; }
+    </style>
+  </defs>
+  <rect width="900" height="430" rx="10" fill="#0d1117"/>
+  <rect x="20" y="20" width="860" height="390" rx="8" fill="#161b22" stroke="#30363d"/>
+
+  <text x="44" y="56" class="b" font-size="17">Neurcode — Operational Memory</text>
+  <text x="44" y="78" class="mono m" font-size="11">AppFlowy-IO/AppFlowy · 5 operational events · memory `f5e7667ab9d5`</text>
+  <line x1="44" y1="92" x2="856" y2="92" stroke="#21262d"/>
+
+  <!-- 0.9.5 -->
+  <circle cx="52" cy="120" r="4" fill="#58a6ff"/>
+  <text x="68" y="125" class="tag" font-size="14">0.9.5</text>
+  <text x="68" y="148" class="t" font-size="13">• the <tspan class="mono code">frontend</tspan> cluster cooled — 3 modules no longer co-changing together.</text>
+
+  <!-- 0.9.4 -->
+  <circle cx="52" cy="180" r="4" fill="#58a6ff"/>
+  <text x="68" y="185" class="tag" font-size="14">0.9.4</text>
+  <text x="68" y="208" class="t" font-size="13">• <tspan class="mono code">flowy-ai</tspan> ↔ <tspan class="mono code">flowy-core</tspan> coupling cooled — no longer co-changing above threshold.</text>
+
+  <!-- 0.9.3 -->
+  <circle cx="52" cy="240" r="4" fill="#58a6ff"/>
+  <text x="68" y="245" class="tag" font-size="14">0.9.3</text>
+  <text x="68" y="268" class="t" font-size="13">• <tspan class="mono code">flowy-server</tspan> ↔ <tspan class="mono code">flowy-user</tspan> coupling cooled — no longer co-changing above threshold.</text>
+
+  <!-- 0.9.2 -->
+  <circle cx="52" cy="300" r="4" fill="#58a6ff"/>
+  <text x="68" y="305" class="tag" font-size="14">0.9.2</text>
+  <text x="68" y="328" class="t" font-size="13">• the <tspan class="mono code">frontend/rust-lib</tspan> cluster cooled — 4 modules no longer co-changing together.</text>
+  <text x="68" y="350" class="t" font-size="13">• <tspan class="mono code">flowy-ai</tspan> and <tspan class="mono code">flowy-server</tspan> began co-changing with no structural dependency —</text>
+  <text x="80" y="370" class="m" font-size="13">operational-only coupling (9% of PRs).</text>
+
+  <line x1="44" y1="386" x2="856" y2="386" stroke="#21262d"/>
+  <text x="44" y="402" class="m" font-size="11" font-style="italic">Append-only, re-derivable from your merge history. Not an architecture diagram, not a score.</text>
+</svg>
