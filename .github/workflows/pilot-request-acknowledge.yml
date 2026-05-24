@@ -1,0 +1,38 @@
+name: Pilot request acknowledgment
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  acknowledge:
+    if: github.event.label.name == 'pilot-request'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                "Thank you for requesting an advisory pilot.",
+                "",
+                "We have received your submission. Pilot configuration typically takes 2–5 business days. You will receive a follow-up here with installation instructions specific to your repository.",
+                "",
+                "**What to expect during the pilot:**",
+                "",
+                "- Installation is one workflow file addition to your repository.",
+                "- Most PRs will receive no comment. This is correct behavior, not a misconfiguration.",
+                "- Operational memory begins accumulating after the first PR merge.",
+                "- The Action never blocks merges. It has no failure mode that affects your CI pipeline.",
+                "- The pilot runs alongside any existing review tooling without configuration changes.",
+                "",
+                "**Rollback:** Remove the workflow file at any time. No other cleanup is required.",
+                "",
+                "If you have questions or constraints not captured in your submission, reply here."
+              ].join("\n")
+            });

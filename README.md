@@ -178,6 +178,16 @@ Neurcode was replayed against real OSS history before any pilot. On **AppFlowy**
 - **Deterministic & reproducible** — re-run on the same commit to verify any verdict.
 - **Rollback** — delete the workflow file. Nothing else to undo.
 
+## Advisory pilot
+
+The advisory pilot is available for OSS and internal repositories.
+
+The pilot installs a single GitHub Actions workflow. It accumulates operational memory and interrupts rarely. Most PRs receive no comment — silence is expected behavior.
+
+Rollback is one workflow file removal.
+
+[Request an advisory pilot →](https://github.com/sujit-jaunjal/neurcode-actions/issues/new?template=request-advisory-pilot.yml)
+
 ## License
 
 [MIT](LICENSE).
