@@ -1,0 +1,39 @@
+# Minimal example — Neurcode Runtime Admission Advisory
+# One workflow file. No account, API key, or local runtime required.
+# Layer 2 (admission provenance) activates automatically when .neurcode-admission/*.json is present.
+
+name: Neurcode Admission Advisory
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read   # git metadata only — no source upload, no write access needed
+
+jobs:
+  admission-advisory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # both base and head SHAs must be present in the local clone
+
+      - name: Runtime Admission Advisory
+        id: admission
+        uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.1
+        # All inputs are optional. Base/head SHAs are resolved from the PR event; no overrides.
+        # with:
+        #   policy: advisory                # advisory (default) or strict_self_attested (experimental)
+        #   no_record_strict: 'false'       # in strict mode, fail when no record exists
+        #   max_artifacts: '256'            # max .neurcode-admission/*.json files
+        #   max_aggregate_bytes: '16777216' # max aggregate artifact bytes (16 MB)
+
+      # Optional: use outputs in later steps
+      - name: Show admission results
+        run: |
+          echo "effects: ${{ steps.admission.outputs.effect_count }}"
+          echo "subsystems: ${{ steps.admission.outputs.subsystems }}"
+          echo "sensitive: ${{ steps.admission.outputs.sensitive_surfaces }}"
+          echo "admission: ${{ steps.admission.outputs.admission_verdict }}"
+          echo "covered: ${{ steps.admission.outputs.covered_paths_count }}"
+          echo "uncovered: ${{ steps.admission.outputs.uncovered_paths_count }}"

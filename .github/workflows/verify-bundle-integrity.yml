@@ -1,0 +1,65 @@
+# Bundle integrity check — verifies the committed dist/index.js checksum against PROVENANCE.json.
+#
+# IMPORTANT: This workflow verifies integrity only (checksums match).
+# It does NOT rebuild from source — the monorepo source is private and not available here.
+# The workflow records provenance metadata (source commit, tool version) for traceability.
+# Independent reproducible rebuild would require the source monorepo; signed build attestations
+# are a planned Phase C capability, not available in this release.
+
+name: Bundle Integrity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dist/index.js'
+      - 'PROVENANCE.json'
+  pull_request:
+    paths:
+      - 'dist/index.js'
+      - 'PROVENANCE.json'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify bundle checksum against PROVENANCE.json
+        run: |
+          if [ ! -f PROVENANCE.json ]; then
+            echo "❌ PROVENANCE.json not found"
+            exit 1
+          fi
+          if [ ! -f dist/index.js ]; then
+            echo "❌ dist/index.js not found"
+            exit 1
+          fi
+
+          EXPECTED=$(node -e "const p=JSON.parse(require('fs').readFileSync('PROVENANCE.json','utf8')); console.log(p.bundleSha256);")
+          ACTUAL=$(sha256sum dist/index.js | awk '{print $1}')
+
+          echo "Expected SHA-256: $EXPECTED"
+          echo "Actual   SHA-256: $ACTUAL"
+
+          if [ "$EXPECTED" = "$ACTUAL" ]; then
+            echo "✅ Bundle checksum matches PROVENANCE.json"
+          else
+            echo "❌ Bundle checksum MISMATCH — dist/index.js does not match the recorded provenance"
+            exit 1
+          fi
+
+          # Show provenance metadata for traceability (not a trust anchor, just informational).
+          echo ""
+          echo "Provenance metadata:"
+          node -e "
+            const p = JSON.parse(require('fs').readFileSync('PROVENANCE.json','utf8'));
+            console.log('  sourceCommit:', p.sourceCommit);
+            console.log('  contractVersion:', p.contractVersion);
+            console.log('  builtAt:', p.builtAt);
+            console.log('  nccVersion:', p.nccVersion);
+            console.log('  note:', p.note);
+          "

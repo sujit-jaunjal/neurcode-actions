@@ -1,44 +1,20 @@
 # Security Policy
 
-## Data handling (OSS operational path)
+## This action's security properties
 
-When run with `oss_mode: true` (or any `mode:` other than the enterprise verify gate), Neurcode:
-
-- makes **no outbound network calls** — your code never leaves the GitHub Actions runner;
-- sends **no telemetry or analytics**;
-- requires **no account, API key, or secret**;
-- uses `github_token` only to read the PR diff and post/update a single advisory comment.
-
-The reasoning path is deterministic (no model, no randomness), so a given commit always produces the same verdict and the same content hash — re-run to verify. The operational memory is re-derivable from your merge history; there is no external datastore.
+- **No secrets required** for `pull_request` events (fork-safe).
+- **No source upload**: only paths, git modes, and content-addressed blob hashes leave the runner.
+- **No outbound network calls**: purely local git metadata analysis.
+- **No execution of PR-controlled code**: no `npm install`, no repository scripts, no package hooks.
+- **Artifact hardening**: artifacts are read from the immutable PR head Git tree via `git ls-tree` + `git cat-file`. Symlink entries (mode `120000`) are explicitly rejected at the tree level. Only direct-child `.json` blobs are accepted. Bounded filename validation, per-file (8 MB) and aggregate byte ceilings, traversal protection.
+- **CODEOWNERS** is always read from the base commit, never the PR head. Unsupported GitHub CODEOWNERS syntax (`!`, `[ ]`, escaped leading `#`) is skipped with bounded diagnostics rather than guessed.
 
 ## Reporting a vulnerability
 
-Please do not open public issues for security vulnerabilities.
+Please report security vulnerabilities to **security@neurcode.ai** or open a private advisory via GitHub's security tab.
 
-- Preferred: GitHub private vulnerability report (Security tab).
-- Fallback: email `security@neurcode.com` with:
-  - impact summary
-  - reproduction steps
-  - affected version/commit
-  - optional mitigation suggestions
+Do not open a public issue for security vulnerabilities.
 
-## Response goals
+## Self-attested vs. signed
 
-- Initial acknowledgement: within 72 hours
-- Triage and severity classification: as soon as reproducible
-- Fix and coordinated disclosure: based on severity and exploitability
-
-## Secrets handling policy
-
-- Credentials must never be committed to source control.
-- If a credential is exposed:
-  1. rotate/revoke immediately,
-  2. remove from tracked files,
-  3. run `pnpm oss:check`,
-  4. consider history rewrite for public repos.
-
-## Supported hardening checks
-
-- `pnpm oss:check` blocks known sensitive/local artifacts from being tracked.
-- CI should run the same safety check before merge.
-
+Self-attested admission records are authored by the same principal as the diff and are **claims, not cryptographic proof**. Signed receipt infrastructure is Phase C and not present in this release.

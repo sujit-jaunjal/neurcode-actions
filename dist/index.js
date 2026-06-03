@@ -1,4 +1,4 @@
-require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
+/******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
 /***/ 4156:
@@ -572,8 +572,8 @@ class OidcClient {
             const res = yield httpclient
                 .getJson(id_token_url)
                 .catch(error => {
-                throw new Error(`Failed to get ID Token. \n 
-        Error Code : ${error.statusCode}\n 
+                throw new Error(`Failed to get ID Token. \n
+        Error Code : ${error.statusCode}\n
         Error Message: ${error.message}`);
             });
             const id_token = (_a = res.result) === null || _a === void 0 ? void 0 : _a.value;
@@ -7331,6 +7331,947 @@ function removeHook(state, name, method) {
 
 /***/ }),
 
+/***/ 8671:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const stringify = __nccwpck_require__(3062);
+const compile = __nccwpck_require__(4898);
+const expand = __nccwpck_require__(5331);
+const parse = __nccwpck_require__(168);
+
+/**
+ * Expand the given pattern or create a regex-compatible string.
+ *
+ * ```js
+ * const braces = require('braces');
+ * console.log(braces('{a,b,c}', { compile: true })); //=> ['(a|b|c)']
+ * console.log(braces('{a,b,c}')); //=> ['a', 'b', 'c']
+ * ```
+ * @param {String} `str`
+ * @param {Object} `options`
+ * @return {String}
+ * @api public
+ */
+
+const braces = (input, options = {}) => {
+  let output = [];
+
+  if (Array.isArray(input)) {
+    for (const pattern of input) {
+      const result = braces.create(pattern, options);
+      if (Array.isArray(result)) {
+        output.push(...result);
+      } else {
+        output.push(result);
+      }
+    }
+  } else {
+    output = [].concat(braces.create(input, options));
+  }
+
+  if (options && options.expand === true && options.nodupes === true) {
+    output = [...new Set(output)];
+  }
+  return output;
+};
+
+/**
+ * Parse the given `str` with the given `options`.
+ *
+ * ```js
+ * // braces.parse(pattern, [, options]);
+ * const ast = braces.parse('a/{b,c}/d');
+ * console.log(ast);
+ * ```
+ * @param {String} pattern Brace pattern to parse
+ * @param {Object} options
+ * @return {Object} Returns an AST
+ * @api public
+ */
+
+braces.parse = (input, options = {}) => parse(input, options);
+
+/**
+ * Creates a braces string from an AST, or an AST node.
+ *
+ * ```js
+ * const braces = require('braces');
+ * let ast = braces.parse('foo/{a,b}/bar');
+ * console.log(stringify(ast.nodes[2])); //=> '{a,b}'
+ * ```
+ * @param {String} `input` Brace pattern or AST.
+ * @param {Object} `options`
+ * @return {Array} Returns an array of expanded values.
+ * @api public
+ */
+
+braces.stringify = (input, options = {}) => {
+  if (typeof input === 'string') {
+    return stringify(braces.parse(input, options), options);
+  }
+  return stringify(input, options);
+};
+
+/**
+ * Compiles a brace pattern into a regex-compatible, optimized string.
+ * This method is called by the main [braces](#braces) function by default.
+ *
+ * ```js
+ * const braces = require('braces');
+ * console.log(braces.compile('a/{b,c}/d'));
+ * //=> ['a/(b|c)/d']
+ * ```
+ * @param {String} `input` Brace pattern or AST.
+ * @param {Object} `options`
+ * @return {Array} Returns an array of expanded values.
+ * @api public
+ */
+
+braces.compile = (input, options = {}) => {
+  if (typeof input === 'string') {
+    input = braces.parse(input, options);
+  }
+  return compile(input, options);
+};
+
+/**
+ * Expands a brace pattern into an array. This method is called by the
+ * main [braces](#braces) function when `options.expand` is true. Before
+ * using this method it's recommended that you read the [performance notes](#performance))
+ * and advantages of using [.compile](#compile) instead.
+ *
+ * ```js
+ * const braces = require('braces');
+ * console.log(braces.expand('a/{b,c}/d'));
+ * //=> ['a/b/d', 'a/c/d'];
+ * ```
+ * @param {String} `pattern` Brace pattern
+ * @param {Object} `options`
+ * @return {Array} Returns an array of expanded values.
+ * @api public
+ */
+
+braces.expand = (input, options = {}) => {
+  if (typeof input === 'string') {
+    input = braces.parse(input, options);
+  }
+
+  let result = expand(input, options);
+
+  // filter out empty strings if specified
+  if (options.noempty === true) {
+    result = result.filter(Boolean);
+  }
+
+  // filter out duplicates if specified
+  if (options.nodupes === true) {
+    result = [...new Set(result)];
+  }
+
+  return result;
+};
+
+/**
+ * Processes a brace pattern and returns either an expanded array
+ * (if `options.expand` is true), a highly optimized regex-compatible string.
+ * This method is called by the main [braces](#braces) function.
+ *
+ * ```js
+ * const braces = require('braces');
+ * console.log(braces.create('user-{200..300}/project-{a,b,c}-{1..10}'))
+ * //=> 'user-(20[0-9]|2[1-9][0-9]|300)/project-(a|b|c)-([1-9]|10)'
+ * ```
+ * @param {String} `pattern` Brace pattern
+ * @param {Object} `options`
+ * @return {Array} Returns an array of expanded values.
+ * @api public
+ */
+
+braces.create = (input, options = {}) => {
+  if (input === '' || input.length < 3) {
+    return [input];
+  }
+
+  return options.expand !== true
+    ? braces.compile(input, options)
+    : braces.expand(input, options);
+};
+
+/**
+ * Expose "braces"
+ */
+
+module.exports = braces;
+
+
+/***/ }),
+
+/***/ 4898:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const fill = __nccwpck_require__(9730);
+const utils = __nccwpck_require__(2474);
+
+const compile = (ast, options = {}) => {
+  const walk = (node, parent = {}) => {
+    const invalidBlock = utils.isInvalidBrace(parent);
+    const invalidNode = node.invalid === true && options.escapeInvalid === true;
+    const invalid = invalidBlock === true || invalidNode === true;
+    const prefix = options.escapeInvalid === true ? '\\' : '';
+    let output = '';
+
+    if (node.isOpen === true) {
+      return prefix + node.value;
+    }
+
+    if (node.isClose === true) {
+      console.log('node.isClose', prefix, node.value);
+      return prefix + node.value;
+    }
+
+    if (node.type === 'open') {
+      return invalid ? prefix + node.value : '(';
+    }
+
+    if (node.type === 'close') {
+      return invalid ? prefix + node.value : ')';
+    }
+
+    if (node.type === 'comma') {
+      return node.prev.type === 'comma' ? '' : invalid ? node.value : '|';
+    }
+
+    if (node.value) {
+      return node.value;
+    }
+
+    if (node.nodes && node.ranges > 0) {
+      const args = utils.reduce(node.nodes);
+      const range = fill(...args, { ...options, wrap: false, toRegex: true, strictZeros: true });
+
+      if (range.length !== 0) {
+        return args.length > 1 && range.length > 1 ? `(${range})` : range;
+      }
+    }
+
+    if (node.nodes) {
+      for (const child of node.nodes) {
+        output += walk(child, node);
+      }
+    }
+
+    return output;
+  };
+
+  return walk(ast);
+};
+
+module.exports = compile;
+
+
+/***/ }),
+
+/***/ 1778:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = {
+  MAX_LENGTH: 10000,
+
+  // Digits
+  CHAR_0: '0', /* 0 */
+  CHAR_9: '9', /* 9 */
+
+  // Alphabet chars.
+  CHAR_UPPERCASE_A: 'A', /* A */
+  CHAR_LOWERCASE_A: 'a', /* a */
+  CHAR_UPPERCASE_Z: 'Z', /* Z */
+  CHAR_LOWERCASE_Z: 'z', /* z */
+
+  CHAR_LEFT_PARENTHESES: '(', /* ( */
+  CHAR_RIGHT_PARENTHESES: ')', /* ) */
+
+  CHAR_ASTERISK: '*', /* * */
+
+  // Non-alphabetic chars.
+  CHAR_AMPERSAND: '&', /* & */
+  CHAR_AT: '@', /* @ */
+  CHAR_BACKSLASH: '\\', /* \ */
+  CHAR_BACKTICK: '`', /* ` */
+  CHAR_CARRIAGE_RETURN: '\r', /* \r */
+  CHAR_CIRCUMFLEX_ACCENT: '^', /* ^ */
+  CHAR_COLON: ':', /* : */
+  CHAR_COMMA: ',', /* , */
+  CHAR_DOLLAR: '$', /* . */
+  CHAR_DOT: '.', /* . */
+  CHAR_DOUBLE_QUOTE: '"', /* " */
+  CHAR_EQUAL: '=', /* = */
+  CHAR_EXCLAMATION_MARK: '!', /* ! */
+  CHAR_FORM_FEED: '\f', /* \f */
+  CHAR_FORWARD_SLASH: '/', /* / */
+  CHAR_HASH: '#', /* # */
+  CHAR_HYPHEN_MINUS: '-', /* - */
+  CHAR_LEFT_ANGLE_BRACKET: '<', /* < */
+  CHAR_LEFT_CURLY_BRACE: '{', /* { */
+  CHAR_LEFT_SQUARE_BRACKET: '[', /* [ */
+  CHAR_LINE_FEED: '\n', /* \n */
+  CHAR_NO_BREAK_SPACE: '\u00A0', /* \u00A0 */
+  CHAR_PERCENT: '%', /* % */
+  CHAR_PLUS: '+', /* + */
+  CHAR_QUESTION_MARK: '?', /* ? */
+  CHAR_RIGHT_ANGLE_BRACKET: '>', /* > */
+  CHAR_RIGHT_CURLY_BRACE: '}', /* } */
+  CHAR_RIGHT_SQUARE_BRACKET: ']', /* ] */
+  CHAR_SEMICOLON: ';', /* ; */
+  CHAR_SINGLE_QUOTE: '\'', /* ' */
+  CHAR_SPACE: ' ', /*   */
+  CHAR_TAB: '\t', /* \t */
+  CHAR_UNDERSCORE: '_', /* _ */
+  CHAR_VERTICAL_LINE: '|', /* | */
+  CHAR_ZERO_WIDTH_NOBREAK_SPACE: '\uFEFF' /* \uFEFF */
+};
+
+
+/***/ }),
+
+/***/ 5331:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const fill = __nccwpck_require__(9730);
+const stringify = __nccwpck_require__(3062);
+const utils = __nccwpck_require__(2474);
+
+const append = (queue = '', stash = '', enclose = false) => {
+  const result = [];
+
+  queue = [].concat(queue);
+  stash = [].concat(stash);
+
+  if (!stash.length) return queue;
+  if (!queue.length) {
+    return enclose ? utils.flatten(stash).map(ele => `{${ele}}`) : stash;
+  }
+
+  for (const item of queue) {
+    if (Array.isArray(item)) {
+      for (const value of item) {
+        result.push(append(value, stash, enclose));
+      }
+    } else {
+      for (let ele of stash) {
+        if (enclose === true && typeof ele === 'string') ele = `{${ele}}`;
+        result.push(Array.isArray(ele) ? append(item, ele, enclose) : item + ele);
+      }
+    }
+  }
+  return utils.flatten(result);
+};
+
+const expand = (ast, options = {}) => {
+  const rangeLimit = options.rangeLimit === undefined ? 1000 : options.rangeLimit;
+
+  const walk = (node, parent = {}) => {
+    node.queue = [];
+
+    let p = parent;
+    let q = parent.queue;
+
+    while (p.type !== 'brace' && p.type !== 'root' && p.parent) {
+      p = p.parent;
+      q = p.queue;
+    }
+
+    if (node.invalid || node.dollar) {
+      q.push(append(q.pop(), stringify(node, options)));
+      return;
+    }
+
+    if (node.type === 'brace' && node.invalid !== true && node.nodes.length === 2) {
+      q.push(append(q.pop(), ['{}']));
+      return;
+    }
+
+    if (node.nodes && node.ranges > 0) {
+      const args = utils.reduce(node.nodes);
+
+      if (utils.exceedsLimit(...args, options.step, rangeLimit)) {
+        throw new RangeError('expanded array length exceeds range limit. Use options.rangeLimit to increase or disable the limit.');
+      }
+
+      let range = fill(...args, options);
+      if (range.length === 0) {
+        range = stringify(node, options);
+      }
+
+      q.push(append(q.pop(), range));
+      node.nodes = [];
+      return;
+    }
+
+    const enclose = utils.encloseBrace(node);
+    let queue = node.queue;
+    let block = node;
+
+    while (block.type !== 'brace' && block.type !== 'root' && block.parent) {
+      block = block.parent;
+      queue = block.queue;
+    }
+
+    for (let i = 0; i < node.nodes.length; i++) {
+      const child = node.nodes[i];
+
+      if (child.type === 'comma' && node.type === 'brace') {
+        if (i === 1) queue.push('');
+        queue.push('');
+        continue;
+      }
+
+      if (child.type === 'close') {
+        q.push(append(q.pop(), queue, enclose));
+        continue;
+      }
+
+      if (child.value && child.type !== 'open') {
+        queue.push(append(queue.pop(), child.value));
+        continue;
+      }
+
+      if (child.nodes) {
+        walk(child, node);
+      }
+    }
+
+    return queue;
+  };
+
+  return utils.flatten(walk(ast));
+};
+
+module.exports = expand;
+
+
+/***/ }),
+
+/***/ 168:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const stringify = __nccwpck_require__(3062);
+
+/**
+ * Constants
+ */
+
+const {
+  MAX_LENGTH,
+  CHAR_BACKSLASH, /* \ */
+  CHAR_BACKTICK, /* ` */
+  CHAR_COMMA, /* , */
+  CHAR_DOT, /* . */
+  CHAR_LEFT_PARENTHESES, /* ( */
+  CHAR_RIGHT_PARENTHESES, /* ) */
+  CHAR_LEFT_CURLY_BRACE, /* { */
+  CHAR_RIGHT_CURLY_BRACE, /* } */
+  CHAR_LEFT_SQUARE_BRACKET, /* [ */
+  CHAR_RIGHT_SQUARE_BRACKET, /* ] */
+  CHAR_DOUBLE_QUOTE, /* " */
+  CHAR_SINGLE_QUOTE, /* ' */
+  CHAR_NO_BREAK_SPACE,
+  CHAR_ZERO_WIDTH_NOBREAK_SPACE
+} = __nccwpck_require__(1778);
+
+/**
+ * parse
+ */
+
+const parse = (input, options = {}) => {
+  if (typeof input !== 'string') {
+    throw new TypeError('Expected a string');
+  }
+
+  const opts = options || {};
+  const max = typeof opts.maxLength === 'number' ? Math.min(MAX_LENGTH, opts.maxLength) : MAX_LENGTH;
+  if (input.length > max) {
+    throw new SyntaxError(`Input length (${input.length}), exceeds max characters (${max})`);
+  }
+
+  const ast = { type: 'root', input, nodes: [] };
+  const stack = [ast];
+  let block = ast;
+  let prev = ast;
+  let brackets = 0;
+  const length = input.length;
+  let index = 0;
+  let depth = 0;
+  let value;
+
+  /**
+   * Helpers
+   */
+
+  const advance = () => input[index++];
+  const push = node => {
+    if (node.type === 'text' && prev.type === 'dot') {
+      prev.type = 'text';
+    }
+
+    if (prev && prev.type === 'text' && node.type === 'text') {
+      prev.value += node.value;
+      return;
+    }
+
+    block.nodes.push(node);
+    node.parent = block;
+    node.prev = prev;
+    prev = node;
+    return node;
+  };
+
+  push({ type: 'bos' });
+
+  while (index < length) {
+    block = stack[stack.length - 1];
+    value = advance();
+
+    /**
+     * Invalid chars
+     */
+
+    if (value === CHAR_ZERO_WIDTH_NOBREAK_SPACE || value === CHAR_NO_BREAK_SPACE) {
+      continue;
+    }
+
+    /**
+     * Escaped chars
+     */
+
+    if (value === CHAR_BACKSLASH) {
+      push({ type: 'text', value: (options.keepEscaping ? value : '') + advance() });
+      continue;
+    }
+
+    /**
+     * Right square bracket (literal): ']'
+     */
+
+    if (value === CHAR_RIGHT_SQUARE_BRACKET) {
+      push({ type: 'text', value: '\\' + value });
+      continue;
+    }
+
+    /**
+     * Left square bracket: '['
+     */
+
+    if (value === CHAR_LEFT_SQUARE_BRACKET) {
+      brackets++;
+
+      let next;
+
+      while (index < length && (next = advance())) {
+        value += next;
+
+        if (next === CHAR_LEFT_SQUARE_BRACKET) {
+          brackets++;
+          continue;
+        }
+
+        if (next === CHAR_BACKSLASH) {
+          value += advance();
+          continue;
+        }
+
+        if (next === CHAR_RIGHT_SQUARE_BRACKET) {
+          brackets--;
+
+          if (brackets === 0) {
+            break;
+          }
+        }
+      }
+
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Parentheses
+     */
+
+    if (value === CHAR_LEFT_PARENTHESES) {
+      block = push({ type: 'paren', nodes: [] });
+      stack.push(block);
+      push({ type: 'text', value });
+      continue;
+    }
+
+    if (value === CHAR_RIGHT_PARENTHESES) {
+      if (block.type !== 'paren') {
+        push({ type: 'text', value });
+        continue;
+      }
+      block = stack.pop();
+      push({ type: 'text', value });
+      block = stack[stack.length - 1];
+      continue;
+    }
+
+    /**
+     * Quotes: '|"|`
+     */
+
+    if (value === CHAR_DOUBLE_QUOTE || value === CHAR_SINGLE_QUOTE || value === CHAR_BACKTICK) {
+      const open = value;
+      let next;
+
+      if (options.keepQuotes !== true) {
+        value = '';
+      }
+
+      while (index < length && (next = advance())) {
+        if (next === CHAR_BACKSLASH) {
+          value += next + advance();
+          continue;
+        }
+
+        if (next === open) {
+          if (options.keepQuotes === true) value += next;
+          break;
+        }
+
+        value += next;
+      }
+
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Left curly brace: '{'
+     */
+
+    if (value === CHAR_LEFT_CURLY_BRACE) {
+      depth++;
+
+      const dollar = prev.value && prev.value.slice(-1) === '$' || block.dollar === true;
+      const brace = {
+        type: 'brace',
+        open: true,
+        close: false,
+        dollar,
+        depth,
+        commas: 0,
+        ranges: 0,
+        nodes: []
+      };
+
+      block = push(brace);
+      stack.push(block);
+      push({ type: 'open', value });
+      continue;
+    }
+
+    /**
+     * Right curly brace: '}'
+     */
+
+    if (value === CHAR_RIGHT_CURLY_BRACE) {
+      if (block.type !== 'brace') {
+        push({ type: 'text', value });
+        continue;
+      }
+
+      const type = 'close';
+      block = stack.pop();
+      block.close = true;
+
+      push({ type, value });
+      depth--;
+
+      block = stack[stack.length - 1];
+      continue;
+    }
+
+    /**
+     * Comma: ','
+     */
+
+    if (value === CHAR_COMMA && depth > 0) {
+      if (block.ranges > 0) {
+        block.ranges = 0;
+        const open = block.nodes.shift();
+        block.nodes = [open, { type: 'text', value: stringify(block) }];
+      }
+
+      push({ type: 'comma', value });
+      block.commas++;
+      continue;
+    }
+
+    /**
+     * Dot: '.'
+     */
+
+    if (value === CHAR_DOT && depth > 0 && block.commas === 0) {
+      const siblings = block.nodes;
+
+      if (depth === 0 || siblings.length === 0) {
+        push({ type: 'text', value });
+        continue;
+      }
+
+      if (prev.type === 'dot') {
+        block.range = [];
+        prev.value += value;
+        prev.type = 'range';
+
+        if (block.nodes.length !== 3 && block.nodes.length !== 5) {
+          block.invalid = true;
+          block.ranges = 0;
+          prev.type = 'text';
+          continue;
+        }
+
+        block.ranges++;
+        block.args = [];
+        continue;
+      }
+
+      if (prev.type === 'range') {
+        siblings.pop();
+
+        const before = siblings[siblings.length - 1];
+        before.value += prev.value + value;
+        prev = before;
+        block.ranges--;
+        continue;
+      }
+
+      push({ type: 'dot', value });
+      continue;
+    }
+
+    /**
+     * Text
+     */
+
+    push({ type: 'text', value });
+  }
+
+  // Mark imbalanced braces and brackets as invalid
+  do {
+    block = stack.pop();
+
+    if (block.type !== 'root') {
+      block.nodes.forEach(node => {
+        if (!node.nodes) {
+          if (node.type === 'open') node.isOpen = true;
+          if (node.type === 'close') node.isClose = true;
+          if (!node.nodes) node.type = 'text';
+          node.invalid = true;
+        }
+      });
+
+      // get the location of the block on parent.nodes (block's siblings)
+      const parent = stack[stack.length - 1];
+      const index = parent.nodes.indexOf(block);
+      // replace the (invalid) block with it's nodes
+      parent.nodes.splice(index, 1, ...block.nodes);
+    }
+  } while (stack.length > 0);
+
+  push({ type: 'eos' });
+  return ast;
+};
+
+module.exports = parse;
+
+
+/***/ }),
+
+/***/ 3062:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const utils = __nccwpck_require__(2474);
+
+module.exports = (ast, options = {}) => {
+  const stringify = (node, parent = {}) => {
+    const invalidBlock = options.escapeInvalid && utils.isInvalidBrace(parent);
+    const invalidNode = node.invalid === true && options.escapeInvalid === true;
+    let output = '';
+
+    if (node.value) {
+      if ((invalidBlock || invalidNode) && utils.isOpenOrClose(node)) {
+        return '\\' + node.value;
+      }
+      return node.value;
+    }
+
+    if (node.value) {
+      return node.value;
+    }
+
+    if (node.nodes) {
+      for (const child of node.nodes) {
+        output += stringify(child);
+      }
+    }
+    return output;
+  };
+
+  return stringify(ast);
+};
+
+
+
+/***/ }),
+
+/***/ 2474:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+
+exports.isInteger = num => {
+  if (typeof num === 'number') {
+    return Number.isInteger(num);
+  }
+  if (typeof num === 'string' && num.trim() !== '') {
+    return Number.isInteger(Number(num));
+  }
+  return false;
+};
+
+/**
+ * Find a node of the given type
+ */
+
+exports.find = (node, type) => node.nodes.find(node => node.type === type);
+
+/**
+ * Find a node of the given type
+ */
+
+exports.exceedsLimit = (min, max, step = 1, limit) => {
+  if (limit === false) return false;
+  if (!exports.isInteger(min) || !exports.isInteger(max)) return false;
+  return ((Number(max) - Number(min)) / Number(step)) >= limit;
+};
+
+/**
+ * Escape the given node with '\\' before node.value
+ */
+
+exports.escapeNode = (block, n = 0, type) => {
+  const node = block.nodes[n];
+  if (!node) return;
+
+  if ((type && node.type === type) || node.type === 'open' || node.type === 'close') {
+    if (node.escaped !== true) {
+      node.value = '\\' + node.value;
+      node.escaped = true;
+    }
+  }
+};
+
+/**
+ * Returns true if the given brace node should be enclosed in literal braces
+ */
+
+exports.encloseBrace = node => {
+  if (node.type !== 'brace') return false;
+  if ((node.commas >> 0 + node.ranges >> 0) === 0) {
+    node.invalid = true;
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Returns true if a brace node is invalid.
+ */
+
+exports.isInvalidBrace = block => {
+  if (block.type !== 'brace') return false;
+  if (block.invalid === true || block.dollar) return true;
+  if ((block.commas >> 0 + block.ranges >> 0) === 0) {
+    block.invalid = true;
+    return true;
+  }
+  if (block.open !== true || block.close !== true) {
+    block.invalid = true;
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Returns true if a node is an open or close node
+ */
+
+exports.isOpenOrClose = node => {
+  if (node.type === 'open' || node.type === 'close') {
+    return true;
+  }
+  return node.open === true || node.close === true;
+};
+
+/**
+ * Reduce an array of text nodes.
+ */
+
+exports.reduce = nodes => nodes.reduce((acc, node) => {
+  if (node.type === 'text') acc.push(node.value);
+  if (node.type === 'range') node.type = 'text';
+  return acc;
+}, []);
+
+/**
+ * Flatten an array
+ */
+
+exports.flatten = (...args) => {
+  const result = [];
+
+  const flat = arr => {
+    for (let i = 0; i < arr.length; i++) {
+      const ele = arr[i];
+
+      if (Array.isArray(ele)) {
+        flat(ele);
+        continue;
+      }
+
+      if (ele !== undefined) {
+        result.push(ele);
+      }
+    }
+    return result;
+  };
+
+  flat(args);
+  return result;
+};
+
+
+/***/ }),
+
 /***/ 3147:
 /***/ ((__unused_webpack_module, exports) => {
 
@@ -7355,6 +8296,770 @@ class Deprecation extends Error {
 }
 
 exports.Deprecation = Deprecation;
+
+
+/***/ }),
+
+/***/ 9730:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+/*!
+ * fill-range <https://github.com/jonschlinkert/fill-range>
+ *
+ * Copyright (c) 2014-present, Jon Schlinkert.
+ * Licensed under the MIT License.
+ */
+
+
+
+const util = __nccwpck_require__(9023);
+const toRegexRange = __nccwpck_require__(743);
+
+const isObject = val => val !== null && typeof val === 'object' && !Array.isArray(val);
+
+const transform = toNumber => {
+  return value => toNumber === true ? Number(value) : String(value);
+};
+
+const isValidValue = value => {
+  return typeof value === 'number' || (typeof value === 'string' && value !== '');
+};
+
+const isNumber = num => Number.isInteger(+num);
+
+const zeros = input => {
+  let value = `${input}`;
+  let index = -1;
+  if (value[0] === '-') value = value.slice(1);
+  if (value === '0') return false;
+  while (value[++index] === '0');
+  return index > 0;
+};
+
+const stringify = (start, end, options) => {
+  if (typeof start === 'string' || typeof end === 'string') {
+    return true;
+  }
+  return options.stringify === true;
+};
+
+const pad = (input, maxLength, toNumber) => {
+  if (maxLength > 0) {
+    let dash = input[0] === '-' ? '-' : '';
+    if (dash) input = input.slice(1);
+    input = (dash + input.padStart(dash ? maxLength - 1 : maxLength, '0'));
+  }
+  if (toNumber === false) {
+    return String(input);
+  }
+  return input;
+};
+
+const toMaxLen = (input, maxLength) => {
+  let negative = input[0] === '-' ? '-' : '';
+  if (negative) {
+    input = input.slice(1);
+    maxLength--;
+  }
+  while (input.length < maxLength) input = '0' + input;
+  return negative ? ('-' + input) : input;
+};
+
+const toSequence = (parts, options, maxLen) => {
+  parts.negatives.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  parts.positives.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+
+  let prefix = options.capture ? '' : '?:';
+  let positives = '';
+  let negatives = '';
+  let result;
+
+  if (parts.positives.length) {
+    positives = parts.positives.map(v => toMaxLen(String(v), maxLen)).join('|');
+  }
+
+  if (parts.negatives.length) {
+    negatives = `-(${prefix}${parts.negatives.map(v => toMaxLen(String(v), maxLen)).join('|')})`;
+  }
+
+  if (positives && negatives) {
+    result = `${positives}|${negatives}`;
+  } else {
+    result = positives || negatives;
+  }
+
+  if (options.wrap) {
+    return `(${prefix}${result})`;
+  }
+
+  return result;
+};
+
+const toRange = (a, b, isNumbers, options) => {
+  if (isNumbers) {
+    return toRegexRange(a, b, { wrap: false, ...options });
+  }
+
+  let start = String.fromCharCode(a);
+  if (a === b) return start;
+
+  let stop = String.fromCharCode(b);
+  return `[${start}-${stop}]`;
+};
+
+const toRegex = (start, end, options) => {
+  if (Array.isArray(start)) {
+    let wrap = options.wrap === true;
+    let prefix = options.capture ? '' : '?:';
+    return wrap ? `(${prefix}${start.join('|')})` : start.join('|');
+  }
+  return toRegexRange(start, end, options);
+};
+
+const rangeError = (...args) => {
+  return new RangeError('Invalid range arguments: ' + util.inspect(...args));
+};
+
+const invalidRange = (start, end, options) => {
+  if (options.strictRanges === true) throw rangeError([start, end]);
+  return [];
+};
+
+const invalidStep = (step, options) => {
+  if (options.strictRanges === true) {
+    throw new TypeError(`Expected step "${step}" to be a number`);
+  }
+  return [];
+};
+
+const fillNumbers = (start, end, step = 1, options = {}) => {
+  let a = Number(start);
+  let b = Number(end);
+
+  if (!Number.isInteger(a) || !Number.isInteger(b)) {
+    if (options.strictRanges === true) throw rangeError([start, end]);
+    return [];
+  }
+
+  // fix negative zero
+  if (a === 0) a = 0;
+  if (b === 0) b = 0;
+
+  let descending = a > b;
+  let startString = String(start);
+  let endString = String(end);
+  let stepString = String(step);
+  step = Math.max(Math.abs(step), 1);
+
+  let padded = zeros(startString) || zeros(endString) || zeros(stepString);
+  let maxLen = padded ? Math.max(startString.length, endString.length, stepString.length) : 0;
+  let toNumber = padded === false && stringify(start, end, options) === false;
+  let format = options.transform || transform(toNumber);
+
+  if (options.toRegex && step === 1) {
+    return toRange(toMaxLen(start, maxLen), toMaxLen(end, maxLen), true, options);
+  }
+
+  let parts = { negatives: [], positives: [] };
+  let push = num => parts[num < 0 ? 'negatives' : 'positives'].push(Math.abs(num));
+  let range = [];
+  let index = 0;
+
+  while (descending ? a >= b : a <= b) {
+    if (options.toRegex === true && step > 1) {
+      push(a);
+    } else {
+      range.push(pad(format(a, index), maxLen, toNumber));
+    }
+    a = descending ? a - step : a + step;
+    index++;
+  }
+
+  if (options.toRegex === true) {
+    return step > 1
+      ? toSequence(parts, options, maxLen)
+      : toRegex(range, null, { wrap: false, ...options });
+  }
+
+  return range;
+};
+
+const fillLetters = (start, end, step = 1, options = {}) => {
+  if ((!isNumber(start) && start.length > 1) || (!isNumber(end) && end.length > 1)) {
+    return invalidRange(start, end, options);
+  }
+
+  let format = options.transform || (val => String.fromCharCode(val));
+  let a = `${start}`.charCodeAt(0);
+  let b = `${end}`.charCodeAt(0);
+
+  let descending = a > b;
+  let min = Math.min(a, b);
+  let max = Math.max(a, b);
+
+  if (options.toRegex && step === 1) {
+    return toRange(min, max, false, options);
+  }
+
+  let range = [];
+  let index = 0;
+
+  while (descending ? a >= b : a <= b) {
+    range.push(format(a, index));
+    a = descending ? a - step : a + step;
+    index++;
+  }
+
+  if (options.toRegex === true) {
+    return toRegex(range, null, { wrap: false, options });
+  }
+
+  return range;
+};
+
+const fill = (start, end, step, options = {}) => {
+  if (end == null && isValidValue(start)) {
+    return [start];
+  }
+
+  if (!isValidValue(start) || !isValidValue(end)) {
+    return invalidRange(start, end, options);
+  }
+
+  if (typeof step === 'function') {
+    return fill(start, end, 1, { transform: step });
+  }
+
+  if (isObject(step)) {
+    return fill(start, end, 0, step);
+  }
+
+  let opts = { ...options };
+  if (opts.capture === true) opts.wrap = true;
+  step = step || opts.step || 1;
+
+  if (!isNumber(step)) {
+    if (step != null && !isObject(step)) return invalidStep(step, opts);
+    return fill(start, end, 1, step);
+  }
+
+  if (isNumber(start) && isNumber(end)) {
+    return fillNumbers(start, end, step, opts);
+  }
+
+  return fillLetters(start, end, Math.max(Math.abs(step), 1), opts);
+};
+
+module.exports = fill;
+
+
+/***/ }),
+
+/***/ 952:
+/***/ ((module) => {
+
+"use strict";
+/*!
+ * is-number <https://github.com/jonschlinkert/is-number>
+ *
+ * Copyright (c) 2014-present, Jon Schlinkert.
+ * Released under the MIT License.
+ */
+
+
+
+module.exports = function(num) {
+  if (typeof num === 'number') {
+    return num - num === 0;
+  }
+  if (typeof num === 'string' && num.trim() !== '') {
+    return Number.isFinite ? Number.isFinite(+num) : isFinite(+num);
+  }
+  return false;
+};
+
+
+/***/ }),
+
+/***/ 9555:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const util = __nccwpck_require__(9023);
+const braces = __nccwpck_require__(8671);
+const picomatch = __nccwpck_require__(3268);
+const utils = __nccwpck_require__(3753);
+
+const isEmptyString = v => v === '' || v === './';
+const hasBraces = v => {
+  const index = v.indexOf('{');
+  return index > -1 && v.indexOf('}', index) > -1;
+};
+
+/**
+ * Returns an array of strings that match one or more glob patterns.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm(list, patterns[, options]);
+ *
+ * console.log(mm(['a.js', 'a.txt'], ['*.js']));
+ * //=> [ 'a.js' ]
+ * ```
+ * @param {String|Array<string>} `list` List of strings to match.
+ * @param {String|Array<string>} `patterns` One or more glob patterns to use for matching.
+ * @param {Object} `options` See available [options](#options)
+ * @return {Array} Returns an array of matches
+ * @summary false
+ * @api public
+ */
+
+const micromatch = (list, patterns, options) => {
+  patterns = [].concat(patterns);
+  list = [].concat(list);
+
+  let omit = new Set();
+  let keep = new Set();
+  let items = new Set();
+  let negatives = 0;
+
+  let onResult = state => {
+    items.add(state.output);
+    if (options && options.onResult) {
+      options.onResult(state);
+    }
+  };
+
+  for (let i = 0; i < patterns.length; i++) {
+    let isMatch = picomatch(String(patterns[i]), { ...options, onResult }, true);
+    let negated = isMatch.state.negated || isMatch.state.negatedExtglob;
+    if (negated) negatives++;
+
+    for (let item of list) {
+      let matched = isMatch(item, true);
+
+      let match = negated ? !matched.isMatch : matched.isMatch;
+      if (!match) continue;
+
+      if (negated) {
+        omit.add(matched.output);
+      } else {
+        omit.delete(matched.output);
+        keep.add(matched.output);
+      }
+    }
+  }
+
+  let result = negatives === patterns.length ? [...items] : [...keep];
+  let matches = result.filter(item => !omit.has(item));
+
+  if (options && matches.length === 0) {
+    if (options.failglob === true) {
+      throw new Error(`No matches found for "${patterns.join(', ')}"`);
+    }
+
+    if (options.nonull === true || options.nullglob === true) {
+      return options.unescape ? patterns.map(p => p.replace(/\\/g, '')) : patterns;
+    }
+  }
+
+  return matches;
+};
+
+/**
+ * Backwards compatibility
+ */
+
+micromatch.match = micromatch;
+
+/**
+ * Returns a matcher function from the given glob `pattern` and `options`.
+ * The returned function takes a string to match as its only argument and returns
+ * true if the string is a match.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.matcher(pattern[, options]);
+ *
+ * const isMatch = mm.matcher('*.!(*a)');
+ * console.log(isMatch('a.a')); //=> false
+ * console.log(isMatch('a.b')); //=> true
+ * ```
+ * @param {String} `pattern` Glob pattern
+ * @param {Object} `options`
+ * @return {Function} Returns a matcher function.
+ * @api public
+ */
+
+micromatch.matcher = (pattern, options) => picomatch(pattern, options);
+
+/**
+ * Returns true if **any** of the given glob `patterns` match the specified `string`.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.isMatch(string, patterns[, options]);
+ *
+ * console.log(mm.isMatch('a.a', ['b.*', '*.a'])); //=> true
+ * console.log(mm.isMatch('a.a', 'b.*')); //=> false
+ * ```
+ * @param {String} `str` The string to test.
+ * @param {String|Array} `patterns` One or more glob patterns to use for matching.
+ * @param {Object} `[options]` See available [options](#options).
+ * @return {Boolean} Returns true if any patterns match `str`
+ * @api public
+ */
+
+micromatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
+
+/**
+ * Backwards compatibility
+ */
+
+micromatch.any = micromatch.isMatch;
+
+/**
+ * Returns a list of strings that _**do not match any**_ of the given `patterns`.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.not(list, patterns[, options]);
+ *
+ * console.log(mm.not(['a.a', 'b.b', 'c.c'], '*.a'));
+ * //=> ['b.b', 'c.c']
+ * ```
+ * @param {Array} `list` Array of strings to match.
+ * @param {String|Array} `patterns` One or more glob pattern to use for matching.
+ * @param {Object} `options` See available [options](#options) for changing how matches are performed
+ * @return {Array} Returns an array of strings that **do not match** the given patterns.
+ * @api public
+ */
+
+micromatch.not = (list, patterns, options = {}) => {
+  patterns = [].concat(patterns).map(String);
+  let result = new Set();
+  let items = [];
+
+  let onResult = state => {
+    if (options.onResult) options.onResult(state);
+    items.push(state.output);
+  };
+
+  let matches = new Set(micromatch(list, patterns, { ...options, onResult }));
+
+  for (let item of items) {
+    if (!matches.has(item)) {
+      result.add(item);
+    }
+  }
+  return [...result];
+};
+
+/**
+ * Returns true if the given `string` contains the given pattern. Similar
+ * to [.isMatch](#isMatch) but the pattern can match any part of the string.
+ *
+ * ```js
+ * var mm = require('micromatch');
+ * // mm.contains(string, pattern[, options]);
+ *
+ * console.log(mm.contains('aa/bb/cc', '*b'));
+ * //=> true
+ * console.log(mm.contains('aa/bb/cc', '*d'));
+ * //=> false
+ * ```
+ * @param {String} `str` The string to match.
+ * @param {String|Array} `patterns` Glob pattern to use for matching.
+ * @param {Object} `options` See available [options](#options) for changing how matches are performed
+ * @return {Boolean} Returns true if any of the patterns matches any part of `str`.
+ * @api public
+ */
+
+micromatch.contains = (str, pattern, options) => {
+  if (typeof str !== 'string') {
+    throw new TypeError(`Expected a string: "${util.inspect(str)}"`);
+  }
+
+  if (Array.isArray(pattern)) {
+    return pattern.some(p => micromatch.contains(str, p, options));
+  }
+
+  if (typeof pattern === 'string') {
+    if (isEmptyString(str) || isEmptyString(pattern)) {
+      return false;
+    }
+
+    if (str.includes(pattern) || (str.startsWith('./') && str.slice(2).includes(pattern))) {
+      return true;
+    }
+  }
+
+  return micromatch.isMatch(str, pattern, { ...options, contains: true });
+};
+
+/**
+ * Filter the keys of the given object with the given `glob` pattern
+ * and `options`. Does not attempt to match nested keys. If you need this feature,
+ * use [glob-object][] instead.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.matchKeys(object, patterns[, options]);
+ *
+ * const obj = { aa: 'a', ab: 'b', ac: 'c' };
+ * console.log(mm.matchKeys(obj, '*b'));
+ * //=> { ab: 'b' }
+ * ```
+ * @param {Object} `object` The object with keys to filter.
+ * @param {String|Array} `patterns` One or more glob patterns to use for matching.
+ * @param {Object} `options` See available [options](#options) for changing how matches are performed
+ * @return {Object} Returns an object with only keys that match the given patterns.
+ * @api public
+ */
+
+micromatch.matchKeys = (obj, patterns, options) => {
+  if (!utils.isObject(obj)) {
+    throw new TypeError('Expected the first argument to be an object');
+  }
+  let keys = micromatch(Object.keys(obj), patterns, options);
+  let res = {};
+  for (let key of keys) res[key] = obj[key];
+  return res;
+};
+
+/**
+ * Returns true if some of the strings in the given `list` match any of the given glob `patterns`.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.some(list, patterns[, options]);
+ *
+ * console.log(mm.some(['foo.js', 'bar.js'], ['*.js', '!foo.js']));
+ * // true
+ * console.log(mm.some(['foo.js'], ['*.js', '!foo.js']));
+ * // false
+ * ```
+ * @param {String|Array} `list` The string or array of strings to test. Returns as soon as the first match is found.
+ * @param {String|Array} `patterns` One or more glob patterns to use for matching.
+ * @param {Object} `options` See available [options](#options) for changing how matches are performed
+ * @return {Boolean} Returns true if any `patterns` matches any of the strings in `list`
+ * @api public
+ */
+
+micromatch.some = (list, patterns, options) => {
+  let items = [].concat(list);
+
+  for (let pattern of [].concat(patterns)) {
+    let isMatch = picomatch(String(pattern), options);
+    if (items.some(item => isMatch(item))) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Returns true if every string in the given `list` matches
+ * any of the given glob `patterns`.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.every(list, patterns[, options]);
+ *
+ * console.log(mm.every('foo.js', ['foo.js']));
+ * // true
+ * console.log(mm.every(['foo.js', 'bar.js'], ['*.js']));
+ * // true
+ * console.log(mm.every(['foo.js', 'bar.js'], ['*.js', '!foo.js']));
+ * // false
+ * console.log(mm.every(['foo.js'], ['*.js', '!foo.js']));
+ * // false
+ * ```
+ * @param {String|Array} `list` The string or array of strings to test.
+ * @param {String|Array} `patterns` One or more glob patterns to use for matching.
+ * @param {Object} `options` See available [options](#options) for changing how matches are performed
+ * @return {Boolean} Returns true if all `patterns` matches all of the strings in `list`
+ * @api public
+ */
+
+micromatch.every = (list, patterns, options) => {
+  let items = [].concat(list);
+
+  for (let pattern of [].concat(patterns)) {
+    let isMatch = picomatch(String(pattern), options);
+    if (!items.every(item => isMatch(item))) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * Returns true if **all** of the given `patterns` match
+ * the specified string.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.all(string, patterns[, options]);
+ *
+ * console.log(mm.all('foo.js', ['foo.js']));
+ * // true
+ *
+ * console.log(mm.all('foo.js', ['*.js', '!foo.js']));
+ * // false
+ *
+ * console.log(mm.all('foo.js', ['*.js', 'foo.js']));
+ * // true
+ *
+ * console.log(mm.all('foo.js', ['*.js', 'f*', '*o*', '*o.js']));
+ * // true
+ * ```
+ * @param {String|Array} `str` The string to test.
+ * @param {String|Array} `patterns` One or more glob patterns to use for matching.
+ * @param {Object} `options` See available [options](#options) for changing how matches are performed
+ * @return {Boolean} Returns true if any patterns match `str`
+ * @api public
+ */
+
+micromatch.all = (str, patterns, options) => {
+  if (typeof str !== 'string') {
+    throw new TypeError(`Expected a string: "${util.inspect(str)}"`);
+  }
+
+  return [].concat(patterns).every(p => picomatch(p, options)(str));
+};
+
+/**
+ * Returns an array of matches captured by `pattern` in `string, or `null` if the pattern did not match.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.capture(pattern, string[, options]);
+ *
+ * console.log(mm.capture('test/*.js', 'test/foo.js'));
+ * //=> ['foo']
+ * console.log(mm.capture('test/*.js', 'foo/bar.css'));
+ * //=> null
+ * ```
+ * @param {String} `glob` Glob pattern to use for matching.
+ * @param {String} `input` String to match
+ * @param {Object} `options` See available [options](#options) for changing how matches are performed
+ * @return {Array|null} Returns an array of captures if the input matches the glob pattern, otherwise `null`.
+ * @api public
+ */
+
+micromatch.capture = (glob, input, options) => {
+  let posix = utils.isWindows(options);
+  let regex = picomatch.makeRe(String(glob), { ...options, capture: true });
+  let match = regex.exec(posix ? utils.toPosixSlashes(input) : input);
+
+  if (match) {
+    return match.slice(1).map(v => v === void 0 ? '' : v);
+  }
+};
+
+/**
+ * Create a regular expression from the given glob `pattern`.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * // mm.makeRe(pattern[, options]);
+ *
+ * console.log(mm.makeRe('*.js'));
+ * //=> /^(?:(\.[\\\/])?(?!\.)(?=.)[^\/]*?\.js)$/
+ * ```
+ * @param {String} `pattern` A glob pattern to convert to regex.
+ * @param {Object} `options`
+ * @return {RegExp} Returns a regex created from the given pattern.
+ * @api public
+ */
+
+micromatch.makeRe = (...args) => picomatch.makeRe(...args);
+
+/**
+ * Scan a glob pattern to separate the pattern into segments. Used
+ * by the [split](#split) method.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * const state = mm.scan(pattern[, options]);
+ * ```
+ * @param {String} `pattern`
+ * @param {Object} `options`
+ * @return {Object} Returns an object with
+ * @api public
+ */
+
+micromatch.scan = (...args) => picomatch.scan(...args);
+
+/**
+ * Parse a glob pattern to create the source string for a regular
+ * expression.
+ *
+ * ```js
+ * const mm = require('micromatch');
+ * const state = mm.parse(pattern[, options]);
+ * ```
+ * @param {String} `glob`
+ * @param {Object} `options`
+ * @return {Object} Returns an object with useful properties and output to be used as regex source string.
+ * @api public
+ */
+
+micromatch.parse = (patterns, options) => {
+  let res = [];
+  for (let pattern of [].concat(patterns || [])) {
+    for (let str of braces(String(pattern), options)) {
+      res.push(picomatch.parse(str, options));
+    }
+  }
+  return res;
+};
+
+/**
+ * Process the given brace `pattern`.
+ *
+ * ```js
+ * const { braces } = require('micromatch');
+ * console.log(braces('foo/{a,b,c}/bar'));
+ * //=> [ 'foo/(a|b|c)/bar' ]
+ *
+ * console.log(braces('foo/{a,b,c}/bar', { expand: true }));
+ * //=> [ 'foo/a/bar', 'foo/b/bar', 'foo/c/bar' ]
+ * ```
+ * @param {String} `pattern` String with brace pattern to process.
+ * @param {Object} `options` Any [options](#options) to change how expansion is performed. See the [braces][] library for all available options.
+ * @return {Array}
+ * @api public
+ */
+
+micromatch.braces = (pattern, options) => {
+  if (typeof pattern !== 'string') throw new TypeError('Expected a string');
+  if ((options && options.nobrace === true) || !hasBraces(pattern)) {
+    return [pattern];
+  }
+  return braces(pattern, options);
+};
+
+/**
+ * Expand braces
+ */
+
+micromatch.braceExpand = (pattern, options) => {
+  if (typeof pattern !== 'string') throw new TypeError('Expected a string');
+  return micromatch.braces(pattern, { ...options, expand: true });
+};
+
+/**
+ * Expose micromatch
+ */
+
+// exposed for tests
+micromatch.hasBraces = hasBraces;
+module.exports = micromatch;
 
 
 /***/ }),
@@ -7404,6 +9109,2726 @@ function onceStrict (fn) {
   f.called = false
   return f
 }
+
+
+/***/ }),
+
+/***/ 3268:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+module.exports = __nccwpck_require__(1614);
+
+
+/***/ }),
+
+/***/ 1237:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const path = __nccwpck_require__(6928);
+const WIN_SLASH = '\\\\/';
+const WIN_NO_SLASH = `[^${WIN_SLASH}]`;
+
+const DEFAULT_MAX_EXTGLOB_RECURSION = 0;
+
+/**
+ * Posix glob regex
+ */
+
+const DOT_LITERAL = '\\.';
+const PLUS_LITERAL = '\\+';
+const QMARK_LITERAL = '\\?';
+const SLASH_LITERAL = '\\/';
+const ONE_CHAR = '(?=.)';
+const QMARK = '[^/]';
+const END_ANCHOR = `(?:${SLASH_LITERAL}|$)`;
+const START_ANCHOR = `(?:^|${SLASH_LITERAL})`;
+const DOTS_SLASH = `${DOT_LITERAL}{1,2}${END_ANCHOR}`;
+const NO_DOT = `(?!${DOT_LITERAL})`;
+const NO_DOTS = `(?!${START_ANCHOR}${DOTS_SLASH})`;
+const NO_DOT_SLASH = `(?!${DOT_LITERAL}{0,1}${END_ANCHOR})`;
+const NO_DOTS_SLASH = `(?!${DOTS_SLASH})`;
+const QMARK_NO_DOT = `[^.${SLASH_LITERAL}]`;
+const STAR = `${QMARK}*?`;
+
+const POSIX_CHARS = {
+  DOT_LITERAL,
+  PLUS_LITERAL,
+  QMARK_LITERAL,
+  SLASH_LITERAL,
+  ONE_CHAR,
+  QMARK,
+  END_ANCHOR,
+  DOTS_SLASH,
+  NO_DOT,
+  NO_DOTS,
+  NO_DOT_SLASH,
+  NO_DOTS_SLASH,
+  QMARK_NO_DOT,
+  STAR,
+  START_ANCHOR
+};
+
+/**
+ * Windows glob regex
+ */
+
+const WINDOWS_CHARS = {
+  ...POSIX_CHARS,
+
+  SLASH_LITERAL: `[${WIN_SLASH}]`,
+  QMARK: WIN_NO_SLASH,
+  STAR: `${WIN_NO_SLASH}*?`,
+  DOTS_SLASH: `${DOT_LITERAL}{1,2}(?:[${WIN_SLASH}]|$)`,
+  NO_DOT: `(?!${DOT_LITERAL})`,
+  NO_DOTS: `(?!(?:^|[${WIN_SLASH}])${DOT_LITERAL}{1,2}(?:[${WIN_SLASH}]|$))`,
+  NO_DOT_SLASH: `(?!${DOT_LITERAL}{0,1}(?:[${WIN_SLASH}]|$))`,
+  NO_DOTS_SLASH: `(?!${DOT_LITERAL}{1,2}(?:[${WIN_SLASH}]|$))`,
+  QMARK_NO_DOT: `[^.${WIN_SLASH}]`,
+  START_ANCHOR: `(?:^|[${WIN_SLASH}])`,
+  END_ANCHOR: `(?:[${WIN_SLASH}]|$)`
+};
+
+/**
+ * POSIX Bracket Regex
+ */
+
+const POSIX_REGEX_SOURCE = {
+  __proto__: null,
+  alnum: 'a-zA-Z0-9',
+  alpha: 'a-zA-Z',
+  ascii: '\\x00-\\x7F',
+  blank: ' \\t',
+  cntrl: '\\x00-\\x1F\\x7F',
+  digit: '0-9',
+  graph: '\\x21-\\x7E',
+  lower: 'a-z',
+  print: '\\x20-\\x7E ',
+  punct: '\\-!"#$%&\'()\\*+,./:;<=>?@[\\]^_`{|}~',
+  space: ' \\t\\r\\n\\v\\f',
+  upper: 'A-Z',
+  word: 'A-Za-z0-9_',
+  xdigit: 'A-Fa-f0-9'
+};
+
+module.exports = {
+  DEFAULT_MAX_EXTGLOB_RECURSION,
+  MAX_LENGTH: 1024 * 64,
+  POSIX_REGEX_SOURCE,
+
+  // regular expressions
+  REGEX_BACKSLASH: /\\(?![*+?^${}(|)[\]])/g,
+  REGEX_NON_SPECIAL_CHARS: /^[^@![\].,$*+?^{}()|\\/]+/,
+  REGEX_SPECIAL_CHARS: /[-*+?.^${}(|)[\]]/,
+  REGEX_SPECIAL_CHARS_BACKREF: /(\\?)((\W)(\3*))/g,
+  REGEX_SPECIAL_CHARS_GLOBAL: /([-*+?.^${}(|)[\]])/g,
+  REGEX_REMOVE_BACKSLASH: /(?:\[.*?[^\\]\]|\\(?=.))/g,
+
+  // Replace globs with equivalent patterns to reduce parsing time.
+  REPLACEMENTS: {
+    __proto__: null,
+    '***': '*',
+    '**/**': '**',
+    '**/**/**': '**'
+  },
+
+  // Digits
+  CHAR_0: 48, /* 0 */
+  CHAR_9: 57, /* 9 */
+
+  // Alphabet chars.
+  CHAR_UPPERCASE_A: 65, /* A */
+  CHAR_LOWERCASE_A: 97, /* a */
+  CHAR_UPPERCASE_Z: 90, /* Z */
+  CHAR_LOWERCASE_Z: 122, /* z */
+
+  CHAR_LEFT_PARENTHESES: 40, /* ( */
+  CHAR_RIGHT_PARENTHESES: 41, /* ) */
+
+  CHAR_ASTERISK: 42, /* * */
+
+  // Non-alphabetic chars.
+  CHAR_AMPERSAND: 38, /* & */
+  CHAR_AT: 64, /* @ */
+  CHAR_BACKWARD_SLASH: 92, /* \ */
+  CHAR_CARRIAGE_RETURN: 13, /* \r */
+  CHAR_CIRCUMFLEX_ACCENT: 94, /* ^ */
+  CHAR_COLON: 58, /* : */
+  CHAR_COMMA: 44, /* , */
+  CHAR_DOT: 46, /* . */
+  CHAR_DOUBLE_QUOTE: 34, /* " */
+  CHAR_EQUAL: 61, /* = */
+  CHAR_EXCLAMATION_MARK: 33, /* ! */
+  CHAR_FORM_FEED: 12, /* \f */
+  CHAR_FORWARD_SLASH: 47, /* / */
+  CHAR_GRAVE_ACCENT: 96, /* ` */
+  CHAR_HASH: 35, /* # */
+  CHAR_HYPHEN_MINUS: 45, /* - */
+  CHAR_LEFT_ANGLE_BRACKET: 60, /* < */
+  CHAR_LEFT_CURLY_BRACE: 123, /* { */
+  CHAR_LEFT_SQUARE_BRACKET: 91, /* [ */
+  CHAR_LINE_FEED: 10, /* \n */
+  CHAR_NO_BREAK_SPACE: 160, /* \u00A0 */
+  CHAR_PERCENT: 37, /* % */
+  CHAR_PLUS: 43, /* + */
+  CHAR_QUESTION_MARK: 63, /* ? */
+  CHAR_RIGHT_ANGLE_BRACKET: 62, /* > */
+  CHAR_RIGHT_CURLY_BRACE: 125, /* } */
+  CHAR_RIGHT_SQUARE_BRACKET: 93, /* ] */
+  CHAR_SEMICOLON: 59, /* ; */
+  CHAR_SINGLE_QUOTE: 39, /* ' */
+  CHAR_SPACE: 32, /*   */
+  CHAR_TAB: 9, /* \t */
+  CHAR_UNDERSCORE: 95, /* _ */
+  CHAR_VERTICAL_LINE: 124, /* | */
+  CHAR_ZERO_WIDTH_NOBREAK_SPACE: 65279, /* \uFEFF */
+
+  SEP: path.sep,
+
+  /**
+   * Create EXTGLOB_CHARS
+   */
+
+  extglobChars(chars) {
+    return {
+      '!': { type: 'negate', open: '(?:(?!(?:', close: `))${chars.STAR})` },
+      '?': { type: 'qmark', open: '(?:', close: ')?' },
+      '+': { type: 'plus', open: '(?:', close: ')+' },
+      '*': { type: 'star', open: '(?:', close: ')*' },
+      '@': { type: 'at', open: '(?:', close: ')' }
+    };
+  },
+
+  /**
+   * Create GLOB_CHARS
+   */
+
+  globChars(win32) {
+    return win32 === true ? WINDOWS_CHARS : POSIX_CHARS;
+  }
+};
+
+
+/***/ }),
+
+/***/ 51:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const constants = __nccwpck_require__(1237);
+const utils = __nccwpck_require__(3753);
+
+/**
+ * Constants
+ */
+
+const {
+  MAX_LENGTH,
+  POSIX_REGEX_SOURCE,
+  REGEX_NON_SPECIAL_CHARS,
+  REGEX_SPECIAL_CHARS_BACKREF,
+  REPLACEMENTS
+} = constants;
+
+/**
+ * Helpers
+ */
+
+const expandRange = (args, options) => {
+  if (typeof options.expandRange === 'function') {
+    return options.expandRange(...args, options);
+  }
+
+  args.sort();
+  const value = `[${args.join('-')}]`;
+
+  try {
+    /* eslint-disable-next-line no-new */
+    new RegExp(value);
+  } catch (ex) {
+    return args.map(v => utils.escapeRegex(v)).join('..');
+  }
+
+  return value;
+};
+
+/**
+ * Create the message for a syntax error
+ */
+
+const syntaxError = (type, char) => {
+  return `Missing ${type}: "${char}" - use "\\\\${char}" to match literal characters`;
+};
+
+const splitTopLevel = input => {
+  const parts = [];
+  let bracket = 0;
+  let paren = 0;
+  let quote = 0;
+  let value = '';
+  let escaped = false;
+
+  for (const ch of input) {
+    if (escaped === true) {
+      value += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      value += ch;
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      quote = quote === 1 ? 0 : 1;
+      value += ch;
+      continue;
+    }
+
+    if (quote === 0) {
+      if (ch === '[') {
+        bracket++;
+      } else if (ch === ']' && bracket > 0) {
+        bracket--;
+      } else if (bracket === 0) {
+        if (ch === '(') {
+          paren++;
+        } else if (ch === ')' && paren > 0) {
+          paren--;
+        } else if (ch === '|' && paren === 0) {
+          parts.push(value);
+          value = '';
+          continue;
+        }
+      }
+    }
+
+    value += ch;
+  }
+
+  parts.push(value);
+  return parts;
+};
+
+const isPlainBranch = branch => {
+  let escaped = false;
+
+  for (const ch of branch) {
+    if (escaped === true) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (/[?*+@!()[\]{}]/.test(ch)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const normalizeSimpleBranch = branch => {
+  let value = branch.trim();
+  let changed = true;
+
+  while (changed === true) {
+    changed = false;
+
+    if (/^@\([^\\()[\]{}|]+\)$/.test(value)) {
+      value = value.slice(2, -1);
+      changed = true;
+    }
+  }
+
+  if (!isPlainBranch(value)) {
+    return;
+  }
+
+  return value.replace(/\\(.)/g, '$1');
+};
+
+const hasRepeatedCharPrefixOverlap = branches => {
+  const values = branches.map(normalizeSimpleBranch).filter(Boolean);
+
+  for (let i = 0; i < values.length; i++) {
+    for (let j = i + 1; j < values.length; j++) {
+      const a = values[i];
+      const b = values[j];
+      const char = a[0];
+
+      if (!char || a !== char.repeat(a.length) || b !== char.repeat(b.length)) {
+        continue;
+      }
+
+      if (a === b || a.startsWith(b) || b.startsWith(a)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+const parseRepeatedExtglob = (pattern, requireEnd = true) => {
+  if ((pattern[0] !== '+' && pattern[0] !== '*') || pattern[1] !== '(') {
+    return;
+  }
+
+  let bracket = 0;
+  let paren = 0;
+  let quote = 0;
+  let escaped = false;
+
+  for (let i = 1; i < pattern.length; i++) {
+    const ch = pattern[i];
+
+    if (escaped === true) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      quote = quote === 1 ? 0 : 1;
+      continue;
+    }
+
+    if (quote === 1) {
+      continue;
+    }
+
+    if (ch === '[') {
+      bracket++;
+      continue;
+    }
+
+    if (ch === ']' && bracket > 0) {
+      bracket--;
+      continue;
+    }
+
+    if (bracket > 0) {
+      continue;
+    }
+
+    if (ch === '(') {
+      paren++;
+      continue;
+    }
+
+    if (ch === ')') {
+      paren--;
+
+      if (paren === 0) {
+        if (requireEnd === true && i !== pattern.length - 1) {
+          return;
+        }
+
+        return {
+          type: pattern[0],
+          body: pattern.slice(2, i),
+          end: i
+        };
+      }
+    }
+  }
+};
+
+const getStarExtglobSequenceOutput = pattern => {
+  let index = 0;
+  const chars = [];
+
+  while (index < pattern.length) {
+    const match = parseRepeatedExtglob(pattern.slice(index), false);
+
+    if (!match || match.type !== '*') {
+      return;
+    }
+
+    const branches = splitTopLevel(match.body).map(branch => branch.trim());
+    if (branches.length !== 1) {
+      return;
+    }
+
+    const branch = normalizeSimpleBranch(branches[0]);
+    if (!branch || branch.length !== 1) {
+      return;
+    }
+
+    chars.push(branch);
+    index += match.end + 1;
+  }
+
+  if (chars.length < 1) {
+    return;
+  }
+
+  const source = chars.length === 1
+    ? utils.escapeRegex(chars[0])
+    : `[${chars.map(ch => utils.escapeRegex(ch)).join('')}]`;
+
+  return `${source}*`;
+};
+
+const repeatedExtglobRecursion = pattern => {
+  let depth = 0;
+  let value = pattern.trim();
+  let match = parseRepeatedExtglob(value);
+
+  while (match) {
+    depth++;
+    value = match.body.trim();
+    match = parseRepeatedExtglob(value);
+  }
+
+  return depth;
+};
+
+const analyzeRepeatedExtglob = (body, options) => {
+  if (options.maxExtglobRecursion === false) {
+    return { risky: false };
+  }
+
+  const max =
+    typeof options.maxExtglobRecursion === 'number'
+      ? options.maxExtglobRecursion
+      : constants.DEFAULT_MAX_EXTGLOB_RECURSION;
+
+  const branches = splitTopLevel(body).map(branch => branch.trim());
+
+  if (branches.length > 1) {
+    if (
+      branches.some(branch => branch === '') ||
+      branches.some(branch => /^[*?]+$/.test(branch)) ||
+      hasRepeatedCharPrefixOverlap(branches)
+    ) {
+      return { risky: true };
+    }
+  }
+
+  for (const branch of branches) {
+    const safeOutput = getStarExtglobSequenceOutput(branch);
+    if (safeOutput) {
+      return { risky: true, safeOutput };
+    }
+
+    if (repeatedExtglobRecursion(branch) > max) {
+      return { risky: true };
+    }
+  }
+
+  return { risky: false };
+};
+
+/**
+ * Parse the given input string.
+ * @param {String} input
+ * @param {Object} options
+ * @return {Object}
+ */
+
+const parse = (input, options) => {
+  if (typeof input !== 'string') {
+    throw new TypeError('Expected a string');
+  }
+
+  input = REPLACEMENTS[input] || input;
+
+  const opts = { ...options };
+  const max = typeof opts.maxLength === 'number' ? Math.min(MAX_LENGTH, opts.maxLength) : MAX_LENGTH;
+
+  let len = input.length;
+  if (len > max) {
+    throw new SyntaxError(`Input length: ${len}, exceeds maximum allowed length: ${max}`);
+  }
+
+  const bos = { type: 'bos', value: '', output: opts.prepend || '' };
+  const tokens = [bos];
+
+  const capture = opts.capture ? '' : '?:';
+  const win32 = utils.isWindows(options);
+
+  // create constants based on platform, for windows or posix
+  const PLATFORM_CHARS = constants.globChars(win32);
+  const EXTGLOB_CHARS = constants.extglobChars(PLATFORM_CHARS);
+
+  const {
+    DOT_LITERAL,
+    PLUS_LITERAL,
+    SLASH_LITERAL,
+    ONE_CHAR,
+    DOTS_SLASH,
+    NO_DOT,
+    NO_DOT_SLASH,
+    NO_DOTS_SLASH,
+    QMARK,
+    QMARK_NO_DOT,
+    STAR,
+    START_ANCHOR
+  } = PLATFORM_CHARS;
+
+  const globstar = opts => {
+    return `(${capture}(?:(?!${START_ANCHOR}${opts.dot ? DOTS_SLASH : DOT_LITERAL}).)*?)`;
+  };
+
+  const nodot = opts.dot ? '' : NO_DOT;
+  const qmarkNoDot = opts.dot ? QMARK : QMARK_NO_DOT;
+  let star = opts.bash === true ? globstar(opts) : STAR;
+
+  if (opts.capture) {
+    star = `(${star})`;
+  }
+
+  // minimatch options support
+  if (typeof opts.noext === 'boolean') {
+    opts.noextglob = opts.noext;
+  }
+
+  const state = {
+    input,
+    index: -1,
+    start: 0,
+    dot: opts.dot === true,
+    consumed: '',
+    output: '',
+    prefix: '',
+    backtrack: false,
+    negated: false,
+    brackets: 0,
+    braces: 0,
+    parens: 0,
+    quotes: 0,
+    globstar: false,
+    tokens
+  };
+
+  input = utils.removePrefix(input, state);
+  len = input.length;
+
+  const extglobs = [];
+  const braces = [];
+  const stack = [];
+  let prev = bos;
+  let value;
+
+  /**
+   * Tokenizing helpers
+   */
+
+  const eos = () => state.index === len - 1;
+  const peek = state.peek = (n = 1) => input[state.index + n];
+  const advance = state.advance = () => input[++state.index] || '';
+  const remaining = () => input.slice(state.index + 1);
+  const consume = (value = '', num = 0) => {
+    state.consumed += value;
+    state.index += num;
+  };
+
+  const append = token => {
+    state.output += token.output != null ? token.output : token.value;
+    consume(token.value);
+  };
+
+  const negate = () => {
+    let count = 1;
+
+    while (peek() === '!' && (peek(2) !== '(' || peek(3) === '?')) {
+      advance();
+      state.start++;
+      count++;
+    }
+
+    if (count % 2 === 0) {
+      return false;
+    }
+
+    state.negated = true;
+    state.start++;
+    return true;
+  };
+
+  const increment = type => {
+    state[type]++;
+    stack.push(type);
+  };
+
+  const decrement = type => {
+    state[type]--;
+    stack.pop();
+  };
+
+  /**
+   * Push tokens onto the tokens array. This helper speeds up
+   * tokenizing by 1) helping us avoid backtracking as much as possible,
+   * and 2) helping us avoid creating extra tokens when consecutive
+   * characters are plain text. This improves performance and simplifies
+   * lookbehinds.
+   */
+
+  const push = tok => {
+    if (prev.type === 'globstar') {
+      const isBrace = state.braces > 0 && (tok.type === 'comma' || tok.type === 'brace');
+      const isExtglob = tok.extglob === true || (extglobs.length && (tok.type === 'pipe' || tok.type === 'paren'));
+
+      if (tok.type !== 'slash' && tok.type !== 'paren' && !isBrace && !isExtglob) {
+        state.output = state.output.slice(0, -prev.output.length);
+        prev.type = 'star';
+        prev.value = '*';
+        prev.output = star;
+        state.output += prev.output;
+      }
+    }
+
+    if (extglobs.length && tok.type !== 'paren') {
+      extglobs[extglobs.length - 1].inner += tok.value;
+    }
+
+    if (tok.value || tok.output) append(tok);
+    if (prev && prev.type === 'text' && tok.type === 'text') {
+      prev.value += tok.value;
+      prev.output = (prev.output || '') + tok.value;
+      return;
+    }
+
+    tok.prev = prev;
+    tokens.push(tok);
+    prev = tok;
+  };
+
+  const extglobOpen = (type, value) => {
+    const token = { ...EXTGLOB_CHARS[value], conditions: 1, inner: '' };
+
+    token.prev = prev;
+    token.parens = state.parens;
+    token.output = state.output;
+    token.startIndex = state.index;
+    token.tokensIndex = tokens.length;
+    const output = (opts.capture ? '(' : '') + token.open;
+
+    increment('parens');
+    push({ type, value, output: state.output ? '' : ONE_CHAR });
+    push({ type: 'paren', extglob: true, value: advance(), output });
+    extglobs.push(token);
+  };
+
+  const extglobClose = token => {
+    const literal = input.slice(token.startIndex, state.index + 1);
+    const body = input.slice(token.startIndex + 2, state.index);
+    const analysis = analyzeRepeatedExtglob(body, opts);
+
+    if ((token.type === 'plus' || token.type === 'star') && analysis.risky) {
+      const safeOutput = analysis.safeOutput
+        ? (token.output ? '' : ONE_CHAR) + (opts.capture ? `(${analysis.safeOutput})` : analysis.safeOutput)
+        : undefined;
+      const open = tokens[token.tokensIndex];
+
+      open.type = 'text';
+      open.value = literal;
+      open.output = safeOutput || utils.escapeRegex(literal);
+
+      for (let i = token.tokensIndex + 1; i < tokens.length; i++) {
+        tokens[i].value = '';
+        tokens[i].output = '';
+        delete tokens[i].suffix;
+      }
+
+      state.output = token.output + open.output;
+      state.backtrack = true;
+
+      push({ type: 'paren', extglob: true, value, output: '' });
+      decrement('parens');
+      return;
+    }
+
+    let output = token.close + (opts.capture ? ')' : '');
+    let rest;
+
+    if (token.type === 'negate') {
+      let extglobStar = star;
+
+      if (token.inner && token.inner.length > 1 && token.inner.includes('/')) {
+        extglobStar = globstar(opts);
+      }
+
+      if (extglobStar !== star || eos() || /^\)+$/.test(remaining())) {
+        output = token.close = `)$))${extglobStar}`;
+      }
+
+      if (token.inner.includes('*') && (rest = remaining()) && /^\.[^\\/.]+$/.test(rest)) {
+        // Any non-magical string (`.ts`) or even nested expression (`.{ts,tsx}`) can follow after the closing parenthesis.
+        // In this case, we need to parse the string and use it in the output of the original pattern.
+        // Suitable patterns: `/!(*.d).ts`, `/!(*.d).{ts,tsx}`, `**/!(*-dbg).@(js)`.
+        //
+        // Disabling the `fastpaths` option due to a problem with parsing strings as `.ts` in the pattern like `**/!(*.d).ts`.
+        const expression = parse(rest, { ...options, fastpaths: false }).output;
+
+        output = token.close = `)${expression})${extglobStar})`;
+      }
+
+      if (token.prev.type === 'bos') {
+        state.negatedExtglob = true;
+      }
+    }
+
+    push({ type: 'paren', extglob: true, value, output });
+    decrement('parens');
+  };
+
+  /**
+   * Fast paths
+   */
+
+  if (opts.fastpaths !== false && !/(^[*!]|[/()[\]{}"])/.test(input)) {
+    let backslashes = false;
+
+    let output = input.replace(REGEX_SPECIAL_CHARS_BACKREF, (m, esc, chars, first, rest, index) => {
+      if (first === '\\') {
+        backslashes = true;
+        return m;
+      }
+
+      if (first === '?') {
+        if (esc) {
+          return esc + first + (rest ? QMARK.repeat(rest.length) : '');
+        }
+        if (index === 0) {
+          return qmarkNoDot + (rest ? QMARK.repeat(rest.length) : '');
+        }
+        return QMARK.repeat(chars.length);
+      }
+
+      if (first === '.') {
+        return DOT_LITERAL.repeat(chars.length);
+      }
+
+      if (first === '*') {
+        if (esc) {
+          return esc + first + (rest ? star : '');
+        }
+        return star;
+      }
+      return esc ? m : `\\${m}`;
+    });
+
+    if (backslashes === true) {
+      if (opts.unescape === true) {
+        output = output.replace(/\\/g, '');
+      } else {
+        output = output.replace(/\\+/g, m => {
+          return m.length % 2 === 0 ? '\\\\' : (m ? '\\' : '');
+        });
+      }
+    }
+
+    if (output === input && opts.contains === true) {
+      state.output = input;
+      return state;
+    }
+
+    state.output = utils.wrapOutput(output, state, options);
+    return state;
+  }
+
+  /**
+   * Tokenize input until we reach end-of-string
+   */
+
+  while (!eos()) {
+    value = advance();
+
+    if (value === '\u0000') {
+      continue;
+    }
+
+    /**
+     * Escaped characters
+     */
+
+    if (value === '\\') {
+      const next = peek();
+
+      if (next === '/' && opts.bash !== true) {
+        continue;
+      }
+
+      if (next === '.' || next === ';') {
+        continue;
+      }
+
+      if (!next) {
+        value += '\\';
+        push({ type: 'text', value });
+        continue;
+      }
+
+      // collapse slashes to reduce potential for exploits
+      const match = /^\\+/.exec(remaining());
+      let slashes = 0;
+
+      if (match && match[0].length > 2) {
+        slashes = match[0].length;
+        state.index += slashes;
+        if (slashes % 2 !== 0) {
+          value += '\\';
+        }
+      }
+
+      if (opts.unescape === true) {
+        value = advance();
+      } else {
+        value += advance();
+      }
+
+      if (state.brackets === 0) {
+        push({ type: 'text', value });
+        continue;
+      }
+    }
+
+    /**
+     * If we're inside a regex character class, continue
+     * until we reach the closing bracket.
+     */
+
+    if (state.brackets > 0 && (value !== ']' || prev.value === '[' || prev.value === '[^')) {
+      if (opts.posix !== false && value === ':') {
+        const inner = prev.value.slice(1);
+        if (inner.includes('[')) {
+          prev.posix = true;
+
+          if (inner.includes(':')) {
+            const idx = prev.value.lastIndexOf('[');
+            const pre = prev.value.slice(0, idx);
+            const rest = prev.value.slice(idx + 2);
+            const posix = POSIX_REGEX_SOURCE[rest];
+            if (posix) {
+              prev.value = pre + posix;
+              state.backtrack = true;
+              advance();
+
+              if (!bos.output && tokens.indexOf(prev) === 1) {
+                bos.output = ONE_CHAR;
+              }
+              continue;
+            }
+          }
+        }
+      }
+
+      if ((value === '[' && peek() !== ':') || (value === '-' && peek() === ']')) {
+        value = `\\${value}`;
+      }
+
+      if (value === ']' && (prev.value === '[' || prev.value === '[^')) {
+        value = `\\${value}`;
+      }
+
+      if (opts.posix === true && value === '!' && prev.value === '[') {
+        value = '^';
+      }
+
+      prev.value += value;
+      append({ value });
+      continue;
+    }
+
+    /**
+     * If we're inside a quoted string, continue
+     * until we reach the closing double quote.
+     */
+
+    if (state.quotes === 1 && value !== '"') {
+      value = utils.escapeRegex(value);
+      prev.value += value;
+      append({ value });
+      continue;
+    }
+
+    /**
+     * Double quotes
+     */
+
+    if (value === '"') {
+      state.quotes = state.quotes === 1 ? 0 : 1;
+      if (opts.keepQuotes === true) {
+        push({ type: 'text', value });
+      }
+      continue;
+    }
+
+    /**
+     * Parentheses
+     */
+
+    if (value === '(') {
+      increment('parens');
+      push({ type: 'paren', value });
+      continue;
+    }
+
+    if (value === ')') {
+      if (state.parens === 0 && opts.strictBrackets === true) {
+        throw new SyntaxError(syntaxError('opening', '('));
+      }
+
+      const extglob = extglobs[extglobs.length - 1];
+      if (extglob && state.parens === extglob.parens + 1) {
+        extglobClose(extglobs.pop());
+        continue;
+      }
+
+      push({ type: 'paren', value, output: state.parens ? ')' : '\\)' });
+      decrement('parens');
+      continue;
+    }
+
+    /**
+     * Square brackets
+     */
+
+    if (value === '[') {
+      if (opts.nobracket === true || !remaining().includes(']')) {
+        if (opts.nobracket !== true && opts.strictBrackets === true) {
+          throw new SyntaxError(syntaxError('closing', ']'));
+        }
+
+        value = `\\${value}`;
+      } else {
+        increment('brackets');
+      }
+
+      push({ type: 'bracket', value });
+      continue;
+    }
+
+    if (value === ']') {
+      if (opts.nobracket === true || (prev && prev.type === 'bracket' && prev.value.length === 1)) {
+        push({ type: 'text', value, output: `\\${value}` });
+        continue;
+      }
+
+      if (state.brackets === 0) {
+        if (opts.strictBrackets === true) {
+          throw new SyntaxError(syntaxError('opening', '['));
+        }
+
+        push({ type: 'text', value, output: `\\${value}` });
+        continue;
+      }
+
+      decrement('brackets');
+
+      const prevValue = prev.value.slice(1);
+      if (prev.posix !== true && prevValue[0] === '^' && !prevValue.includes('/')) {
+        value = `/${value}`;
+      }
+
+      prev.value += value;
+      append({ value });
+
+      // when literal brackets are explicitly disabled
+      // assume we should match with a regex character class
+      if (opts.literalBrackets === false || utils.hasRegexChars(prevValue)) {
+        continue;
+      }
+
+      const escaped = utils.escapeRegex(prev.value);
+      state.output = state.output.slice(0, -prev.value.length);
+
+      // when literal brackets are explicitly enabled
+      // assume we should escape the brackets to match literal characters
+      if (opts.literalBrackets === true) {
+        state.output += escaped;
+        prev.value = escaped;
+        continue;
+      }
+
+      // when the user specifies nothing, try to match both
+      prev.value = `(${capture}${escaped}|${prev.value})`;
+      state.output += prev.value;
+      continue;
+    }
+
+    /**
+     * Braces
+     */
+
+    if (value === '{' && opts.nobrace !== true) {
+      increment('braces');
+
+      const open = {
+        type: 'brace',
+        value,
+        output: '(',
+        outputIndex: state.output.length,
+        tokensIndex: state.tokens.length
+      };
+
+      braces.push(open);
+      push(open);
+      continue;
+    }
+
+    if (value === '}') {
+      const brace = braces[braces.length - 1];
+
+      if (opts.nobrace === true || !brace) {
+        push({ type: 'text', value, output: value });
+        continue;
+      }
+
+      let output = ')';
+
+      if (brace.dots === true) {
+        const arr = tokens.slice();
+        const range = [];
+
+        for (let i = arr.length - 1; i >= 0; i--) {
+          tokens.pop();
+          if (arr[i].type === 'brace') {
+            break;
+          }
+          if (arr[i].type !== 'dots') {
+            range.unshift(arr[i].value);
+          }
+        }
+
+        output = expandRange(range, opts);
+        state.backtrack = true;
+      }
+
+      if (brace.comma !== true && brace.dots !== true) {
+        const out = state.output.slice(0, brace.outputIndex);
+        const toks = state.tokens.slice(brace.tokensIndex);
+        brace.value = brace.output = '\\{';
+        value = output = '\\}';
+        state.output = out;
+        for (const t of toks) {
+          state.output += (t.output || t.value);
+        }
+      }
+
+      push({ type: 'brace', value, output });
+      decrement('braces');
+      braces.pop();
+      continue;
+    }
+
+    /**
+     * Pipes
+     */
+
+    if (value === '|') {
+      if (extglobs.length > 0) {
+        extglobs[extglobs.length - 1].conditions++;
+      }
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Commas
+     */
+
+    if (value === ',') {
+      let output = value;
+
+      const brace = braces[braces.length - 1];
+      if (brace && stack[stack.length - 1] === 'braces') {
+        brace.comma = true;
+        output = '|';
+      }
+
+      push({ type: 'comma', value, output });
+      continue;
+    }
+
+    /**
+     * Slashes
+     */
+
+    if (value === '/') {
+      // if the beginning of the glob is "./", advance the start
+      // to the current index, and don't add the "./" characters
+      // to the state. This greatly simplifies lookbehinds when
+      // checking for BOS characters like "!" and "." (not "./")
+      if (prev.type === 'dot' && state.index === state.start + 1) {
+        state.start = state.index + 1;
+        state.consumed = '';
+        state.output = '';
+        tokens.pop();
+        prev = bos; // reset "prev" to the first token
+        continue;
+      }
+
+      push({ type: 'slash', value, output: SLASH_LITERAL });
+      continue;
+    }
+
+    /**
+     * Dots
+     */
+
+    if (value === '.') {
+      if (state.braces > 0 && prev.type === 'dot') {
+        if (prev.value === '.') prev.output = DOT_LITERAL;
+        const brace = braces[braces.length - 1];
+        prev.type = 'dots';
+        prev.output += value;
+        prev.value += value;
+        brace.dots = true;
+        continue;
+      }
+
+      if ((state.braces + state.parens) === 0 && prev.type !== 'bos' && prev.type !== 'slash') {
+        push({ type: 'text', value, output: DOT_LITERAL });
+        continue;
+      }
+
+      push({ type: 'dot', value, output: DOT_LITERAL });
+      continue;
+    }
+
+    /**
+     * Question marks
+     */
+
+    if (value === '?') {
+      const isGroup = prev && prev.value === '(';
+      if (!isGroup && opts.noextglob !== true && peek() === '(' && peek(2) !== '?') {
+        extglobOpen('qmark', value);
+        continue;
+      }
+
+      if (prev && prev.type === 'paren') {
+        const next = peek();
+        let output = value;
+
+        if (next === '<' && !utils.supportsLookbehinds()) {
+          throw new Error('Node.js v10 or higher is required for regex lookbehinds');
+        }
+
+        if ((prev.value === '(' && !/[!=<:]/.test(next)) || (next === '<' && !/<([!=]|\w+>)/.test(remaining()))) {
+          output = `\\${value}`;
+        }
+
+        push({ type: 'text', value, output });
+        continue;
+      }
+
+      if (opts.dot !== true && (prev.type === 'slash' || prev.type === 'bos')) {
+        push({ type: 'qmark', value, output: QMARK_NO_DOT });
+        continue;
+      }
+
+      push({ type: 'qmark', value, output: QMARK });
+      continue;
+    }
+
+    /**
+     * Exclamation
+     */
+
+    if (value === '!') {
+      if (opts.noextglob !== true && peek() === '(') {
+        if (peek(2) !== '?' || !/[!=<:]/.test(peek(3))) {
+          extglobOpen('negate', value);
+          continue;
+        }
+      }
+
+      if (opts.nonegate !== true && state.index === 0) {
+        negate();
+        continue;
+      }
+    }
+
+    /**
+     * Plus
+     */
+
+    if (value === '+') {
+      if (opts.noextglob !== true && peek() === '(' && peek(2) !== '?') {
+        extglobOpen('plus', value);
+        continue;
+      }
+
+      if ((prev && prev.value === '(') || opts.regex === false) {
+        push({ type: 'plus', value, output: PLUS_LITERAL });
+        continue;
+      }
+
+      if ((prev && (prev.type === 'bracket' || prev.type === 'paren' || prev.type === 'brace')) || state.parens > 0) {
+        push({ type: 'plus', value });
+        continue;
+      }
+
+      push({ type: 'plus', value: PLUS_LITERAL });
+      continue;
+    }
+
+    /**
+     * Plain text
+     */
+
+    if (value === '@') {
+      if (opts.noextglob !== true && peek() === '(' && peek(2) !== '?') {
+        push({ type: 'at', extglob: true, value, output: '' });
+        continue;
+      }
+
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Plain text
+     */
+
+    if (value !== '*') {
+      if (value === '$' || value === '^') {
+        value = `\\${value}`;
+      }
+
+      const match = REGEX_NON_SPECIAL_CHARS.exec(remaining());
+      if (match) {
+        value += match[0];
+        state.index += match[0].length;
+      }
+
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Stars
+     */
+
+    if (prev && (prev.type === 'globstar' || prev.star === true)) {
+      prev.type = 'star';
+      prev.star = true;
+      prev.value += value;
+      prev.output = star;
+      state.backtrack = true;
+      state.globstar = true;
+      consume(value);
+      continue;
+    }
+
+    let rest = remaining();
+    if (opts.noextglob !== true && /^\([^?]/.test(rest)) {
+      extglobOpen('star', value);
+      continue;
+    }
+
+    if (prev.type === 'star') {
+      if (opts.noglobstar === true) {
+        consume(value);
+        continue;
+      }
+
+      const prior = prev.prev;
+      const before = prior.prev;
+      const isStart = prior.type === 'slash' || prior.type === 'bos';
+      const afterStar = before && (before.type === 'star' || before.type === 'globstar');
+
+      if (opts.bash === true && (!isStart || (rest[0] && rest[0] !== '/'))) {
+        push({ type: 'star', value, output: '' });
+        continue;
+      }
+
+      const isBrace = state.braces > 0 && (prior.type === 'comma' || prior.type === 'brace');
+      const isExtglob = extglobs.length && (prior.type === 'pipe' || prior.type === 'paren');
+      if (!isStart && prior.type !== 'paren' && !isBrace && !isExtglob) {
+        push({ type: 'star', value, output: '' });
+        continue;
+      }
+
+      // strip consecutive `/**/`
+      while (rest.slice(0, 3) === '/**') {
+        const after = input[state.index + 4];
+        if (after && after !== '/') {
+          break;
+        }
+        rest = rest.slice(3);
+        consume('/**', 3);
+      }
+
+      if (prior.type === 'bos' && eos()) {
+        prev.type = 'globstar';
+        prev.value += value;
+        prev.output = globstar(opts);
+        state.output = prev.output;
+        state.globstar = true;
+        consume(value);
+        continue;
+      }
+
+      if (prior.type === 'slash' && prior.prev.type !== 'bos' && !afterStar && eos()) {
+        state.output = state.output.slice(0, -(prior.output + prev.output).length);
+        prior.output = `(?:${prior.output}`;
+
+        prev.type = 'globstar';
+        prev.output = globstar(opts) + (opts.strictSlashes ? ')' : '|$)');
+        prev.value += value;
+        state.globstar = true;
+        state.output += prior.output + prev.output;
+        consume(value);
+        continue;
+      }
+
+      if (prior.type === 'slash' && prior.prev.type !== 'bos' && rest[0] === '/') {
+        const end = rest[1] !== void 0 ? '|$' : '';
+
+        state.output = state.output.slice(0, -(prior.output + prev.output).length);
+        prior.output = `(?:${prior.output}`;
+
+        prev.type = 'globstar';
+        prev.output = `${globstar(opts)}${SLASH_LITERAL}|${SLASH_LITERAL}${end})`;
+        prev.value += value;
+
+        state.output += prior.output + prev.output;
+        state.globstar = true;
+
+        consume(value + advance());
+
+        push({ type: 'slash', value: '/', output: '' });
+        continue;
+      }
+
+      if (prior.type === 'bos' && rest[0] === '/') {
+        prev.type = 'globstar';
+        prev.value += value;
+        prev.output = `(?:^|${SLASH_LITERAL}|${globstar(opts)}${SLASH_LITERAL})`;
+        state.output = prev.output;
+        state.globstar = true;
+        consume(value + advance());
+        push({ type: 'slash', value: '/', output: '' });
+        continue;
+      }
+
+      // remove single star from output
+      state.output = state.output.slice(0, -prev.output.length);
+
+      // reset previous token to globstar
+      prev.type = 'globstar';
+      prev.output = globstar(opts);
+      prev.value += value;
+
+      // reset output with globstar
+      state.output += prev.output;
+      state.globstar = true;
+      consume(value);
+      continue;
+    }
+
+    const token = { type: 'star', value, output: star };
+
+    if (opts.bash === true) {
+      token.output = '.*?';
+      if (prev.type === 'bos' || prev.type === 'slash') {
+        token.output = nodot + token.output;
+      }
+      push(token);
+      continue;
+    }
+
+    if (prev && (prev.type === 'bracket' || prev.type === 'paren') && opts.regex === true) {
+      token.output = value;
+      push(token);
+      continue;
+    }
+
+    if (state.index === state.start || prev.type === 'slash' || prev.type === 'dot') {
+      if (prev.type === 'dot') {
+        state.output += NO_DOT_SLASH;
+        prev.output += NO_DOT_SLASH;
+
+      } else if (opts.dot === true) {
+        state.output += NO_DOTS_SLASH;
+        prev.output += NO_DOTS_SLASH;
+
+      } else {
+        state.output += nodot;
+        prev.output += nodot;
+      }
+
+      if (peek() !== '*') {
+        state.output += ONE_CHAR;
+        prev.output += ONE_CHAR;
+      }
+    }
+
+    push(token);
+  }
+
+  while (state.brackets > 0) {
+    if (opts.strictBrackets === true) throw new SyntaxError(syntaxError('closing', ']'));
+    state.output = utils.escapeLast(state.output, '[');
+    decrement('brackets');
+  }
+
+  while (state.parens > 0) {
+    if (opts.strictBrackets === true) throw new SyntaxError(syntaxError('closing', ')'));
+    state.output = utils.escapeLast(state.output, '(');
+    decrement('parens');
+  }
+
+  while (state.braces > 0) {
+    if (opts.strictBrackets === true) throw new SyntaxError(syntaxError('closing', '}'));
+    state.output = utils.escapeLast(state.output, '{');
+    decrement('braces');
+  }
+
+  if (opts.strictSlashes !== true && (prev.type === 'star' || prev.type === 'bracket')) {
+    push({ type: 'maybe_slash', value: '', output: `${SLASH_LITERAL}?` });
+  }
+
+  // rebuild the output if we had to backtrack at any point
+  if (state.backtrack === true) {
+    state.output = '';
+
+    for (const token of state.tokens) {
+      state.output += token.output != null ? token.output : token.value;
+
+      if (token.suffix) {
+        state.output += token.suffix;
+      }
+    }
+  }
+
+  return state;
+};
+
+/**
+ * Fast paths for creating regular expressions for common glob patterns.
+ * This can significantly speed up processing and has very little downside
+ * impact when none of the fast paths match.
+ */
+
+parse.fastpaths = (input, options) => {
+  const opts = { ...options };
+  const max = typeof opts.maxLength === 'number' ? Math.min(MAX_LENGTH, opts.maxLength) : MAX_LENGTH;
+  const len = input.length;
+  if (len > max) {
+    throw new SyntaxError(`Input length: ${len}, exceeds maximum allowed length: ${max}`);
+  }
+
+  input = REPLACEMENTS[input] || input;
+  const win32 = utils.isWindows(options);
+
+  // create constants based on platform, for windows or posix
+  const {
+    DOT_LITERAL,
+    SLASH_LITERAL,
+    ONE_CHAR,
+    DOTS_SLASH,
+    NO_DOT,
+    NO_DOTS,
+    NO_DOTS_SLASH,
+    STAR,
+    START_ANCHOR
+  } = constants.globChars(win32);
+
+  const nodot = opts.dot ? NO_DOTS : NO_DOT;
+  const slashDot = opts.dot ? NO_DOTS_SLASH : NO_DOT;
+  const capture = opts.capture ? '' : '?:';
+  const state = { negated: false, prefix: '' };
+  let star = opts.bash === true ? '.*?' : STAR;
+
+  if (opts.capture) {
+    star = `(${star})`;
+  }
+
+  const globstar = opts => {
+    if (opts.noglobstar === true) return star;
+    return `(${capture}(?:(?!${START_ANCHOR}${opts.dot ? DOTS_SLASH : DOT_LITERAL}).)*?)`;
+  };
+
+  const create = str => {
+    switch (str) {
+      case '*':
+        return `${nodot}${ONE_CHAR}${star}`;
+
+      case '.*':
+        return `${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      case '*.*':
+        return `${nodot}${star}${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      case '*/*':
+        return `${nodot}${star}${SLASH_LITERAL}${ONE_CHAR}${slashDot}${star}`;
+
+      case '**':
+        return nodot + globstar(opts);
+
+      case '**/*':
+        return `(?:${nodot}${globstar(opts)}${SLASH_LITERAL})?${slashDot}${ONE_CHAR}${star}`;
+
+      case '**/*.*':
+        return `(?:${nodot}${globstar(opts)}${SLASH_LITERAL})?${slashDot}${star}${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      case '**/.*':
+        return `(?:${nodot}${globstar(opts)}${SLASH_LITERAL})?${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      default: {
+        const match = /^(.*?)\.(\w+)$/.exec(str);
+        if (!match) return;
+
+        const source = create(match[1]);
+        if (!source) return;
+
+        return source + DOT_LITERAL + match[2];
+      }
+    }
+  };
+
+  const output = utils.removePrefix(input, state);
+  let source = create(output);
+
+  if (source && opts.strictSlashes !== true) {
+    source += `${SLASH_LITERAL}?`;
+  }
+
+  return source;
+};
+
+module.exports = parse;
+
+
+/***/ }),
+
+/***/ 1614:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const path = __nccwpck_require__(6928);
+const scan = __nccwpck_require__(3999);
+const parse = __nccwpck_require__(51);
+const utils = __nccwpck_require__(3753);
+const constants = __nccwpck_require__(1237);
+const isObject = val => val && typeof val === 'object' && !Array.isArray(val);
+
+/**
+ * Creates a matcher function from one or more glob patterns. The
+ * returned function takes a string to match as its first argument,
+ * and returns true if the string is a match. The returned matcher
+ * function also takes a boolean as the second argument that, when true,
+ * returns an object with additional information.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch(glob[, options]);
+ *
+ * const isMatch = picomatch('*.!(*a)');
+ * console.log(isMatch('a.a')); //=> false
+ * console.log(isMatch('a.b')); //=> true
+ * ```
+ * @name picomatch
+ * @param {String|Array} `globs` One or more glob patterns.
+ * @param {Object=} `options`
+ * @return {Function=} Returns a matcher function.
+ * @api public
+ */
+
+const picomatch = (glob, options, returnState = false) => {
+  if (Array.isArray(glob)) {
+    const fns = glob.map(input => picomatch(input, options, returnState));
+    const arrayMatcher = str => {
+      for (const isMatch of fns) {
+        const state = isMatch(str);
+        if (state) return state;
+      }
+      return false;
+    };
+    return arrayMatcher;
+  }
+
+  const isState = isObject(glob) && glob.tokens && glob.input;
+
+  if (glob === '' || (typeof glob !== 'string' && !isState)) {
+    throw new TypeError('Expected pattern to be a non-empty string');
+  }
+
+  const opts = options || {};
+  const posix = utils.isWindows(options);
+  const regex = isState
+    ? picomatch.compileRe(glob, options)
+    : picomatch.makeRe(glob, options, false, true);
+
+  const state = regex.state;
+  delete regex.state;
+
+  let isIgnored = () => false;
+  if (opts.ignore) {
+    const ignoreOpts = { ...options, ignore: null, onMatch: null, onResult: null };
+    isIgnored = picomatch(opts.ignore, ignoreOpts, returnState);
+  }
+
+  const matcher = (input, returnObject = false) => {
+    const { isMatch, match, output } = picomatch.test(input, regex, options, { glob, posix });
+    const result = { glob, state, regex, posix, input, output, match, isMatch };
+
+    if (typeof opts.onResult === 'function') {
+      opts.onResult(result);
+    }
+
+    if (isMatch === false) {
+      result.isMatch = false;
+      return returnObject ? result : false;
+    }
+
+    if (isIgnored(input)) {
+      if (typeof opts.onIgnore === 'function') {
+        opts.onIgnore(result);
+      }
+      result.isMatch = false;
+      return returnObject ? result : false;
+    }
+
+    if (typeof opts.onMatch === 'function') {
+      opts.onMatch(result);
+    }
+    return returnObject ? result : true;
+  };
+
+  if (returnState) {
+    matcher.state = state;
+  }
+
+  return matcher;
+};
+
+/**
+ * Test `input` with the given `regex`. This is used by the main
+ * `picomatch()` function to test the input string.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.test(input, regex[, options]);
+ *
+ * console.log(picomatch.test('foo/bar', /^(?:([^/]*?)\/([^/]*?))$/));
+ * // { isMatch: true, match: [ 'foo/', 'foo', 'bar' ], output: 'foo/bar' }
+ * ```
+ * @param {String} `input` String to test.
+ * @param {RegExp} `regex`
+ * @return {Object} Returns an object with matching info.
+ * @api public
+ */
+
+picomatch.test = (input, regex, options, { glob, posix } = {}) => {
+  if (typeof input !== 'string') {
+    throw new TypeError('Expected input to be a string');
+  }
+
+  if (input === '') {
+    return { isMatch: false, output: '' };
+  }
+
+  const opts = options || {};
+  const format = opts.format || (posix ? utils.toPosixSlashes : null);
+  let match = input === glob;
+  let output = (match && format) ? format(input) : input;
+
+  if (match === false) {
+    output = format ? format(input) : input;
+    match = output === glob;
+  }
+
+  if (match === false || opts.capture === true) {
+    if (opts.matchBase === true || opts.basename === true) {
+      match = picomatch.matchBase(input, regex, options, posix);
+    } else {
+      match = regex.exec(output);
+    }
+  }
+
+  return { isMatch: Boolean(match), match, output };
+};
+
+/**
+ * Match the basename of a filepath.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.matchBase(input, glob[, options]);
+ * console.log(picomatch.matchBase('foo/bar.js', '*.js'); // true
+ * ```
+ * @param {String} `input` String to test.
+ * @param {RegExp|String} `glob` Glob pattern or regex created by [.makeRe](#makeRe).
+ * @return {Boolean}
+ * @api public
+ */
+
+picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
+  const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
+  return regex.test(path.basename(input));
+};
+
+/**
+ * Returns true if **any** of the given glob `patterns` match the specified `string`.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.isMatch(string, patterns[, options]);
+ *
+ * console.log(picomatch.isMatch('a.a', ['b.*', '*.a'])); //=> true
+ * console.log(picomatch.isMatch('a.a', 'b.*')); //=> false
+ * ```
+ * @param {String|Array} str The string to test.
+ * @param {String|Array} patterns One or more glob patterns to use for matching.
+ * @param {Object} [options] See available [options](#options).
+ * @return {Boolean} Returns true if any patterns match `str`
+ * @api public
+ */
+
+picomatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
+
+/**
+ * Parse a glob pattern to create the source string for a regular
+ * expression.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * const result = picomatch.parse(pattern[, options]);
+ * ```
+ * @param {String} `pattern`
+ * @param {Object} `options`
+ * @return {Object} Returns an object with useful properties and output to be used as a regex source string.
+ * @api public
+ */
+
+picomatch.parse = (pattern, options) => {
+  if (Array.isArray(pattern)) return pattern.map(p => picomatch.parse(p, options));
+  return parse(pattern, { ...options, fastpaths: false });
+};
+
+/**
+ * Scan a glob pattern to separate the pattern into segments.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.scan(input[, options]);
+ *
+ * const result = picomatch.scan('!./foo/*.js');
+ * console.log(result);
+ * { prefix: '!./',
+ *   input: '!./foo/*.js',
+ *   start: 3,
+ *   base: 'foo',
+ *   glob: '*.js',
+ *   isBrace: false,
+ *   isBracket: false,
+ *   isGlob: true,
+ *   isExtglob: false,
+ *   isGlobstar: false,
+ *   negated: true }
+ * ```
+ * @param {String} `input` Glob pattern to scan.
+ * @param {Object} `options`
+ * @return {Object} Returns an object with
+ * @api public
+ */
+
+picomatch.scan = (input, options) => scan(input, options);
+
+/**
+ * Compile a regular expression from the `state` object returned by the
+ * [parse()](#parse) method.
+ *
+ * @param {Object} `state`
+ * @param {Object} `options`
+ * @param {Boolean} `returnOutput` Intended for implementors, this argument allows you to return the raw output from the parser.
+ * @param {Boolean} `returnState` Adds the state to a `state` property on the returned regex. Useful for implementors and debugging.
+ * @return {RegExp}
+ * @api public
+ */
+
+picomatch.compileRe = (state, options, returnOutput = false, returnState = false) => {
+  if (returnOutput === true) {
+    return state.output;
+  }
+
+  const opts = options || {};
+  const prepend = opts.contains ? '' : '^';
+  const append = opts.contains ? '' : '$';
+
+  let source = `${prepend}(?:${state.output})${append}`;
+  if (state && state.negated === true) {
+    source = `^(?!${source}).*$`;
+  }
+
+  const regex = picomatch.toRegex(source, options);
+  if (returnState === true) {
+    regex.state = state;
+  }
+
+  return regex;
+};
+
+/**
+ * Create a regular expression from a parsed glob pattern.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * const state = picomatch.parse('*.js');
+ * // picomatch.compileRe(state[, options]);
+ *
+ * console.log(picomatch.compileRe(state));
+ * //=> /^(?:(?!\.)(?=.)[^/]*?\.js)$/
+ * ```
+ * @param {String} `state` The object returned from the `.parse` method.
+ * @param {Object} `options`
+ * @param {Boolean} `returnOutput` Implementors may use this argument to return the compiled output, instead of a regular expression. This is not exposed on the options to prevent end-users from mutating the result.
+ * @param {Boolean} `returnState` Implementors may use this argument to return the state from the parsed glob with the returned regular expression.
+ * @return {RegExp} Returns a regex created from the given pattern.
+ * @api public
+ */
+
+picomatch.makeRe = (input, options = {}, returnOutput = false, returnState = false) => {
+  if (!input || typeof input !== 'string') {
+    throw new TypeError('Expected a non-empty string');
+  }
+
+  let parsed = { negated: false, fastpaths: true };
+
+  if (options.fastpaths !== false && (input[0] === '.' || input[0] === '*')) {
+    parsed.output = parse.fastpaths(input, options);
+  }
+
+  if (!parsed.output) {
+    parsed = parse(input, options);
+  }
+
+  return picomatch.compileRe(parsed, options, returnOutput, returnState);
+};
+
+/**
+ * Create a regular expression from the given regex source string.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.toRegex(source[, options]);
+ *
+ * const { output } = picomatch.parse('*.js');
+ * console.log(picomatch.toRegex(output));
+ * //=> /^(?:(?!\.)(?=.)[^/]*?\.js)$/
+ * ```
+ * @param {String} `source` Regular expression source string.
+ * @param {Object} `options`
+ * @return {RegExp}
+ * @api public
+ */
+
+picomatch.toRegex = (source, options) => {
+  try {
+    const opts = options || {};
+    return new RegExp(source, opts.flags || (opts.nocase ? 'i' : ''));
+  } catch (err) {
+    if (options && options.debug === true) throw err;
+    return /$^/;
+  }
+};
+
+/**
+ * Picomatch constants.
+ * @return {Object}
+ */
+
+picomatch.constants = constants;
+
+/**
+ * Expose "picomatch"
+ */
+
+module.exports = picomatch;
+
+
+/***/ }),
+
+/***/ 3999:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const utils = __nccwpck_require__(3753);
+const {
+  CHAR_ASTERISK,             /* * */
+  CHAR_AT,                   /* @ */
+  CHAR_BACKWARD_SLASH,       /* \ */
+  CHAR_COMMA,                /* , */
+  CHAR_DOT,                  /* . */
+  CHAR_EXCLAMATION_MARK,     /* ! */
+  CHAR_FORWARD_SLASH,        /* / */
+  CHAR_LEFT_CURLY_BRACE,     /* { */
+  CHAR_LEFT_PARENTHESES,     /* ( */
+  CHAR_LEFT_SQUARE_BRACKET,  /* [ */
+  CHAR_PLUS,                 /* + */
+  CHAR_QUESTION_MARK,        /* ? */
+  CHAR_RIGHT_CURLY_BRACE,    /* } */
+  CHAR_RIGHT_PARENTHESES,    /* ) */
+  CHAR_RIGHT_SQUARE_BRACKET  /* ] */
+} = __nccwpck_require__(1237);
+
+const isPathSeparator = code => {
+  return code === CHAR_FORWARD_SLASH || code === CHAR_BACKWARD_SLASH;
+};
+
+const depth = token => {
+  if (token.isPrefix !== true) {
+    token.depth = token.isGlobstar ? Infinity : 1;
+  }
+};
+
+/**
+ * Quickly scans a glob pattern and returns an object with a handful of
+ * useful properties, like `isGlob`, `path` (the leading non-glob, if it exists),
+ * `glob` (the actual pattern), `negated` (true if the path starts with `!` but not
+ * with `!(`) and `negatedExtglob` (true if the path starts with `!(`).
+ *
+ * ```js
+ * const pm = require('picomatch');
+ * console.log(pm.scan('foo/bar/*.js'));
+ * { isGlob: true, input: 'foo/bar/*.js', base: 'foo/bar', glob: '*.js' }
+ * ```
+ * @param {String} `str`
+ * @param {Object} `options`
+ * @return {Object} Returns an object with tokens and regex source string.
+ * @api public
+ */
+
+const scan = (input, options) => {
+  const opts = options || {};
+
+  const length = input.length - 1;
+  const scanToEnd = opts.parts === true || opts.scanToEnd === true;
+  const slashes = [];
+  const tokens = [];
+  const parts = [];
+
+  let str = input;
+  let index = -1;
+  let start = 0;
+  let lastIndex = 0;
+  let isBrace = false;
+  let isBracket = false;
+  let isGlob = false;
+  let isExtglob = false;
+  let isGlobstar = false;
+  let braceEscaped = false;
+  let backslashes = false;
+  let negated = false;
+  let negatedExtglob = false;
+  let finished = false;
+  let braces = 0;
+  let prev;
+  let code;
+  let token = { value: '', depth: 0, isGlob: false };
+
+  const eos = () => index >= length;
+  const peek = () => str.charCodeAt(index + 1);
+  const advance = () => {
+    prev = code;
+    return str.charCodeAt(++index);
+  };
+
+  while (index < length) {
+    code = advance();
+    let next;
+
+    if (code === CHAR_BACKWARD_SLASH) {
+      backslashes = token.backslashes = true;
+      code = advance();
+
+      if (code === CHAR_LEFT_CURLY_BRACE) {
+        braceEscaped = true;
+      }
+      continue;
+    }
+
+    if (braceEscaped === true || code === CHAR_LEFT_CURLY_BRACE) {
+      braces++;
+
+      while (eos() !== true && (code = advance())) {
+        if (code === CHAR_BACKWARD_SLASH) {
+          backslashes = token.backslashes = true;
+          advance();
+          continue;
+        }
+
+        if (code === CHAR_LEFT_CURLY_BRACE) {
+          braces++;
+          continue;
+        }
+
+        if (braceEscaped !== true && code === CHAR_DOT && (code = advance()) === CHAR_DOT) {
+          isBrace = token.isBrace = true;
+          isGlob = token.isGlob = true;
+          finished = true;
+
+          if (scanToEnd === true) {
+            continue;
+          }
+
+          break;
+        }
+
+        if (braceEscaped !== true && code === CHAR_COMMA) {
+          isBrace = token.isBrace = true;
+          isGlob = token.isGlob = true;
+          finished = true;
+
+          if (scanToEnd === true) {
+            continue;
+          }
+
+          break;
+        }
+
+        if (code === CHAR_RIGHT_CURLY_BRACE) {
+          braces--;
+
+          if (braces === 0) {
+            braceEscaped = false;
+            isBrace = token.isBrace = true;
+            finished = true;
+            break;
+          }
+        }
+      }
+
+      if (scanToEnd === true) {
+        continue;
+      }
+
+      break;
+    }
+
+    if (code === CHAR_FORWARD_SLASH) {
+      slashes.push(index);
+      tokens.push(token);
+      token = { value: '', depth: 0, isGlob: false };
+
+      if (finished === true) continue;
+      if (prev === CHAR_DOT && index === (start + 1)) {
+        start += 2;
+        continue;
+      }
+
+      lastIndex = index + 1;
+      continue;
+    }
+
+    if (opts.noext !== true) {
+      const isExtglobChar = code === CHAR_PLUS
+        || code === CHAR_AT
+        || code === CHAR_ASTERISK
+        || code === CHAR_QUESTION_MARK
+        || code === CHAR_EXCLAMATION_MARK;
+
+      if (isExtglobChar === true && peek() === CHAR_LEFT_PARENTHESES) {
+        isGlob = token.isGlob = true;
+        isExtglob = token.isExtglob = true;
+        finished = true;
+        if (code === CHAR_EXCLAMATION_MARK && index === start) {
+          negatedExtglob = true;
+        }
+
+        if (scanToEnd === true) {
+          while (eos() !== true && (code = advance())) {
+            if (code === CHAR_BACKWARD_SLASH) {
+              backslashes = token.backslashes = true;
+              code = advance();
+              continue;
+            }
+
+            if (code === CHAR_RIGHT_PARENTHESES) {
+              isGlob = token.isGlob = true;
+              finished = true;
+              break;
+            }
+          }
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (code === CHAR_ASTERISK) {
+      if (prev === CHAR_ASTERISK) isGlobstar = token.isGlobstar = true;
+      isGlob = token.isGlob = true;
+      finished = true;
+
+      if (scanToEnd === true) {
+        continue;
+      }
+      break;
+    }
+
+    if (code === CHAR_QUESTION_MARK) {
+      isGlob = token.isGlob = true;
+      finished = true;
+
+      if (scanToEnd === true) {
+        continue;
+      }
+      break;
+    }
+
+    if (code === CHAR_LEFT_SQUARE_BRACKET) {
+      while (eos() !== true && (next = advance())) {
+        if (next === CHAR_BACKWARD_SLASH) {
+          backslashes = token.backslashes = true;
+          advance();
+          continue;
+        }
+
+        if (next === CHAR_RIGHT_SQUARE_BRACKET) {
+          isBracket = token.isBracket = true;
+          isGlob = token.isGlob = true;
+          finished = true;
+          break;
+        }
+      }
+
+      if (scanToEnd === true) {
+        continue;
+      }
+
+      break;
+    }
+
+    if (opts.nonegate !== true && code === CHAR_EXCLAMATION_MARK && index === start) {
+      negated = token.negated = true;
+      start++;
+      continue;
+    }
+
+    if (opts.noparen !== true && code === CHAR_LEFT_PARENTHESES) {
+      isGlob = token.isGlob = true;
+
+      if (scanToEnd === true) {
+        while (eos() !== true && (code = advance())) {
+          if (code === CHAR_LEFT_PARENTHESES) {
+            backslashes = token.backslashes = true;
+            code = advance();
+            continue;
+          }
+
+          if (code === CHAR_RIGHT_PARENTHESES) {
+            finished = true;
+            break;
+          }
+        }
+        continue;
+      }
+      break;
+    }
+
+    if (isGlob === true) {
+      finished = true;
+
+      if (scanToEnd === true) {
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  if (opts.noext === true) {
+    isExtglob = false;
+    isGlob = false;
+  }
+
+  let base = str;
+  let prefix = '';
+  let glob = '';
+
+  if (start > 0) {
+    prefix = str.slice(0, start);
+    str = str.slice(start);
+    lastIndex -= start;
+  }
+
+  if (base && isGlob === true && lastIndex > 0) {
+    base = str.slice(0, lastIndex);
+    glob = str.slice(lastIndex);
+  } else if (isGlob === true) {
+    base = '';
+    glob = str;
+  } else {
+    base = str;
+  }
+
+  if (base && base !== '' && base !== '/' && base !== str) {
+    if (isPathSeparator(base.charCodeAt(base.length - 1))) {
+      base = base.slice(0, -1);
+    }
+  }
+
+  if (opts.unescape === true) {
+    if (glob) glob = utils.removeBackslashes(glob);
+
+    if (base && backslashes === true) {
+      base = utils.removeBackslashes(base);
+    }
+  }
+
+  const state = {
+    prefix,
+    input,
+    start,
+    base,
+    glob,
+    isBrace,
+    isBracket,
+    isGlob,
+    isExtglob,
+    isGlobstar,
+    negated,
+    negatedExtglob
+  };
+
+  if (opts.tokens === true) {
+    state.maxDepth = 0;
+    if (!isPathSeparator(code)) {
+      tokens.push(token);
+    }
+    state.tokens = tokens;
+  }
+
+  if (opts.parts === true || opts.tokens === true) {
+    let prevIndex;
+
+    for (let idx = 0; idx < slashes.length; idx++) {
+      const n = prevIndex ? prevIndex + 1 : start;
+      const i = slashes[idx];
+      const value = input.slice(n, i);
+      if (opts.tokens) {
+        if (idx === 0 && start !== 0) {
+          tokens[idx].isPrefix = true;
+          tokens[idx].value = prefix;
+        } else {
+          tokens[idx].value = value;
+        }
+        depth(tokens[idx]);
+        state.maxDepth += tokens[idx].depth;
+      }
+      if (idx !== 0 || value !== '') {
+        parts.push(value);
+      }
+      prevIndex = i;
+    }
+
+    if (prevIndex && prevIndex + 1 < input.length) {
+      const value = input.slice(prevIndex + 1);
+      parts.push(value);
+
+      if (opts.tokens) {
+        tokens[tokens.length - 1].value = value;
+        depth(tokens[tokens.length - 1]);
+        state.maxDepth += tokens[tokens.length - 1].depth;
+      }
+    }
+
+    state.slashes = slashes;
+    state.parts = parts;
+  }
+
+  return state;
+};
+
+module.exports = scan;
+
+
+/***/ }),
+
+/***/ 3753:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const path = __nccwpck_require__(6928);
+const win32 = process.platform === 'win32';
+const {
+  REGEX_BACKSLASH,
+  REGEX_REMOVE_BACKSLASH,
+  REGEX_SPECIAL_CHARS,
+  REGEX_SPECIAL_CHARS_GLOBAL
+} = __nccwpck_require__(1237);
+
+exports.isObject = val => val !== null && typeof val === 'object' && !Array.isArray(val);
+exports.hasRegexChars = str => REGEX_SPECIAL_CHARS.test(str);
+exports.isRegexChar = str => str.length === 1 && exports.hasRegexChars(str);
+exports.escapeRegex = str => str.replace(REGEX_SPECIAL_CHARS_GLOBAL, '\\$1');
+exports.toPosixSlashes = str => str.replace(REGEX_BACKSLASH, '/');
+
+exports.removeBackslashes = str => {
+  return str.replace(REGEX_REMOVE_BACKSLASH, match => {
+    return match === '\\' ? '' : match;
+  });
+};
+
+exports.supportsLookbehinds = () => {
+  const segs = process.version.slice(1).split('.').map(Number);
+  if (segs.length === 3 && segs[0] >= 9 || (segs[0] === 8 && segs[1] >= 10)) {
+    return true;
+  }
+  return false;
+};
+
+exports.isWindows = options => {
+  if (options && typeof options.windows === 'boolean') {
+    return options.windows;
+  }
+  return win32 === true || path.sep === '\\';
+};
+
+exports.escapeLast = (input, char, lastIdx) => {
+  const idx = input.lastIndexOf(char, lastIdx);
+  if (idx === -1) return input;
+  if (input[idx - 1] === '\\') return exports.escapeLast(input, char, idx - 1);
+  return `${input.slice(0, idx)}\\${input.slice(idx)}`;
+};
+
+exports.removePrefix = (input, state = {}) => {
+  let output = input;
+  if (output.startsWith('./')) {
+    output = output.slice(2);
+    state.prefix = './';
+  }
+  return output;
+};
+
+exports.wrapOutput = (input, state = {}, options = {}) => {
+  const prepend = options.contains ? '' : '^';
+  const append = options.contains ? '' : '$';
+
+  let output = `${prepend}(?:${input})${append}`;
+  if (state.negated === true) {
+    output = `(?:^(?!${output}).*$)`;
+  }
+  return output;
+};
+
+
+/***/ }),
+
+/***/ 743:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+/*!
+ * to-regex-range <https://github.com/micromatch/to-regex-range>
+ *
+ * Copyright (c) 2015-present, Jon Schlinkert.
+ * Released under the MIT License.
+ */
+
+
+
+const isNumber = __nccwpck_require__(952);
+
+const toRegexRange = (min, max, options) => {
+  if (isNumber(min) === false) {
+    throw new TypeError('toRegexRange: expected the first argument to be a number');
+  }
+
+  if (max === void 0 || min === max) {
+    return String(min);
+  }
+
+  if (isNumber(max) === false) {
+    throw new TypeError('toRegexRange: expected the second argument to be a number.');
+  }
+
+  let opts = { relaxZeros: true, ...options };
+  if (typeof opts.strictZeros === 'boolean') {
+    opts.relaxZeros = opts.strictZeros === false;
+  }
+
+  let relax = String(opts.relaxZeros);
+  let shorthand = String(opts.shorthand);
+  let capture = String(opts.capture);
+  let wrap = String(opts.wrap);
+  let cacheKey = min + ':' + max + '=' + relax + shorthand + capture + wrap;
+
+  if (toRegexRange.cache.hasOwnProperty(cacheKey)) {
+    return toRegexRange.cache[cacheKey].result;
+  }
+
+  let a = Math.min(min, max);
+  let b = Math.max(min, max);
+
+  if (Math.abs(a - b) === 1) {
+    let result = min + '|' + max;
+    if (opts.capture) {
+      return `(${result})`;
+    }
+    if (opts.wrap === false) {
+      return result;
+    }
+    return `(?:${result})`;
+  }
+
+  let isPadded = hasPadding(min) || hasPadding(max);
+  let state = { min, max, a, b };
+  let positives = [];
+  let negatives = [];
+
+  if (isPadded) {
+    state.isPadded = isPadded;
+    state.maxLen = String(state.max).length;
+  }
+
+  if (a < 0) {
+    let newMin = b < 0 ? Math.abs(b) : 1;
+    negatives = splitToPatterns(newMin, Math.abs(a), state, opts);
+    a = state.a = 0;
+  }
+
+  if (b >= 0) {
+    positives = splitToPatterns(a, b, state, opts);
+  }
+
+  state.negatives = negatives;
+  state.positives = positives;
+  state.result = collatePatterns(negatives, positives, opts);
+
+  if (opts.capture === true) {
+    state.result = `(${state.result})`;
+  } else if (opts.wrap !== false && (positives.length + negatives.length) > 1) {
+    state.result = `(?:${state.result})`;
+  }
+
+  toRegexRange.cache[cacheKey] = state;
+  return state.result;
+};
+
+function collatePatterns(neg, pos, options) {
+  let onlyNegative = filterPatterns(neg, pos, '-', false, options) || [];
+  let onlyPositive = filterPatterns(pos, neg, '', false, options) || [];
+  let intersected = filterPatterns(neg, pos, '-?', true, options) || [];
+  let subpatterns = onlyNegative.concat(intersected).concat(onlyPositive);
+  return subpatterns.join('|');
+}
+
+function splitToRanges(min, max) {
+  let nines = 1;
+  let zeros = 1;
+
+  let stop = countNines(min, nines);
+  let stops = new Set([max]);
+
+  while (min <= stop && stop <= max) {
+    stops.add(stop);
+    nines += 1;
+    stop = countNines(min, nines);
+  }
+
+  stop = countZeros(max + 1, zeros) - 1;
+
+  while (min < stop && stop <= max) {
+    stops.add(stop);
+    zeros += 1;
+    stop = countZeros(max + 1, zeros) - 1;
+  }
+
+  stops = [...stops];
+  stops.sort(compare);
+  return stops;
+}
+
+/**
+ * Convert a range to a regex pattern
+ * @param {Number} `start`
+ * @param {Number} `stop`
+ * @return {String}
+ */
+
+function rangeToPattern(start, stop, options) {
+  if (start === stop) {
+    return { pattern: start, count: [], digits: 0 };
+  }
+
+  let zipped = zip(start, stop);
+  let digits = zipped.length;
+  let pattern = '';
+  let count = 0;
+
+  for (let i = 0; i < digits; i++) {
+    let [startDigit, stopDigit] = zipped[i];
+
+    if (startDigit === stopDigit) {
+      pattern += startDigit;
+
+    } else if (startDigit !== '0' || stopDigit !== '9') {
+      pattern += toCharacterClass(startDigit, stopDigit, options);
+
+    } else {
+      count++;
+    }
+  }
+
+  if (count) {
+    pattern += options.shorthand === true ? '\\d' : '[0-9]';
+  }
+
+  return { pattern, count: [count], digits };
+}
+
+function splitToPatterns(min, max, tok, options) {
+  let ranges = splitToRanges(min, max);
+  let tokens = [];
+  let start = min;
+  let prev;
+
+  for (let i = 0; i < ranges.length; i++) {
+    let max = ranges[i];
+    let obj = rangeToPattern(String(start), String(max), options);
+    let zeros = '';
+
+    if (!tok.isPadded && prev && prev.pattern === obj.pattern) {
+      if (prev.count.length > 1) {
+        prev.count.pop();
+      }
+
+      prev.count.push(obj.count[0]);
+      prev.string = prev.pattern + toQuantifier(prev.count);
+      start = max + 1;
+      continue;
+    }
+
+    if (tok.isPadded) {
+      zeros = padZeros(max, tok, options);
+    }
+
+    obj.string = zeros + obj.pattern + toQuantifier(obj.count);
+    tokens.push(obj);
+    start = max + 1;
+    prev = obj;
+  }
+
+  return tokens;
+}
+
+function filterPatterns(arr, comparison, prefix, intersection, options) {
+  let result = [];
+
+  for (let ele of arr) {
+    let { string } = ele;
+
+    // only push if _both_ are negative...
+    if (!intersection && !contains(comparison, 'string', string)) {
+      result.push(prefix + string);
+    }
+
+    // or _both_ are positive
+    if (intersection && contains(comparison, 'string', string)) {
+      result.push(prefix + string);
+    }
+  }
+  return result;
+}
+
+/**
+ * Zip strings
+ */
+
+function zip(a, b) {
+  let arr = [];
+  for (let i = 0; i < a.length; i++) arr.push([a[i], b[i]]);
+  return arr;
+}
+
+function compare(a, b) {
+  return a > b ? 1 : b > a ? -1 : 0;
+}
+
+function contains(arr, key, val) {
+  return arr.some(ele => ele[key] === val);
+}
+
+function countNines(min, len) {
+  return Number(String(min).slice(0, -len) + '9'.repeat(len));
+}
+
+function countZeros(integer, zeros) {
+  return integer - (integer % Math.pow(10, zeros));
+}
+
+function toQuantifier(digits) {
+  let [start = 0, stop = ''] = digits;
+  if (stop || start > 1) {
+    return `{${start + (stop ? ',' + stop : '')}}`;
+  }
+  return '';
+}
+
+function toCharacterClass(a, b, options) {
+  return `[${a}${(b - a === 1) ? '' : '-'}${b}]`;
+}
+
+function hasPadding(str) {
+  return /^-?(0+)\d/.test(str);
+}
+
+function padZeros(value, tok, options) {
+  if (!tok.isPadded) {
+    return value;
+  }
+
+  let diff = Math.abs(tok.maxLen - String(value).length);
+  let relax = options.relaxZeros !== false;
+
+  switch (diff) {
+    case 0:
+      return '';
+    case 1:
+      return relax ? '0?' : '0';
+    case 2:
+      return relax ? '0{0,2}' : '00';
+    default: {
+      return relax ? `0{0,${diff}}` : `0{${diff}}`;
+    }
+  }
+}
+
+/**
+ * Cache
+ */
+
+toRegexRange.cache = {};
+toRegexRange.clearCache = () => (toRegexRange.cache = {});
+
+/**
+ * Expose `toRegexRange`
+ */
+
+module.exports = toRegexRange;
 
 
 /***/ }),
@@ -35276,6 +39701,376 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 159:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Runtime Admission — canonical byte-safe framing (Phase A).
+ *
+ * Deterministic, length-prefixed framing for the delta and coverage hashes.
+ * Web-safe: uses Uint8Array + TextEncoder only (this package is imported by
+ * the dashboard and other non-Node surfaces). No Node Buffer, no crypto here —
+ * hashing of the framed bytes happens in the governance-runtime core.
+ *
+ * Why length-prefixed framing (and not a delimiter join):
+ *   A delimiter such as "\0" or "\t" can appear inside a path, so a delimiter
+ *   join lets two distinct field sets collapse to the same byte stream
+ *   (e.g. ["a\tb"] vs ["a","b"]). Every field and every record here is prefixed
+ *   with its exact byte length, so field and record boundaries are
+ *   unambiguous and no path content can forge a boundary.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ADMISSION_COVERAGE_SET_HASH_DOMAIN = exports.ADMISSION_DELTA_HASH_DOMAIN = exports.ADMISSION_FRAMING_VERSION = void 0;
+exports.frameField = frameField;
+exports.frameFields = frameFields;
+exports.frameRecordSet = frameRecordSet;
+/** Schema/domain version for the framing contract. Bump only on a breaking framing change. */
+exports.ADMISSION_FRAMING_VERSION = 'neurcode.admission-framing.v1';
+/** Domain separators so delta and coverage hashes can never alias each other. */
+exports.ADMISSION_DELTA_HASH_DOMAIN = 'neurcode.admission.delta.v1';
+exports.ADMISSION_COVERAGE_SET_HASH_DOMAIN = 'neurcode.admission.coverage-set.v1';
+const textEncoder = new TextEncoder();
+function u32be(value) {
+    if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+        throw new Error(`admission framing: length out of range: ${value}`);
+    }
+    const out = new Uint8Array(4);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, value, false);
+    return out;
+}
+function concatBytes(parts) {
+    let total = 0;
+    for (const part of parts)
+        total += part.length;
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) {
+        out.set(part, offset);
+        offset += part.length;
+    }
+    return out;
+}
+/** Frame a single field as: u32be(byteLength) ‖ utf8(value). */
+function frameField(value) {
+    const bytes = textEncoder.encode(value);
+    return concatBytes([u32be(bytes.length), bytes]);
+}
+/** Frame an ordered list of fields. Order is preserved; the caller sorts records. */
+function frameFields(fields) {
+    return concatBytes(fields.map((field) => frameField(field)));
+}
+/**
+ * Frame a header plus an ordered set of records into one canonical byte stream.
+ *
+ * Layout:
+ *   frameFields(header)
+ *   for each record: u32be(recordByteLength) ‖ frameFields(record)
+ *
+ * Records must already be canonically sorted by the caller (the hash functions
+ * sort before calling this, which is what makes shuffled input produce an
+ * identical hash). Double length-prefixing (record length + per-field length)
+ * makes both record and field boundaries unambiguous.
+ */
+function frameRecordSet(header, records) {
+    const parts = [frameFields(header)];
+    for (const record of records) {
+        const recordBytes = frameFields(record);
+        parts.push(u32be(recordBytes.length), recordBytes);
+    }
+    return concatBytes(parts);
+}
+//# sourceMappingURL=framing.js.map
+
+/***/ }),
+
+/***/ 9349:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.assertSourceFreeAdmissionValue = exports.AdmissionSourceLeakError = exports.ADMISSION_SOURCE_LIKE_KEYS = exports.frameRecordSet = exports.frameFields = exports.frameField = exports.ADMISSION_FRAMING_VERSION = exports.ADMISSION_DELTA_HASH_DOMAIN = exports.ADMISSION_COVERAGE_SET_HASH_DOMAIN = exports.zeroObjectId = exports.objectTypeForMode = exports.objectIdHexLength = exports.isZeroObjectId = exports.isValidObjectId = exports.isStrictlyAdmissible = exports.isKnownGitMode = exports.isGovernedClassification = exports.isAdmissibleClassification = exports.deltaEntryCanonicalFields = exports.coverageEntryIdentityKey = exports.coverageEntryCanonicalFields = exports.GIT_MODE_SYMLINK = exports.GIT_MODE_SUBMODULE = exports.GIT_MODE_EXEC = exports.GIT_MODE_BLOB = exports.GIT_MODE_ABSENT = exports.SELF_ATTESTED_ADMISSION_DISCLAIMER = exports.SELF_ATTESTED_ADMISSION_RECORD_SCHEMA_VERSION = exports.ADMISSION_CONSISTENCY_DECISION_SCHEMA_VERSION = exports.ADMISSION_COVERAGE_MANIFEST_SCHEMA_VERSION = void 0;
+var schema_1 = __nccwpck_require__(1794);
+Object.defineProperty(exports, "ADMISSION_COVERAGE_MANIFEST_SCHEMA_VERSION", ({ enumerable: true, get: function () { return schema_1.ADMISSION_COVERAGE_MANIFEST_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "ADMISSION_CONSISTENCY_DECISION_SCHEMA_VERSION", ({ enumerable: true, get: function () { return schema_1.ADMISSION_CONSISTENCY_DECISION_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "SELF_ATTESTED_ADMISSION_RECORD_SCHEMA_VERSION", ({ enumerable: true, get: function () { return schema_1.SELF_ATTESTED_ADMISSION_RECORD_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "SELF_ATTESTED_ADMISSION_DISCLAIMER", ({ enumerable: true, get: function () { return schema_1.SELF_ATTESTED_ADMISSION_DISCLAIMER; } }));
+Object.defineProperty(exports, "GIT_MODE_ABSENT", ({ enumerable: true, get: function () { return schema_1.GIT_MODE_ABSENT; } }));
+Object.defineProperty(exports, "GIT_MODE_BLOB", ({ enumerable: true, get: function () { return schema_1.GIT_MODE_BLOB; } }));
+Object.defineProperty(exports, "GIT_MODE_EXEC", ({ enumerable: true, get: function () { return schema_1.GIT_MODE_EXEC; } }));
+Object.defineProperty(exports, "GIT_MODE_SUBMODULE", ({ enumerable: true, get: function () { return schema_1.GIT_MODE_SUBMODULE; } }));
+Object.defineProperty(exports, "GIT_MODE_SYMLINK", ({ enumerable: true, get: function () { return schema_1.GIT_MODE_SYMLINK; } }));
+Object.defineProperty(exports, "coverageEntryCanonicalFields", ({ enumerable: true, get: function () { return schema_1.coverageEntryCanonicalFields; } }));
+Object.defineProperty(exports, "coverageEntryIdentityKey", ({ enumerable: true, get: function () { return schema_1.coverageEntryIdentityKey; } }));
+Object.defineProperty(exports, "deltaEntryCanonicalFields", ({ enumerable: true, get: function () { return schema_1.deltaEntryCanonicalFields; } }));
+Object.defineProperty(exports, "isAdmissibleClassification", ({ enumerable: true, get: function () { return schema_1.isAdmissibleClassification; } }));
+Object.defineProperty(exports, "isGovernedClassification", ({ enumerable: true, get: function () { return schema_1.isGovernedClassification; } }));
+Object.defineProperty(exports, "isKnownGitMode", ({ enumerable: true, get: function () { return schema_1.isKnownGitMode; } }));
+Object.defineProperty(exports, "isStrictlyAdmissible", ({ enumerable: true, get: function () { return schema_1.isStrictlyAdmissible; } }));
+Object.defineProperty(exports, "isValidObjectId", ({ enumerable: true, get: function () { return schema_1.isValidObjectId; } }));
+Object.defineProperty(exports, "isZeroObjectId", ({ enumerable: true, get: function () { return schema_1.isZeroObjectId; } }));
+Object.defineProperty(exports, "objectIdHexLength", ({ enumerable: true, get: function () { return schema_1.objectIdHexLength; } }));
+Object.defineProperty(exports, "objectTypeForMode", ({ enumerable: true, get: function () { return schema_1.objectTypeForMode; } }));
+Object.defineProperty(exports, "zeroObjectId", ({ enumerable: true, get: function () { return schema_1.zeroObjectId; } }));
+var framing_1 = __nccwpck_require__(159);
+Object.defineProperty(exports, "ADMISSION_COVERAGE_SET_HASH_DOMAIN", ({ enumerable: true, get: function () { return framing_1.ADMISSION_COVERAGE_SET_HASH_DOMAIN; } }));
+Object.defineProperty(exports, "ADMISSION_DELTA_HASH_DOMAIN", ({ enumerable: true, get: function () { return framing_1.ADMISSION_DELTA_HASH_DOMAIN; } }));
+Object.defineProperty(exports, "ADMISSION_FRAMING_VERSION", ({ enumerable: true, get: function () { return framing_1.ADMISSION_FRAMING_VERSION; } }));
+Object.defineProperty(exports, "frameField", ({ enumerable: true, get: function () { return framing_1.frameField; } }));
+Object.defineProperty(exports, "frameFields", ({ enumerable: true, get: function () { return framing_1.frameFields; } }));
+Object.defineProperty(exports, "frameRecordSet", ({ enumerable: true, get: function () { return framing_1.frameRecordSet; } }));
+var privacy_1 = __nccwpck_require__(6081);
+Object.defineProperty(exports, "ADMISSION_SOURCE_LIKE_KEYS", ({ enumerable: true, get: function () { return privacy_1.ADMISSION_SOURCE_LIKE_KEYS; } }));
+Object.defineProperty(exports, "AdmissionSourceLeakError", ({ enumerable: true, get: function () { return privacy_1.AdmissionSourceLeakError; } }));
+Object.defineProperty(exports, "assertSourceFreeAdmissionValue", ({ enumerable: true, get: function () { return privacy_1.assertSourceFreeAdmissionValue; } }));
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6081:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Runtime Admission — source-free privacy guard (Phase A).
+ *
+ * The admission artifact may contain only: paths, object ids, modes, hashes,
+ * classifications, timestamps, session ids, and version strings. It must never
+ * contain file content, diff hunks, patch text, excerpts, or secrets.
+ *
+ * This guard is a denylist on key names (mirrors the runtime-sync upload guard)
+ * plus a value-shape check. It is intentionally conservative: any source-like
+ * key anywhere in the structure throws.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AdmissionSourceLeakError = exports.ADMISSION_SOURCE_LIKE_KEYS = void 0;
+exports.assertSourceFreeAdmissionValue = assertSourceFreeAdmissionValue;
+/** Keys that would indicate source content / diffs / secrets leaked into the artifact. */
+exports.ADMISSION_SOURCE_LIKE_KEYS = new Set([
+    'content',
+    'fileContent',
+    'file_content',
+    'sourceText',
+    'source_text',
+    'source',
+    'body',
+    'text',
+    'diff',
+    'diffText',
+    'diff_text',
+    'patch',
+    'patchText',
+    'hunk',
+    'hunks',
+    'excerpt',
+    'snippet',
+    'before',
+    'after',
+    'blobContent',
+    'contents',
+    'secret',
+    'secrets',
+    'token',
+    'password',
+]);
+class AdmissionSourceLeakError extends Error {
+    keyPath;
+    constructor(keyPath) {
+        super(`admission artifact contains source-like key: ${keyPath}`);
+        this.keyPath = keyPath;
+        this.name = 'AdmissionSourceLeakError';
+    }
+}
+exports.AdmissionSourceLeakError = AdmissionSourceLeakError;
+/**
+ * Walk a value and throw AdmissionSourceLeakError if any object key is a
+ * source-like key. Arrays and nested objects are walked recursively.
+ */
+function assertSourceFreeAdmissionValue(value, path = 'admission') {
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => assertSourceFreeAdmissionValue(item, `${path}[${index}]`));
+        return;
+    }
+    if (!value || typeof value !== 'object')
+        return;
+    for (const [key, child] of Object.entries(value)) {
+        if (exports.ADMISSION_SOURCE_LIKE_KEYS.has(key)) {
+            throw new AdmissionSourceLeakError(`${path}.${key}`);
+        }
+        assertSourceFreeAdmissionValue(child, `${path}.${key}`);
+    }
+}
+//# sourceMappingURL=privacy.js.map
+
+/***/ }),
+
+/***/ 1794:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Runtime Admission — Phase A schema (Provenance Core V1).
+ *
+ * Source-free, deterministic provenance types shared across CLI, the future
+ * OSS advisory Action, and future Enterprise enforcement. Phase A defines the
+ * normalized git tree-delta, the governed coverage manifest, the self-attested
+ * local artifact, and the consistency decision. No signing, no receipts, no
+ * backend, no Action here — those are later phases.
+ *
+ * Two distinct hashes by design (do not collapse them):
+ *   - deltaHash:       exact, base-specific tree-delta fingerprint (debugging /
+ *                      deterministic reproduction).
+ *   - coverageSetHash: governed-effect set fingerprint used for squash/rebase-
+ *                      survivable, per-entry subset matching of a PR to sessions.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GIT_MODE_ABSENT = exports.GIT_MODE_SUBMODULE = exports.GIT_MODE_SYMLINK = exports.GIT_MODE_EXEC = exports.GIT_MODE_BLOB = exports.SELF_ATTESTED_ADMISSION_DISCLAIMER = exports.ADMISSION_CONSISTENCY_DECISION_SCHEMA_VERSION = exports.SELF_ATTESTED_ADMISSION_RECORD_SCHEMA_VERSION = exports.ADMISSION_COVERAGE_MANIFEST_SCHEMA_VERSION = void 0;
+exports.objectIdHexLength = objectIdHexLength;
+exports.zeroObjectId = zeroObjectId;
+exports.isZeroObjectId = isZeroObjectId;
+exports.isValidObjectId = isValidObjectId;
+exports.isKnownGitMode = isKnownGitMode;
+exports.objectTypeForMode = objectTypeForMode;
+exports.deltaEntryCanonicalFields = deltaEntryCanonicalFields;
+exports.coverageEntryCanonicalFields = coverageEntryCanonicalFields;
+exports.coverageEntryIdentityKey = coverageEntryIdentityKey;
+exports.isGovernedClassification = isGovernedClassification;
+exports.isStrictlyAdmissible = isStrictlyAdmissible;
+exports.isAdmissibleClassification = isAdmissibleClassification;
+exports.ADMISSION_COVERAGE_MANIFEST_SCHEMA_VERSION = 'neurcode.admission-coverage.v1';
+exports.SELF_ATTESTED_ADMISSION_RECORD_SCHEMA_VERSION = 'neurcode.admission-record.v1';
+exports.ADMISSION_CONSISTENCY_DECISION_SCHEMA_VERSION = 'neurcode.admission-consistency.v1';
+/**
+ * Mandatory honesty label. A locally committed artifact is authored by the same
+ * untrusted principal who authored the diff, so it can be fabricated with
+ * matching object ids. It is a claim, never proof.
+ */
+exports.SELF_ATTESTED_ADMISSION_DISCLAIMER = 'Self-attested by the local Neurcode runtime: a source-free claim that a governed ' +
+    'session produced these effects. This is NOT cryptographic proof that governance ran. ' +
+    'Enterprise enforcement requires a backend-anchored signed receipt.';
+/** Canonical git file modes used by this contract. */
+exports.GIT_MODE_BLOB = '100644';
+exports.GIT_MODE_EXEC = '100755';
+exports.GIT_MODE_SYMLINK = '120000';
+exports.GIT_MODE_SUBMODULE = '160000';
+exports.GIT_MODE_ABSENT = '000000';
+const KNOWN_MODES = new Set([
+    exports.GIT_MODE_BLOB,
+    exports.GIT_MODE_EXEC,
+    exports.GIT_MODE_SYMLINK,
+    exports.GIT_MODE_SUBMODULE,
+    exports.GIT_MODE_ABSENT,
+]);
+// ── Pure helpers (no crypto, no IO) ─────────────────────────────────────────
+function objectIdHexLength(format) {
+    return format === 'sha256' ? 64 : 40;
+}
+function zeroObjectId(format) {
+    return '0'.repeat(objectIdHexLength(format));
+}
+function isZeroObjectId(objectId) {
+    return /^0+$/.test(objectId);
+}
+function isValidObjectId(objectId, format) {
+    const len = objectIdHexLength(format);
+    return new RegExp(`^[0-9a-f]{${len}}$`).test(objectId);
+}
+function isKnownGitMode(mode) {
+    return KNOWN_MODES.has(mode);
+}
+function objectTypeForMode(mode) {
+    switch (mode) {
+        case exports.GIT_MODE_SUBMODULE:
+            return 'submodule';
+        case exports.GIT_MODE_SYMLINK:
+            return 'symlink';
+        case exports.GIT_MODE_BLOB:
+        case exports.GIT_MODE_EXEC:
+            return 'blob';
+        case exports.GIT_MODE_ABSENT:
+            return 'absent';
+        default:
+            throw new Error(`admission: unsupported git mode "${mode}"`);
+    }
+}
+/**
+ * Canonical, ordered field list for a delta entry. The field ORDER is part of
+ * the hashing contract and must never be reordered.
+ */
+function deltaEntryCanonicalFields(entry) {
+    return [
+        entry.path,
+        entry.changeType,
+        entry.objectType,
+        entry.oldMode,
+        entry.newMode,
+        entry.oldObjectId,
+        entry.newObjectId,
+    ];
+}
+/**
+ * Canonical, ordered identity field list for a coverage entry.
+ *
+ * Identity per the matching contract:
+ *   present (added/modified/typechanged) → path + newMode + newObjectId
+ *   deleted                              → path + oldMode + oldObjectId
+ *
+ * `mode`/`objectId` already hold the correct side. `changeType` collapses to a
+ * single present/deleted flag so a squash/rebase that reclassifies modified↔added
+ * (same resulting content) still matches. `objectType` is derived from `mode` and
+ * is excluded. `classification` and `sessions` are annotations and excluded.
+ */
+function coverageEntryCanonicalFields(entry) {
+    const presence = entry.changeType === 'deleted' ? 'D' : 'P';
+    return [presence, entry.path, entry.mode, entry.objectId];
+}
+/** Stable in-memory identity key for set/union operations (not a security hash). */
+function coverageEntryIdentityKey(entry) {
+    return JSON.stringify(coverageEntryCanonicalFields(entry));
+}
+/**
+ * Descriptive test: did this effect have ANY governance evidence (pre- or
+ * post-write, or generated)? Use this for descriptive surfaces (telemetry,
+ * "what did the runtime observe"). It is NOT the admission eligibility test.
+ */
+function isGovernedClassification(classification) {
+    return (classification === 'governed_prewrite' ||
+        classification === 'observed_postwrite' ||
+        classification === 'governed_delete' ||
+        classification === 'generated');
+}
+/**
+ * Strict runtime admission eligibility. Only pre-write governance is admissible:
+ * `governed_prewrite` and `governed_delete`. `observed_postwrite` is visible but
+ * NOT admissible (the write was only seen after it happened). `generated` is
+ * admissible only when `allowGenerated` is explicitly set by policy.
+ */
+function isStrictlyAdmissible(classification, options = {}) {
+    if (classification === 'governed_prewrite' || classification === 'governed_delete')
+        return true;
+    if (classification === 'generated')
+        return options.allowGenerated === true;
+    return false;
+}
+/**
+ * Eligibility predicate honoring the requested mode. Strict (default) uses
+ * `isStrictlyAdmissible`; descriptive uses `isGovernedClassification`.
+ */
+function isAdmissibleClassification(classification, options = {}) {
+    if ((options.mode ?? 'strict') === 'descriptive') {
+        return isGovernedClassification(classification);
+    }
+    return isStrictlyAdmissible(classification, options);
+}
+//# sourceMappingURL=schema.js.map
+
+/***/ }),
+
 /***/ 7239:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -35296,7 +40091,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION = exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION = exports.RUNTIME_COMPATIBILITY_CONTRACT_ID = exports.CLI_JSON_CONTRACT_VERSION = void 0;
+exports.ADMISSION_CONTRACT_VERSION = exports.ADMISSION_CONTRACT_ID = exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION = exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION = exports.RUNTIME_COMPATIBILITY_CONTRACT_ID = exports.CLI_JSON_CONTRACT_VERSION = void 0;
 exports.getRuntimeCompatibilityManifest = getRuntimeCompatibilityManifest;
 exports.compareSemver = compareSemver;
 exports.isSemverAtLeast = isSemverAtLeast;
@@ -35320,16 +40115,25 @@ __exportStar(__nccwpck_require__(7184), exports);
 __exportStar(__nccwpck_require__(2494), exports);
 __exportStar(__nccwpck_require__(5499), exports);
 __exportStar(__nccwpck_require__(5733), exports);
+__exportStar(__nccwpck_require__(9349), exports);
 exports.RUNTIME_COMPATIBILITY_CONTRACT_ID = 'neurcode-runtime-compatibility';
 exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION = '2026-04-04';
-exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = '2026-05-11.1';
+exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = '2026-06-02.1';
 exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION = 1;
+/**
+ * Runtime Admission contract (Phase A — Provenance Core). Additive: surfaces a
+ * version for the self-attested admission artifact + coverage manifest so the
+ * future Action and backend can negotiate compatibility. No enforcement yet.
+ */
+exports.ADMISSION_CONTRACT_ID = 'neurcode-runtime-admission';
+exports.ADMISSION_CONTRACT_VERSION = '2026-06-02';
 const RUNTIME_COMPATIBILITY_MANIFEST = {
     schemaVersion: exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION,
     manifestVersion: exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION,
     contractId: exports.RUNTIME_COMPATIBILITY_CONTRACT_ID,
     runtimeContractVersion: exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION,
     cliJsonContractVersion: exports.CLI_JSON_CONTRACT_VERSION,
+    admissionContractVersion: exports.ADMISSION_CONTRACT_VERSION,
     minimumPeerVersions: {
         cli: {
             action: '0.2.1',
@@ -35371,6 +40175,7 @@ const RUNTIME_MINIMUM_PEER_VERSIONS = RUNTIME_COMPATIBILITY_MANIFEST.minimumPeer
 function getRuntimeCompatibilityManifest() {
     return {
         ...RUNTIME_COMPATIBILITY_MANIFEST,
+        admissionContractVersion: RUNTIME_COMPATIBILITY_MANIFEST.admissionContractVersion,
         minimumPeerVersions: {
             cli: { ...RUNTIME_COMPATIBILITY_MANIFEST.minimumPeerVersions.cli },
             action: { ...RUNTIME_COMPATIBILITY_MANIFEST.minimumPeerVersions.action },
@@ -35480,6 +40285,7 @@ function parseRuntimeCompatibilityDescriptor(value, label) {
         runtimeContractVersion: asString(record, 'runtimeContractVersion', `${label}.compatibility`),
         cliJsonContractVersion: asString(record, 'cliJsonContractVersion', `${label}.compatibility`),
         manifestVersion: asOptionalString(record, 'manifestVersion', `${label}.compatibility`),
+        admissionContractVersion: asOptionalString(record, 'admissionContractVersion', `${label}.compatibility`),
         component: asRuntimeComponent(record, 'component', `${label}.compatibility`),
         componentVersion: asString(record, 'componentVersion', `${label}.compatibility`),
         minimumPeerVersions: parseRuntimeMinimumPeerVersions(record.minimumPeerVersions, `${label}.compatibility`),
@@ -35533,6 +40339,7 @@ function buildRuntimeCompatibilityDescriptor(component, componentVersion) {
         runtimeContractVersion: exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION,
         cliJsonContractVersion: exports.CLI_JSON_CONTRACT_VERSION,
         manifestVersion: exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION,
+        admissionContractVersion: exports.ADMISSION_CONTRACT_VERSION,
         component,
         componentVersion,
         minimumPeerVersions: { ...RUNTIME_MINIMUM_PEER_VERSIONS[component] },
@@ -35974,7 +40781,7 @@ exports.ONBOARDING_HINTS = [
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.isGovernanceStageId = exports.GOVERNANCE_STAGE_ORDER = exports.GOVERNANCE_PIPELINE_SCHEMA_VERSION = exports.isDeterminismClassification = exports.GOVERNANCE_FINDINGS_SCHEMA_VERSION = void 0;
-var taxonomy_1 = __nccwpck_require__(168);
+var taxonomy_1 = __nccwpck_require__(7787);
 Object.defineProperty(exports, "GOVERNANCE_FINDINGS_SCHEMA_VERSION", ({ enumerable: true, get: function () { return taxonomy_1.GOVERNANCE_FINDINGS_SCHEMA_VERSION; } }));
 Object.defineProperty(exports, "isDeterminismClassification", ({ enumerable: true, get: function () { return taxonomy_1.isDeterminismClassification; } }));
 var pipeline_1 = __nccwpck_require__(6881);
@@ -36049,7 +40856,7 @@ exports.GOVERNANCE_STAGE_ORDER = [
 
 /***/ }),
 
-/***/ 168:
+/***/ 7787:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -36072,11 +40879,7447 @@ function isDeterminismClassification(value) {
 
 /***/ }),
 
+/***/ 6960:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Runtime Admission — pure provenance core (Phase A).
+ *
+ * Deterministic, source-free. No filesystem, no shell, no network. Consumes a
+ * raw git tree-delta (captured elsewhere) plus a governance classification map,
+ * and produces the normalized delta, the governed coverage manifest, and the
+ * two distinct hashes:
+ *
+ *   - deltaHash       — exact, base-specific normalized tree-delta fingerprint.
+ *   - coverageSetHash — squash/rebase-survivable governed-effect SET fingerprint.
+ *
+ * Coverage matching is per-entry subset membership, never global-hash equality:
+ * a squash/rebase that preserves file content preserves coverage identities, so
+ * a previously governed PR stays matchable even though its base (and therefore
+ * its deltaHash) changed.
+ *
+ * Eligibility is strict by default (pre-write governance only); see
+ * `validateSelfAttestedRecordConsistency`.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.MAX_ADMISSION_ID_LENGTH = exports.MAX_ADMISSION_PATH_LENGTH = exports.MAX_ADMISSION_SESSIONS_PER_ENTRY = exports.MAX_ADMISSION_SESSION_REFS = exports.MAX_ADMISSION_COVERAGE_ENTRIES = exports.MAX_ADMISSION_DELTA_ENTRIES = exports.MAX_ADMISSION_JSON_BYTES = void 0;
+exports.sortDeltaEntries = sortDeltaEntries;
+exports.sortCoverageEntries = sortCoverageEntries;
+exports.normalizeDeltaEntries = normalizeDeltaEntries;
+exports.deriveCoverageEntries = deriveCoverageEntries;
+exports.computeDeltaHash = computeDeltaHash;
+exports.computeCoverageSetHash = computeCoverageSetHash;
+exports.buildCoverageManifest = buildCoverageManifest;
+exports.unionCoverageEntries = unionCoverageEntries;
+exports.unionCoverageManifests = unionCoverageManifests;
+exports.validateSelfAttestedRecordConsistency = validateSelfAttestedRecordConsistency;
+exports.readSelfAttestedAdmissionRecord = readSelfAttestedAdmissionRecord;
+exports.readSelfAttestedAdmissionRecordFromText = readSelfAttestedAdmissionRecordFromText;
+const node_crypto_1 = __nccwpck_require__(7598);
+const contracts_1 = __nccwpck_require__(7239);
+// ── untrusted-input limits (Fix 4) ───────────────────────────────────────────
+exports.MAX_ADMISSION_JSON_BYTES = 8 * 1024 * 1024;
+exports.MAX_ADMISSION_DELTA_ENTRIES = 100_000;
+exports.MAX_ADMISSION_COVERAGE_ENTRIES = 100_000;
+exports.MAX_ADMISSION_SESSION_REFS = 4_096;
+exports.MAX_ADMISSION_SESSIONS_PER_ENTRY = 4_096;
+exports.MAX_ADMISSION_PATH_LENGTH = 4_096;
+exports.MAX_ADMISSION_ID_LENGTH = 256;
+const CHANGE_TYPES = new Set(['added', 'modified', 'deleted', 'typechanged']);
+const OBJECT_TYPES = new Set(['blob', 'symlink', 'submodule', 'absent']);
+const CLASSIFICATIONS = new Set([
+    'governed_prewrite',
+    'governed_delete',
+    'observed_postwrite',
+    'generated',
+    'ungoverned',
+]);
+const HEX_ID = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+const HEX_32 = /^[0-9a-f]{32}$/;
+const HEX_64 = /^[0-9a-f]{64}$/;
+// ── hashing ─────────────────────────────────────────────────────────────────
+function sha256Hex(bytes) {
+    return (0, node_crypto_1.createHash)('sha256').update(bytes).digest('hex');
+}
+// ── deterministic ordering ────────────────────────────────────────────────
+// NUL separator: git paths never contain NUL, so this can never collide across
+// fields. Escaped here so the source file stays plain text; the runtime value
+// (and therefore every hash) is byte-identical to a literal NUL.
+const SORT_SEP = '\0';
+function deltaSortKey(entry) {
+    return (0, contracts_1.deltaEntryCanonicalFields)(entry).join(SORT_SEP);
+}
+function coverageSortKey(entry) {
+    return (0, contracts_1.coverageEntryCanonicalFields)(entry).join(SORT_SEP);
+}
+/** Deterministic, locale-independent string order (UTF-16 code-unit, identical everywhere). */
+function byKey(a, b) {
+    if (a < b)
+        return -1;
+    if (a > b)
+        return 1;
+    return 0;
+}
+function sortDeltaEntries(entries) {
+    return [...entries].sort((a, b) => byKey(deltaSortKey(a), deltaSortKey(b)));
+}
+function sortCoverageEntries(entries) {
+    return [...entries].sort((a, b) => byKey(coverageSortKey(a), coverageSortKey(b)));
+}
+// ── normalization ───────────────────────────────────────────────────────────
+function normalizeMode(mode) {
+    const value = (mode ?? '').trim();
+    if (!value)
+        return contracts_1.GIT_MODE_ABSENT;
+    if (!(0, contracts_1.isKnownGitMode)(value)) {
+        throw new Error(`admission: unsupported git mode "${value}"`);
+    }
+    return value;
+}
+function normalizeObjectId(objectId, mode, format) {
+    if (mode === contracts_1.GIT_MODE_ABSENT)
+        return (0, contracts_1.zeroObjectId)(format);
+    const value = (objectId ?? '').trim().toLowerCase();
+    if (!value || (0, contracts_1.isZeroObjectId)(value)) {
+        throw new Error(`admission: missing object id for present mode ${mode}`);
+    }
+    // Submodule gitlinks carry a commit id from another repo whose object format
+    // may differ from the super-repo, so accept either width for any present id.
+    if (!HEX_ID.test(value)) {
+        throw new Error(`admission: invalid object id "${value}"`);
+    }
+    return value;
+}
+function buildEntry(path, rawOldMode, rawOldId, rawNewMode, rawNewId, format) {
+    const cleanPath = path.replace(/^\.\//, '').trim();
+    if (!cleanPath)
+        return null;
+    const oldMode = normalizeMode(rawOldMode);
+    const newMode = normalizeMode(rawNewMode);
+    const oldPresent = oldMode !== contracts_1.GIT_MODE_ABSENT;
+    const newPresent = newMode !== contracts_1.GIT_MODE_ABSENT;
+    if (!oldPresent && !newPresent)
+        return null;
+    const oldObjectId = normalizeObjectId(rawOldId, oldMode, format);
+    const newObjectId = normalizeObjectId(rawNewId, newMode, format);
+    let changeType;
+    let objectType;
+    if (!oldPresent && newPresent) {
+        changeType = 'added';
+        objectType = (0, contracts_1.objectTypeForMode)(newMode);
+    }
+    else if (oldPresent && !newPresent) {
+        changeType = 'deleted';
+        objectType = (0, contracts_1.objectTypeForMode)(oldMode);
+    }
+    else {
+        const oldType = (0, contracts_1.objectTypeForMode)(oldMode);
+        const newType = (0, contracts_1.objectTypeForMode)(newMode);
+        changeType = oldType !== newType ? 'typechanged' : 'modified';
+        objectType = newType;
+    }
+    return { path: cleanPath, changeType, objectType, oldMode, newMode, oldObjectId, newObjectId };
+}
+function isRenameOrCopy(status) {
+    const value = (status ?? '').trim().toUpperCase();
+    if (value.startsWith('R'))
+        return 'rename';
+    if (value.startsWith('C'))
+        return 'copy';
+    return null;
+}
+/**
+ * Normalize raw capture entries into the canonical delta. Renames become a
+ * delete (old path) + add (new path); copies become an add only (the source is
+ * unchanged and not part of the tree delta). Deterministically sorted, deduped.
+ */
+function normalizeDeltaEntries(raw, objectFormat) {
+    const out = [];
+    for (const entry of raw) {
+        const renameKind = isRenameOrCopy(entry.status);
+        const hasDistinctSource = typeof entry.oldPath === 'string' && entry.oldPath.trim() && entry.oldPath.trim() !== entry.path.trim();
+        if ((renameKind === 'rename' || (!entry.status && hasDistinctSource)) && entry.oldPath) {
+            // delete(oldPath) + add(newPath)
+            const del = buildEntry(entry.oldPath, entry.oldMode, entry.oldObjectId, null, null, objectFormat);
+            if (del)
+                out.push(del);
+            const add = buildEntry(entry.path, null, null, entry.newMode, entry.newObjectId, objectFormat);
+            if (add)
+                out.push(add);
+            continue;
+        }
+        if (renameKind === 'copy') {
+            const add = buildEntry(entry.path, null, null, entry.newMode, entry.newObjectId, objectFormat);
+            if (add)
+                out.push(add);
+            continue;
+        }
+        const built = buildEntry(entry.path, entry.oldMode, entry.oldObjectId, entry.newMode, entry.newObjectId, objectFormat);
+        if (built)
+            out.push(built);
+    }
+    // Dedup by full canonical fields, then sort.
+    const seen = new Map();
+    for (const entry of out) {
+        seen.set(deltaSortKey(entry), entry);
+    }
+    return sortDeltaEntries([...seen.values()]);
+}
+// ── coverage derivation ───────────────────────────────────────────────────
+function coverageIdentityFields(entry) {
+    if (entry.changeType === 'deleted') {
+        return { mode: entry.oldMode, objectId: entry.oldObjectId };
+    }
+    return { mode: entry.newMode, objectId: entry.newObjectId };
+}
+function sortedUniqueSessions(sessions) {
+    return Array.from(new Set((sessions ?? []).map((s) => s.trim()).filter(Boolean))).sort(byKey);
+}
+/**
+ * Derive governed coverage entries from a normalized delta plus a per-path
+ * classification map. Paths with no governance evidence are 'ungoverned'.
+ */
+function deriveCoverageEntries(delta, governance = {}) {
+    const entries = delta.map((entry) => {
+        const { mode, objectId } = coverageIdentityFields(entry);
+        const governedInfo = governance[entry.path];
+        const classification = governedInfo?.classification ?? 'ungoverned';
+        return {
+            path: entry.path,
+            changeType: entry.changeType,
+            objectType: entry.objectType,
+            mode,
+            objectId,
+            classification,
+            sessions: sortedUniqueSessions(governedInfo?.sessions),
+        };
+    });
+    return sortCoverageEntries(entries);
+}
+// ── hashes ─────────────────────────────────────────────────────────────────
+function computeDeltaHash(delta, objectFormat) {
+    const sorted = sortDeltaEntries(delta);
+    const records = sorted.map((entry) => (0, contracts_1.deltaEntryCanonicalFields)(entry));
+    const header = [
+        contracts_1.ADMISSION_DELTA_HASH_DOMAIN,
+        contracts_1.ADMISSION_FRAMING_VERSION,
+        objectFormat,
+        String(records.length),
+    ];
+    return sha256Hex((0, contracts_1.frameRecordSet)(header, records));
+}
+/**
+ * Hash of the governed-effect identity SET. Deduped by identity (classification
+ * and sessions are excluded), sorted, framed. Stable across squash/rebase that
+ * preserve file content.
+ */
+function computeCoverageSetHash(coverage, objectFormat) {
+    const byIdentity = new Map();
+    for (const entry of coverage) {
+        byIdentity.set((0, contracts_1.coverageEntryIdentityKey)(entry), entry);
+    }
+    const sorted = sortCoverageEntries([...byIdentity.values()]);
+    const records = sorted.map((entry) => (0, contracts_1.coverageEntryCanonicalFields)(entry));
+    const header = [
+        contracts_1.ADMISSION_COVERAGE_SET_HASH_DOMAIN,
+        contracts_1.ADMISSION_FRAMING_VERSION,
+        objectFormat,
+        String(records.length),
+    ];
+    return sha256Hex((0, contracts_1.frameRecordSet)(header, records));
+}
+function buildCoverageManifest(input) {
+    const delta = normalizeDeltaEntries(input.rawDelta, input.objectFormat);
+    const coverage = deriveCoverageEntries(delta, input.governance ?? {});
+    return {
+        schemaVersion: contracts_1.ADMISSION_COVERAGE_MANIFEST_SCHEMA_VERSION,
+        objectFormat: input.objectFormat,
+        framingVersion: contracts_1.ADMISSION_FRAMING_VERSION,
+        entryCount: delta.length,
+        deltaHash: computeDeltaHash(delta, input.objectFormat),
+        coverageSetHash: computeCoverageSetHash(coverage, input.objectFormat),
+        delta,
+        coverage,
+    };
+}
+// ── multi-session deterministic union ───────────────────────────────────────
+const CLASSIFICATION_RANK = {
+    governed_prewrite: 5,
+    governed_delete: 4,
+    observed_postwrite: 3,
+    generated: 2,
+    ungoverned: 1,
+};
+function strongerClassification(a, b) {
+    return CLASSIFICATION_RANK[a] >= CLASSIFICATION_RANK[b] ? a : b;
+}
+/**
+ * Deterministically union coverage entries from multiple sessions/manifests.
+ * Entries sharing an identity (path + mode + objectId) merge: classification
+ * becomes the strongest, sessions union and sort. Distinct identities are kept
+ * (e.g. the same path edited to different final objects by different sessions).
+ */
+function unionCoverageEntries(groups) {
+    const merged = new Map();
+    for (const group of groups) {
+        for (const entry of group) {
+            const key = (0, contracts_1.coverageEntryIdentityKey)(entry);
+            const existing = merged.get(key);
+            if (!existing) {
+                merged.set(key, {
+                    ...entry,
+                    sessions: sortedUniqueSessions(entry.sessions),
+                });
+                continue;
+            }
+            merged.set(key, {
+                ...existing,
+                classification: strongerClassification(existing.classification, entry.classification),
+                sessions: sortedUniqueSessions([...existing.sessions, ...entry.sessions]),
+            });
+        }
+    }
+    return sortCoverageEntries([...merged.values()]);
+}
+function unionCoverageManifests(manifests, objectFormat) {
+    const coverage = unionCoverageEntries(manifests.map((m) => m.coverage));
+    return { coverage, coverageSetHash: computeCoverageSetHash(coverage, objectFormat) };
+}
+// ── self-attested record consistency ────────────────────────────────────────
+function consistencyBase() {
+    return {
+        schemaVersion: contracts_1.ADMISSION_CONSISTENCY_DECISION_SCHEMA_VERSION,
+        trustLevel: 'self-attested',
+        notProof: true,
+    };
+}
+function inconsistentDecision(reason) {
+    return {
+        ...consistencyBase(),
+        verdict: 'self_attested_inconsistent',
+        deltaHashMatches: false,
+        coveredPaths: [],
+        uncoveredPaths: [],
+        unexpectedCoverage: [],
+        reasons: [reason],
+    };
+}
+/**
+ * Validate a self-attested record against a recomputed ground-truth delta.
+ *
+ * The coverage verdict is decided by per-entry subset matching of the
+ * ground-truth identities against the record's ADMISSIBLE coverage entries —
+ * NOT by deltaHash equality (which is base-specific and breaks under
+ * squash/rebase). `deltaHashMatches` is a diagnostic only.
+ *
+ * Eligibility defaults to STRICT (pre-write governance only): `observed_postwrite`
+ * and `generated` do not satisfy admission unless `options` opts in
+ * (`mode: 'descriptive'` or `allowGenerated: true`).
+ *
+ * 'self_attested_inconsistent' is reserved for a record whose own claimed hashes
+ * do not match its own contents (corrupted/tampered artifact). This function
+ * never throws: malformed input yields 'self_attested_inconsistent'.
+ */
+function validateSelfAttestedRecordConsistency(record, groundTruthDelta, objectFormat, options = {}) {
+    if (!record) {
+        return {
+            ...consistencyBase(),
+            verdict: 'no_record',
+            deltaHashMatches: false,
+            coveredPaths: [],
+            uncoveredPaths: [],
+            unexpectedCoverage: [],
+            reasons: ['No self-attested admission record present for this change.'],
+        };
+    }
+    try {
+        const validatedRecord = readSelfAttestedAdmissionRecord(record);
+        if (!validatedRecord) {
+            return inconsistentDecision('Admission record failed bounded structural validation.');
+        }
+        const manifest = validatedRecord.manifest;
+        if (!manifest || typeof manifest !== 'object') {
+            return inconsistentDecision('Admission record has no manifest.');
+        }
+        const recomputedDeltaHash = computeDeltaHash(manifest.delta, manifest.objectFormat);
+        const recomputedCoverageSetHash = computeCoverageSetHash(manifest.coverage, manifest.objectFormat);
+        if (manifest.deltaHash !== recomputedDeltaHash ||
+            manifest.coverageSetHash !== recomputedCoverageSetHash) {
+            return inconsistentDecision('Admission record hashes do not match its own contents (corrupted or tampered artifact).');
+        }
+        // Ground-truth coverage identities (no governance — just what changed).
+        const groundTruthCoverage = deriveCoverageEntries(sortDeltaEntries(groundTruthDelta), {});
+        const recordByIdentity = new Map();
+        for (const entry of manifest.coverage) {
+            recordByIdentity.set((0, contracts_1.coverageEntryIdentityKey)(entry), entry);
+        }
+        const groundTruthKeys = new Set();
+        const coveredPaths = [];
+        const uncoveredPaths = [];
+        for (const gt of groundTruthCoverage) {
+            const key = (0, contracts_1.coverageEntryIdentityKey)(gt);
+            groundTruthKeys.add(key);
+            const match = recordByIdentity.get(key);
+            if (match && (0, contracts_1.isAdmissibleClassification)(match.classification, options)) {
+                coveredPaths.push(gt.path);
+            }
+            else {
+                uncoveredPaths.push(gt.path);
+            }
+        }
+        const unexpectedCoverage = [];
+        for (const entry of manifest.coverage) {
+            if (!groundTruthKeys.has((0, contracts_1.coverageEntryIdentityKey)(entry))) {
+                unexpectedCoverage.push(entry.path);
+            }
+        }
+        const deltaHashMatches = computeDeltaHash(sortDeltaEntries(groundTruthDelta), objectFormat) === manifest.deltaHash;
+        const verdict = uncoveredPaths.length === 0 ? 'self_attested_complete' : 'self_attested_incomplete';
+        const eligibility = (options.mode ?? 'strict') === 'descriptive' ? 'descriptive' : 'strict';
+        const reasons = [];
+        reasons.push(verdict === 'self_attested_complete'
+            ? `All ${coveredPaths.length} changed file(s) have ${eligibility}-admissible governance (self-attested).`
+            : `${uncoveredPaths.length} changed file(s) are not ${eligibility}-admissible (drift, post-write-only, or post-session edits).`);
+        if (!deltaHashMatches) {
+            reasons.push('Delta differs from capture base (squash/rebase/new base); matched by coverage identity.');
+        }
+        if (unexpectedCoverage.length > 0) {
+            reasons.push(`${unexpectedCoverage.length} governed coverage entry(ies) are not present in this change.`);
+        }
+        reasons.push('Self-attested: a claim, not proof that governance ran.');
+        return {
+            ...consistencyBase(),
+            verdict,
+            deltaHashMatches,
+            coveredPaths: coveredPaths.sort(byKey),
+            uncoveredPaths: uncoveredPaths.sort(byKey),
+            unexpectedCoverage: unexpectedCoverage.sort(byKey),
+            reasons,
+        };
+    }
+    catch (error) {
+        return inconsistentDecision(`Admission record could not be evaluated: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+// ── hardened, bounded reading of untrusted artifacts (Fix 4) ─────────────────
+function isBoundedString(value, max) {
+    return typeof value === 'string' && value.length <= max;
+}
+function isObjectIdForMode(value, mode, format) {
+    if (typeof value !== 'string')
+        return false;
+    if (mode === contracts_1.GIT_MODE_ABSENT)
+        return value === (0, contracts_1.zeroObjectId)(format);
+    if ((0, contracts_1.isZeroObjectId)(value))
+        return false;
+    // A submodule gitlink may point into a repo using the other object format.
+    return mode === '160000' ? HEX_ID.test(value) : (0, contracts_1.isValidObjectId)(value, format);
+}
+function validateDeltaEntry(value, format) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return false;
+    const e = value;
+    if (!(isBoundedString(e.path, exports.MAX_ADMISSION_PATH_LENGTH) && e.path.length > 0 &&
+        typeof e.changeType === 'string' && CHANGE_TYPES.has(e.changeType) &&
+        typeof e.objectType === 'string' && OBJECT_TYPES.has(e.objectType) &&
+        typeof e.oldMode === 'string' && (0, contracts_1.isKnownGitMode)(e.oldMode) &&
+        typeof e.newMode === 'string' && (0, contracts_1.isKnownGitMode)(e.newMode) &&
+        isObjectIdForMode(e.oldObjectId, e.oldMode, format) &&
+        isObjectIdForMode(e.newObjectId, e.newMode, format)))
+        return false;
+    const oldPresent = e.oldMode !== contracts_1.GIT_MODE_ABSENT;
+    const newPresent = e.newMode !== contracts_1.GIT_MODE_ABSENT;
+    const expectedChangeType = !oldPresent
+        ? 'added'
+        : !newPresent
+            ? 'deleted'
+            : e.oldMode !== e.newMode
+                ? 'typechanged'
+                : 'modified';
+    const identityMode = newPresent ? e.newMode : e.oldMode;
+    return e.changeType === expectedChangeType && e.objectType === (0, contracts_1.objectTypeForMode)(identityMode);
+}
+function validateCoverageEntry(value, format) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return false;
+    const e = value;
+    if (!(isBoundedString(e.path, exports.MAX_ADMISSION_PATH_LENGTH) && e.path.length > 0))
+        return false;
+    if (!(typeof e.changeType === 'string' && CHANGE_TYPES.has(e.changeType)))
+        return false;
+    if (!(typeof e.objectType === 'string' && OBJECT_TYPES.has(e.objectType)))
+        return false;
+    if (!(typeof e.mode === 'string' && (0, contracts_1.isKnownGitMode)(e.mode)))
+        return false;
+    if (e.mode === contracts_1.GIT_MODE_ABSENT || !isObjectIdForMode(e.objectId, e.mode, format))
+        return false;
+    if (e.objectType !== (0, contracts_1.objectTypeForMode)(e.mode))
+        return false;
+    if (!(typeof e.classification === 'string' && CLASSIFICATIONS.has(e.classification)))
+        return false;
+    if (!Array.isArray(e.sessions) || e.sessions.length > exports.MAX_ADMISSION_SESSIONS_PER_ENTRY)
+        return false;
+    if (!e.sessions.every((s) => isBoundedString(s, exports.MAX_ADMISSION_ID_LENGTH) && s.length > 0))
+        return false;
+    return e.classification === 'ungoverned' || e.sessions.length > 0;
+}
+function validateSessionRef(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return false;
+    const r = value;
+    if (!(isBoundedString(r.sessionId, exports.MAX_ADMISSION_ID_LENGTH) && r.sessionId.length > 0))
+        return false;
+    if (r.replayHash !== undefined && !isBoundedString(r.replayHash, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (r.profileHash !== undefined && !isBoundedString(r.profileHash, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    return true;
+}
+/**
+ * Strict, bounded structural validation of an untrusted, already-parsed value.
+ * Returns a typed record only when every field, enum, hash, mode, array, and
+ * limit checks out; otherwise null. Never throws.
+ */
+function readSelfAttestedAdmissionRecord(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return null;
+    const record = value;
+    try {
+        (0, contracts_1.assertSourceFreeAdmissionValue)(value);
+    }
+    catch {
+        return null;
+    }
+    if (record.attestationKind !== 'self-attested')
+        return null;
+    if (record.schemaVersion !== contracts_1.SELF_ATTESTED_ADMISSION_RECORD_SCHEMA_VERSION)
+        return null;
+    if (!isBoundedString(record.admissionContractVersion, exports.MAX_ADMISSION_ID_LENGTH))
+        return null;
+    if (!isBoundedString(record.disclaimer, 4096))
+        return null;
+    if (!(isBoundedString(record.sessionId, exports.MAX_ADMISSION_ID_LENGTH) && record.sessionId.length > 0))
+        return null;
+    if (!Array.isArray(record.sessionRefs) || record.sessionRefs.length > exports.MAX_ADMISSION_SESSION_REFS)
+        return null;
+    if (!record.sessionRefs.every(validateSessionRef))
+        return null;
+    const repo = record.repo;
+    if (!repo || typeof repo !== 'object' || Array.isArray(repo))
+        return null;
+    const r = repo;
+    if (r.name !== undefined && !isBoundedString(r.name, exports.MAX_ADMISSION_PATH_LENGTH))
+        return null;
+    if (r.rootHash !== undefined && !(typeof r.rootHash === 'string' && HEX_32.test(r.rootHash)))
+        return null;
+    if (r.remoteHash !== undefined && !(typeof r.remoteHash === 'string' && HEX_32.test(r.remoteHash)))
+        return null;
+    const capture = record.capture;
+    if (!capture || typeof capture !== 'object' || Array.isArray(capture))
+        return null;
+    const c = capture;
+    if (c.mode !== 'worktree' && c.mode !== 'committed')
+        return null;
+    if (!isBoundedString(c.capturedAt, 64) || !Number.isFinite(Date.parse(c.capturedAt)))
+        return null;
+    if (c.baseRef !== undefined && !isBoundedString(c.baseRef, exports.MAX_ADMISSION_PATH_LENGTH))
+        return null;
+    if (c.headRef !== undefined && !isBoundedString(c.headRef, exports.MAX_ADMISSION_PATH_LENGTH))
+        return null;
+    const manifest = record.manifest;
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest))
+        return null;
+    const m = manifest;
+    if (m.schemaVersion !== contracts_1.ADMISSION_COVERAGE_MANIFEST_SCHEMA_VERSION)
+        return null;
+    if (m.objectFormat !== 'sha1' && m.objectFormat !== 'sha256')
+        return null;
+    if (!isBoundedString(m.framingVersion, exports.MAX_ADMISSION_ID_LENGTH))
+        return null;
+    if (typeof m.entryCount !== 'number' || !Number.isInteger(m.entryCount) || m.entryCount < 0)
+        return null;
+    if (!(typeof m.deltaHash === 'string' && HEX_64.test(m.deltaHash)))
+        return null;
+    if (!(typeof m.coverageSetHash === 'string' && HEX_64.test(m.coverageSetHash)))
+        return null;
+    if (!Array.isArray(m.delta) || m.delta.length > exports.MAX_ADMISSION_DELTA_ENTRIES)
+        return null;
+    if (!Array.isArray(m.coverage) || m.coverage.length > exports.MAX_ADMISSION_COVERAGE_ENTRIES)
+        return null;
+    if (m.entryCount !== m.delta.length || m.entryCount !== m.coverage.length)
+        return null;
+    if (!m.delta.every((entry) => validateDeltaEntry(entry, m.objectFormat)))
+        return null;
+    if (!m.coverage.every((entry) => validateCoverageEntry(entry, m.objectFormat)))
+        return null;
+    return value;
+}
+/**
+ * Parse + validate untrusted artifact JSON text. Enforces a byte ceiling before
+ * JSON.parse, never throws, and returns null on any violation.
+ */
+function readSelfAttestedAdmissionRecordFromText(text) {
+    if (typeof text !== 'string')
+        return null;
+    // Byte length, not code units, so multibyte payloads cannot exceed the cap.
+    let byteLength;
+    try {
+        byteLength = new TextEncoder().encode(text).length;
+    }
+    catch {
+        return null;
+    }
+    if (byteLength > exports.MAX_ADMISSION_JSON_BYTES)
+        return null;
+    let parsed;
+    try {
+        parsed = JSON.parse(text);
+    }
+    catch {
+        return null;
+    }
+    return readSelfAttestedAdmissionRecord(parsed);
+}
+//# sourceMappingURL=admission-provenance.js.map
+
+/***/ }),
+
+/***/ 4839:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION = void 0;
+exports.buildAgentGuardPostureSummary = buildAgentGuardPostureSummary;
+exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION = 'neurcode.agent-guard-posture.v1';
+function asRecord(value) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : null;
+}
+function stringValue(value) {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+function count(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+function latestOf(events, types) {
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (types.has(events[index].type))
+            return events[index];
+    }
+    return undefined;
+}
+function cleanChangedFiles(value) {
+    if (!Array.isArray(value))
+        return [];
+    return value
+        .filter((item) => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+        .map((item) => {
+        const record = item;
+        const evidence = asRecord(record.evidence) ?? {};
+        return {
+            path: stringValue(record.path) ?? '',
+            changeType: stringValue(record.changeType) ?? 'modified',
+            classification: stringValue(record.classification) ?? 'unverified_write',
+            evidence: {
+                preWriteCallCount: count(evidence.preWriteCallCount),
+                allowedPreWriteCheckCount: count(evidence.allowedPreWriteCheckCount),
+                deniedPreWriteCheckCount: count(evidence.deniedPreWriteCheckCount),
+                postWriteObservationCount: count(evidence.postWriteObservationCount),
+                latestEventAt: stringValue(evidence.latestEventAt),
+            },
+        };
+    })
+        .filter((item) => item.path)
+        .slice(0, 40);
+}
+function emptyCounts() {
+    return {
+        changedFiles: 0,
+        verifiedPrewrite: 0,
+        unverifiedWrites: 0,
+        deniedButChanged: 0,
+        observedAfterOnly: 0,
+        prewriteCallsWithoutVerdict: 0,
+    };
+}
+function cleanCounts(value) {
+    const summary = asRecord(value);
+    if (!summary)
+        return emptyCounts();
+    return {
+        changedFiles: count(summary.changedFiles),
+        verifiedPrewrite: count(summary.verifiedPrewrite),
+        unverifiedWrites: count(summary.unverifiedWrites),
+        deniedButChanged: count(summary.deniedButChanged),
+        observedAfterOnly: count(summary.observedAfterOnly),
+        prewriteCallsWithoutVerdict: count(summary.prewriteCallsWithoutVerdict),
+    };
+}
+function buildAgentGuardPostureSummary(session) {
+    const events = Array.isArray(session.events) ? session.events : [];
+    const started = latestOf(events, new Set(['agent_guard_started']));
+    const report = latestOf(events, new Set(['agent_guard_status', 'agent_guard_finished']));
+    const startDetail = asRecord(started?.detail);
+    const reportDetail = asRecord(report?.detail);
+    const summary = cleanCounts(reportDetail?.summary);
+    const changedFiles = cleanChangedFiles(reportDetail?.changedFiles);
+    const finished = report?.type === 'agent_guard_finished';
+    const reportStatus = stringValue(reportDetail?.status);
+    const pass = reportDetail?.pass === true || reportStatus === 'following_contract';
+    let status;
+    if (!started)
+        status = 'not_started';
+    else if (!report)
+        status = 'awaiting_evaluation';
+    else if (finished)
+        status = pass ? 'finished_clean' : 'finished_attention';
+    else
+        status = pass ? 'following_contract' : 'attention_required';
+    const nextAction = status === 'not_started'
+        ? 'Start a guarded agent session to detect writes that bypass runtime checks.'
+        : status === 'awaiting_evaluation'
+            ? 'Run neurcode agent guard status to compare repo writes with runtime evidence.'
+            : status === 'following_contract'
+                ? 'Continue; changed files have matching allowed pre-write evidence.'
+                : status === 'finished_clean'
+                    ? 'Review the finished source-free guard evidence.'
+                    : 'Review unverified or denied-but-changed paths before continuing.';
+    return {
+        schemaVersion: exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION,
+        status,
+        sourceFree: true,
+        guardId: stringValue(reportDetail?.guardId) ?? stringValue(startDetail?.guardId),
+        active: Boolean(started) && !finished,
+        startedAt: stringValue(started?.ts),
+        evaluatedAt: stringValue(report?.ts),
+        finishedAt: finished ? stringValue(report?.ts) : null,
+        baselineFileCount: count(startDetail?.baselineFileCount),
+        reportFingerprint: stringValue(reportDetail?.reportFingerprint),
+        summary,
+        changedFiles,
+        nextAction,
+    };
+}
+//# sourceMappingURL=agent-guard-posture.js.map
+
+/***/ }),
+
+/***/ 1349:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION = void 0;
+exports.buildAgentInvocationSummary = buildAgentInvocationSummary;
+exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION = 'neurcode.agent-invocation-observability.v1';
+function asRecord(value) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : null;
+}
+function eventTs(event) {
+    return typeof event?.ts === 'string' ? event.ts : null;
+}
+function numericTs(event) {
+    const ts = eventTs(event);
+    if (!ts)
+        return null;
+    const parsed = Date.parse(ts);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+function latestOf(events, predicate) {
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (predicate(events[index]))
+            return events[index];
+    }
+    return undefined;
+}
+function callEventType(event) {
+    const detail = asRecord(event.detail);
+    const runtimeEventType = detail?.runtimeEventType;
+    return typeof runtimeEventType === 'string' ? runtimeEventType : null;
+}
+function launchAgent(event) {
+    const detail = asRecord(event?.detail);
+    const agent = asRecord(detail?.agent);
+    return {
+        adapter: typeof agent?.adapter === 'string' ? agent.adapter : null,
+        enforcementLevel: typeof agent?.enforcementLevel === 'string' ? agent.enforcementLevel : null,
+        automatic: typeof agent?.automatic === 'boolean' ? agent.automatic : false,
+    };
+}
+function check(id, label, status, message, ts) {
+    return { id, label, status, message, ...(ts ? { ts } : {}) };
+}
+function scoreChecks(checks) {
+    const scored = checks.filter((item) => item.status !== 'skip');
+    if (scored.length === 0)
+        return 0;
+    const points = scored.reduce((sum, item) => {
+        if (item.status === 'pass')
+            return sum + 1;
+        if (item.status === 'warn')
+            return sum + 0.5;
+        return sum;
+    }, 0);
+    return Math.round((points / scored.length) * 100);
+}
+function latestProtocolEvent(events) {
+    const latest = latestOf(events, (event) => {
+        return event.type === 'agent_session_launched'
+            || event.type === 'agent_handshake'
+            || event.type === 'agent_runtime_call'
+            || event.type === 'plan_captured'
+            || event.type === 'plan_amended'
+            || event.type === 'check_ok'
+            || event.type === 'check_warn'
+            || event.type === 'check_block'
+            || event.type === 'approval_decision'
+            || event.type === 'session_finish';
+    });
+    if (!latest)
+        return null;
+    return {
+        type: latest.type,
+        ts: eventTs(latest),
+        filePath: latest.filePath ?? null,
+        decision: latest.decision ?? latest.verdict ?? null,
+    };
+}
+function buildAgentInvocationSummary(session) {
+    const events = Array.isArray(session.events) ? session.events : [];
+    const launch = latestOf(events, (event) => event.type === 'agent_session_launched');
+    const agent = launchAgent(launch);
+    const handshake = latestOf(events, (event) => event.type === 'agent_handshake');
+    const runtimeCalls = events.filter((event) => event.type === 'agent_runtime_call');
+    const editBeforeCalls = runtimeCalls.filter((event) => callEventType(event) === 'edit.before');
+    const planEvents = events.filter((event) => event.type === 'plan_captured' || event.type === 'plan_amended');
+    const checkEvents = events.filter((event) => event.type === 'check_ok' || event.type === 'check_warn' || event.type === 'check_block');
+    const blockEvents = events.filter((event) => event.type === 'check_block');
+    const warnEvents = events.filter((event) => event.type === 'check_warn');
+    const okEvents = events.filter((event) => event.type === 'check_ok');
+    const approvalEvents = events.filter((event) => event.type === 'approval_decision' && event.decision === 'approved');
+    const planAmendments = events.filter((event) => event.type === 'plan_amended');
+    const finish = latestOf(events, (event) => event.type === 'session_finish') || (session.status === 'finished' ? events[events.length - 1] : undefined);
+    const planCaptured = Boolean(session.contract.agentPlan) || planEvents.length > 0;
+    const firstPlanTs = numericTs(planEvents[0]);
+    const firstCheckTs = numericTs(checkEvents[0]);
+    const planBeforeFirstEdit = firstCheckTs === null
+        ? null
+        : firstPlanTs !== null && firstPlanTs <= firstCheckTs;
+    const pendingPlanAmendments = (session.contract.planAmendmentProposals ?? [])
+        .filter((proposal) => proposal.status === 'pending')
+        .length;
+    const isObserveOnly = agent.enforcementLevel === 'observe_only';
+    const isHardDeny = agent.enforcementLevel === 'hard_deny';
+    const isCooperative = agent.enforcementLevel === 'cooperative';
+    const checks = [
+        check('session_launch', 'Session launched', launch ? 'pass' : 'warn', launch
+            ? `Runtime session launched for ${agent.adapter ?? 'unknown adapter'}.`
+            : 'No agent launch marker was found in this session.', eventTs(launch)),
+        check('handshake', 'Agent handshake', isObserveOnly
+            ? 'skip'
+            : handshake || isHardDeny
+                ? 'pass'
+                : launch
+                    ? 'warn'
+                    : 'skip', handshake
+            ? 'Agent handshook into the governed session.'
+            : isHardDeny
+                ? 'Hard-deny hooks act as the handshake layer for Claude Code.'
+                : launch
+                    ? 'Waiting for the cooperative agent to handshake before editing.'
+                    : 'No launched cooperative agent to handshake.', eventTs(handshake)),
+        check('plan_capture', 'Plan captured', planCaptured
+            ? planBeforeFirstEdit === false
+                ? 'warn'
+                : 'pass'
+            : launch
+                ? 'warn'
+                : 'skip', planCaptured
+            ? planBeforeFirstEdit === false
+                ? 'Source-free agent plan was captured after the first checked edit.'
+                : `Source-free agent plan is present${session.contract.agentPlanRevision ? ` at revision ${session.contract.agentPlanRevision}` : ''}.`
+            : 'No source-free agent plan has been captured yet.', eventTs(planEvents[planEvents.length - 1])),
+        check('prewrite_checks', 'Pre-write checks', checkEvents.length > 0
+            ? isCooperative && editBeforeCalls.length === 0
+                ? 'warn'
+                : 'pass'
+            : launch
+                ? 'warn'
+                : 'skip', checkEvents.length > 0
+            ? isCooperative && editBeforeCalls.length === 0
+                ? `${checkEvents.length} check event(s) recorded, but no explicit cooperative edit.before call marker is present.`
+                : `${checkEvents.length} write check event(s) recorded before or around agent edits.`
+            : 'No guarded edit check has been recorded yet.', eventTs(checkEvents[checkEvents.length - 1])),
+        check('deny_boundary', 'Boundary denial', blockEvents.length > 0 ? 'pass' : checkEvents.length > 0 ? 'skip' : 'skip', blockEvents.length > 0
+            ? `${blockEvents.length} boundary denial(s) recorded.`
+            : 'No boundary denial has occurred in this session.', eventTs(blockEvents[blockEvents.length - 1])),
+        check('exact_approval', 'Exact approval', approvalEvents.length > 0 ? 'pass' : blockEvents.length > 0 ? 'warn' : 'skip', approvalEvents.length > 0
+            ? `${approvalEvents.length} exact-path approval(s) applied.`
+            : blockEvents.length > 0
+                ? 'A boundary was blocked and no exact-path approval has been applied yet.'
+                : 'No approval was required.', eventTs(approvalEvents[approvalEvents.length - 1])),
+        check('replan', 'Re-plan handling', pendingPlanAmendments > 0 ? 'warn' : planAmendments.length > 0 ? 'pass' : 'skip', pendingPlanAmendments > 0
+            ? `${pendingPlanAmendments} plan amendment(s) await human decision.`
+            : planAmendments.length > 0
+                ? `${planAmendments.length} accepted plan amendment(s) recorded.`
+                : 'No mid-session re-plan was needed.', eventTs(planAmendments[planAmendments.length - 1])),
+        check('finish', 'Finish recorded', finish ? 'pass' : session.status === 'active' ? 'skip' : 'warn', finish
+            ? 'Session finish and replay evidence were recorded.'
+            : session.status === 'active'
+                ? 'Session is still active.'
+                : 'Session is no longer active, but no finish event was found.', eventTs(finish)),
+    ];
+    const gaps = checks
+        .filter((item) => item.status === 'warn' || item.status === 'fail')
+        .map((item) => item.message);
+    let status;
+    if (!launch)
+        status = 'not_launched';
+    else if (isObserveOnly)
+        status = 'observe_only';
+    else if (!handshake && !isHardDeny)
+        status = 'awaiting_handshake';
+    else if (!planCaptured)
+        status = 'awaiting_plan';
+    else if (checkEvents.length === 0)
+        status = 'awaiting_prewrite_check';
+    else if (session.status === 'finished')
+        status = 'finished';
+    else if (gaps.length > 0 && (pendingPlanAmendments > 0 || (!planBeforeFirstEdit && firstCheckTs !== null)))
+        status = 'attention_needed';
+    else
+        status = 'following_contract';
+    const nextAction = status === 'not_launched'
+        ? 'Start a governed agent session.'
+        : status === 'awaiting_handshake'
+            ? 'Have the agent call neurcode_agent_session_handshake.'
+            : status === 'awaiting_plan'
+                ? 'Have the agent capture a source-free plan before editing.'
+                : status === 'awaiting_prewrite_check'
+                    ? 'Have the agent call neurcode_agent_edit_before before its first write.'
+                    : pendingPlanAmendments > 0
+                        ? 'Review and accept or reject the pending re-plan proposal.'
+                        : blockEvents.length > approvalEvents.length
+                            ? 'Approve or deny the blocked exact path.'
+                            : status === 'finished'
+                                ? 'Review the replayable source-free evidence.'
+                                : 'Continue enforcing pre-write checks for every edit.';
+    return {
+        schemaVersion: exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION,
+        status,
+        score: scoreChecks(checks),
+        adapter: agent.adapter,
+        enforcementLevel: agent.enforcementLevel,
+        automatic: agent.automatic,
+        sourceFree: true,
+        launched: Boolean(launch),
+        handshakeSeen: Boolean(handshake) || isHardDeny,
+        planCaptured,
+        planBeforeFirstEdit,
+        explicitRuntimeCallCount: runtimeCalls.length,
+        editBeforeCallCount: editBeforeCalls.length,
+        preWriteCheckCount: checkEvents.length,
+        allowedCheckCount: okEvents.length,
+        warningCheckCount: warnEvents.length,
+        deniedPreWriteCount: blockEvents.length,
+        approvalsApplied: approvalEvents.length,
+        planAmendments: planAmendments.length,
+        pendingPlanAmendments,
+        finishSeen: Boolean(finish),
+        eventCount: events.length,
+        latestProtocolEvent: latestProtocolEvent(events),
+        gaps,
+        nextAction,
+        checks,
+    };
+}
+//# sourceMappingURL=agent-invocation-observability.js.map
+
+/***/ }),
+
+/***/ 9864:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AGENT_PLAN_SCHEMA_VERSION = void 0;
+exports.extractExpectedTargetsFromText = extractExpectedTargetsFromText;
+exports.parsePlanSteps = parsePlanSteps;
+exports.planImpliesSupportWork = planImpliesSupportWork;
+exports.isTestOrUtilityPath = isTestOrUtilityPath;
+exports.evaluatePlanCoherence = evaluatePlanCoherence;
+exports.extractAgentPlan = extractAgentPlan;
+exports.sanitizeAgentPlan = sanitizeAgentPlan;
+exports.sanitizePlanCoherence = sanitizePlanCoherence;
+const micromatch_1 = __importDefault(__nccwpck_require__(9555));
+exports.AGENT_PLAN_SCHEMA_VERSION = 1;
+function normalizeRepoPath(pathValue) {
+    return pathValue.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+}
+function uniqueNonEmpty(values) {
+    const out = [];
+    const seen = new Set();
+    for (const raw of values) {
+        const value = (raw ?? '').trim();
+        if (!value || seen.has(value)) {
+            continue;
+        }
+        seen.add(value);
+        out.push(value);
+    }
+    return out;
+}
+function stripSourceLikePlanText(text) {
+    const withoutFencedCode = text.replace(/```[\s\S]*?```/g, '\n');
+    return withoutFencedCode
+        .split(/\r?\n/)
+        .filter((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            return true;
+        }
+        if (/^(?:diff --git |index [0-9a-f]{6,}|@@ |--- |\+\+\+ |Binary files )/.test(trimmed)) {
+            return false;
+        }
+        return !/^[+-](?!\s)/.test(trimmed);
+    })
+        .join('\n');
+}
+const GLOB_CHARS = /[*?{}\[\]!]/;
+function looksLikeGlob(token) {
+    return GLOB_CHARS.test(token);
+}
+/**
+ * Heuristic file-path detector. Matches tokens that look like repo paths:
+ * either they contain a directory separator, or they end in a common source
+ * file extension. Deliberately conservative to avoid capturing prose.
+ */
+const PATH_LIKE = /^(?:[\w.@~-]+\/)*[\w.@~-]+\.[A-Za-z0-9]{1,8}$/;
+const DIR_PATH_LIKE = /^(?:[\w.@~-]+\/)+[\w.@~*-]+$/;
+function looksLikePath(token) {
+    if (!token || token.length > 200) {
+        return false;
+    }
+    if (looksLikeGlob(token)) {
+        return false;
+    }
+    return PATH_LIKE.test(token) || DIR_PATH_LIKE.test(token);
+}
+/** Pull `inline code` spans out of markdown/plain text. */
+function extractInlineCodeSpans(text) {
+    const spans = [];
+    const re = /`([^`]+)`/g;
+    let match;
+    while ((match = re.exec(text)) !== null) {
+        spans.push(match[1].trim());
+    }
+    return spans;
+}
+/**
+ * Extract expected file paths and globs from free-form plan text. We only look
+ * at backtick code spans and whitespace-delimited tokens that pass strict
+ * path/glob shape checks — never arbitrary words.
+ */
+function extractExpectedTargetsFromText(text) {
+    const files = [];
+    const globs = [];
+    const considerToken = (rawToken) => {
+        const token = rawToken
+            .replace(/^[("'`<\[]+/, '')
+            .replace(/[)"'`>\].,;:]+$/, '')
+            .trim();
+        if (!token) {
+            return;
+        }
+        const normalized = normalizeRepoPath(token);
+        if (!normalized) {
+            return;
+        }
+        if (looksLikeGlob(normalized)) {
+            // A glob still needs at least one path-ish segment to be meaningful.
+            if (/[\w/]/.test(normalized.replace(GLOB_CHARS, ''))) {
+                globs.push(normalized);
+            }
+            return;
+        }
+        if (looksLikePath(normalized)) {
+            files.push(normalized);
+        }
+    };
+    // Prefer code spans (highest signal), then fall back to all tokens.
+    for (const span of extractInlineCodeSpans(text)) {
+        for (const piece of span.split(/\s+/)) {
+            considerToken(piece);
+        }
+    }
+    for (const token of text.split(/\s+/)) {
+        considerToken(token);
+    }
+    return {
+        expectedFiles: uniqueNonEmpty(files),
+        expectedGlobs: uniqueNonEmpty(globs),
+    };
+}
+const STEP_LINE = /^\s*(?:\d+[.)]|[-*+]|\[[ xX]?\])\s+(.*\S)\s*$/;
+const NUMBERED_STEP = /^\s*\d+[.)]\s+/;
+const CHECKLIST_STEP = /^\s*(?:[-*+]|\[[ xX]?\])\s+/;
+/** Parse ordered/checklist step lines out of a markdown-ish block. */
+function parsePlanSteps(text) {
+    const steps = [];
+    for (const line of text.split(/\r?\n/)) {
+        const match = line.match(STEP_LINE);
+        if (match) {
+            const step = match[1]
+                .replace(/^\[[ xX]?\]\s*/, '')
+                .trim();
+            if (step) {
+                steps.push(step);
+            }
+        }
+    }
+    return steps;
+}
+function hasPlanStructure(text) {
+    let stepCount = 0;
+    for (const line of text.split(/\r?\n/)) {
+        if (NUMBERED_STEP.test(line) || CHECKLIST_STEP.test(line)) {
+            stepCount += 1;
+            if (stepCount >= 2) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+const SUPPORT_KEYWORDS = [
+    'test',
+    'tests',
+    'testing',
+    'spec',
+    'fixture',
+    'mock',
+    'util',
+    'utils',
+    'utility',
+    'helper',
+    'helpers',
+    'refactor',
+    'type',
+    'types',
+    'typing',
+    'docs',
+    'documentation',
+    'comment',
+    'config',
+    'lint',
+    'format',
+];
+const SUPPORT_KEYWORD_RE = new RegExp(`\\b(?:${SUPPORT_KEYWORDS.join('|')})\\b`, 'i');
+/** Does the plan text imply legitimate supporting work (tests/utils/refactor)? */
+function planImpliesSupportWork(plan) {
+    if (!plan) {
+        return false;
+    }
+    const haystack = [plan.summary, ...plan.steps, ...plan.constraints].join('\n');
+    return SUPPORT_KEYWORD_RE.test(haystack);
+}
+const TEST_OR_UTILITY_GLOBS = [
+    '**/*.test.*',
+    '**/*.spec.*',
+    '**/__tests__/**',
+    '**/__mocks__/**',
+    '**/test/**',
+    '**/tests/**',
+    '**/*.d.ts',
+    '**/utils/**',
+    '**/util/**',
+    '**/helpers/**',
+    '**/helper/**',
+    '**/fixtures/**',
+    '**/__fixtures__/**',
+];
+/** Is this path a conventional test or utility/support file? */
+function isTestOrUtilityPath(filePath) {
+    const normalized = normalizeRepoPath(filePath);
+    if (!normalized) {
+        return false;
+    }
+    return micromatch_1.default.isMatch(normalized, TEST_OR_UTILITY_GLOBS, { dot: true });
+}
+function matchPathAgainstGlobs(filePath, globs) {
+    if (globs.length === 0) {
+        return [];
+    }
+    const normalized = normalizeRepoPath(filePath);
+    return globs.filter((glob) => {
+        const normalizedGlob = normalizeRepoPath(glob);
+        if (!normalizedGlob) {
+            return false;
+        }
+        return micromatch_1.default.isMatch(normalized, normalizedGlob, { dot: true });
+    });
+}
+function clampScore(score) {
+    if (!Number.isFinite(score)) {
+        return 0;
+    }
+    return Math.max(0, Math.min(100, Math.round(score)));
+}
+/**
+ * Deterministically grade an edit against the agent's plan.
+ *
+ * Verdict precedence:
+ *  1. No agent plan captured           -> unknown
+ *  2. Path matches expectedFiles/globs -> planned
+ *  3. Path is intent-support/test/util AND plan implies support work -> implied
+ *  4. Otherwise                        -> unplanned
+ *
+ * NOTE: this is advisory in V1. Boundary/approval blocks always override this
+ * verdict at the call sites; an `unplanned` verdict alone must not block.
+ */
+function evaluatePlanCoherence(input) {
+    const { agentPlan, filePath } = input;
+    const normalizedPath = normalizeRepoPath(filePath || '');
+    if (!agentPlan) {
+        return {
+            verdict: 'unknown',
+            score: 0,
+            matchedPlanItems: [],
+            reasons: ['No agent plan captured for this session; plan coherence is unknown.'],
+        };
+    }
+    if (!normalizedPath) {
+        return {
+            verdict: 'unknown',
+            score: 0,
+            matchedPlanItems: [],
+            reasons: ['No file path provided; plan coherence is unknown.'],
+        };
+    }
+    const reasons = [];
+    const matchedPlanItems = [];
+    // (2) Direct plan match: exact expected file or expected glob.
+    const expectedFiles = (agentPlan.expectedFiles || []).map(normalizeRepoPath);
+    if (expectedFiles.includes(normalizedPath)) {
+        matchedPlanItems.push(normalizedPath);
+        reasons.push(`Path matches a file the plan expected to touch (${normalizedPath}).`);
+        return {
+            verdict: 'planned',
+            score: 100,
+            matchedPlanItems: uniqueNonEmpty(matchedPlanItems),
+            reasons,
+        };
+    }
+    const matchedGlobs = matchPathAgainstGlobs(normalizedPath, agentPlan.expectedGlobs || []);
+    if (matchedGlobs.length > 0) {
+        matchedPlanItems.push(...matchedGlobs);
+        reasons.push(`Path matches an expected plan glob (${matchedGlobs.join(', ')}).`);
+        return {
+            verdict: 'planned',
+            score: 90,
+            matchedPlanItems: uniqueNonEmpty(matchedPlanItems),
+            reasons,
+        };
+    }
+    // (3) Implied support work: intent-support path or test/utility file, AND the
+    // plan acknowledges support work somewhere.
+    const intentMatches = matchPathAgainstGlobs(normalizedPath, input.intentSupportGlobs || []);
+    const isSupportPath = intentMatches.length > 0 || isTestOrUtilityPath(normalizedPath);
+    const planSupports = typeof input.planImpliesSupportWork === 'boolean'
+        ? input.planImpliesSupportWork
+        : planImpliesSupportWork(agentPlan);
+    if (isSupportPath && planSupports) {
+        if (intentMatches.length > 0) {
+            matchedPlanItems.push(...intentMatches);
+            reasons.push(`Path falls under intent-support scope (${intentMatches.join(', ')}).`);
+        }
+        if (isTestOrUtilityPath(normalizedPath)) {
+            reasons.push('Path is a test/utility file consistent with the plan’s supporting work.');
+        }
+        return {
+            verdict: 'implied',
+            score: 65,
+            matchedPlanItems: uniqueNonEmpty(matchedPlanItems),
+            reasons,
+        };
+    }
+    // (4) Neither plan nor intent justify this edit.
+    if (isSupportPath && !planSupports) {
+        reasons.push('Path looks like support work, but the plan never mentioned supporting work.');
+    }
+    else {
+        reasons.push('Path matches neither the plan’s expected targets nor intent-support scope.');
+    }
+    return {
+        verdict: 'unplanned',
+        score: clampScore(isSupportPath ? 35 : 15),
+        matchedPlanItems: [],
+        reasons,
+    };
+}
+// ---------------------------------------------------------------------------
+// Plan extraction from Claude Code hook payloads
+// ---------------------------------------------------------------------------
+function asString(value) {
+    return typeof value === 'string' && value.trim() ? value : undefined;
+}
+function asRecord(value) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : undefined;
+}
+/**
+ * Locate plan-bearing text inside a Claude Code hook payload, ranked by signal.
+ * Returns undefined when the payload only carries a user prompt (or nothing).
+ *
+ * High-signal sources, in priority order:
+ *   1. PreToolUse / ExitPlanMode -> tool_input.plan  (the agent's actual plan)
+ *   2. PreToolUse / TodoWrite    -> tool_input.todos  (the agent's task list)
+ *   3. An explicit `plan` field (string or { summary/steps })
+ *   4. An assistant message / transcript turn containing plan structure
+ *
+ * The `prompt` / `user_prompt` field is treated as *user intent* and is never,
+ * on its own, promoted to an agent plan.
+ */
+function findPlanText(payload) {
+    const toolName = asString(payload.tool_name) ||
+        asString(payload.toolName) ||
+        asString(asRecord(payload.tool)?.name);
+    const toolInput = asRecord(payload.tool_input) ||
+        asRecord(payload.toolInput) ||
+        asRecord(payload.input);
+    // (1) ExitPlanMode carries the agent's plan verbatim.
+    if (toolInput && /exitplanmode/i.test(toolName || '')) {
+        const plan = asString(toolInput.plan);
+        if (plan) {
+            return { text: plan, source: 'claude_prompt', structured: true };
+        }
+    }
+    // (2) TodoWrite carries an ordered task list.
+    if (toolInput && /todowrite/i.test(toolName || '')) {
+        const todos = Array.isArray(toolInput.todos) ? toolInput.todos : undefined;
+        if (todos && todos.length > 0) {
+            const steps = todos
+                .map((todo) => asString(asRecord(todo)?.content) || asString(asRecord(todo)?.activeForm))
+                .filter((value) => Boolean(value));
+            if (steps.length > 0) {
+                return {
+                    text: steps.join('\n'),
+                    source: 'claude_prompt',
+                    structured: true,
+                    steps,
+                };
+            }
+        }
+    }
+    // (3) An explicit plan field (used by manual/MCP callers).
+    const planField = payload.plan;
+    const planString = asString(planField);
+    if (planString) {
+        return { text: planString, source: 'claude_prompt', structured: true };
+    }
+    const planRecord = asRecord(planField);
+    if (planRecord) {
+        const summary = asString(planRecord.summary) || '';
+        const steps = Array.isArray(planRecord.steps)
+            ? planRecord.steps.map((s) => asString(s)).filter((v) => Boolean(v))
+            : [];
+        if (summary || steps.length > 0) {
+            return {
+                text: [summary, ...steps].join('\n'),
+                source: 'claude_prompt',
+                structured: true,
+                steps: steps.length > 0 ? steps : undefined,
+            };
+        }
+    }
+    // (4) Assistant message / transcript with plan structure.
+    const assistantCandidates = [
+        asString(payload.assistant_message),
+        asString(payload.assistantMessage),
+        asString(asRecord(payload.message)?.content),
+        asString(payload.message),
+        asString(payload.transcript),
+    ].filter((v) => Boolean(v));
+    for (const candidate of assistantCandidates) {
+        if (hasPlanStructure(candidate)) {
+            return { text: candidate, source: 'claude_prompt', structured: false };
+        }
+    }
+    return undefined;
+}
+function firstSentence(text, max = 200) {
+    const collapsed = text.replace(/\s+/g, ' ').trim();
+    if (!collapsed) {
+        return '';
+    }
+    const stop = collapsed.search(/[.!?](?:\s|$)/);
+    const sentence = stop >= 0 ? collapsed.slice(0, stop + 1) : collapsed;
+    return sentence.length > max ? `${sentence.slice(0, max - 1).trim()}…` : sentence;
+}
+function deriveConfidence(args) {
+    const hasTargets = args.expectedFiles.length + args.expectedGlobs.length > 0;
+    if (args.structured && (hasTargets || args.steps.length >= 2)) {
+        return 'high';
+    }
+    if (args.structured || (args.steps.length >= 2 && hasTargets)) {
+        return 'medium';
+    }
+    return 'low';
+}
+/**
+ * Deterministically extract an {@link AgentPlan} from a Claude Code hook
+ * payload. Returns null when no plan is present — callers must treat a null
+ * result as "no plan", never as a failure.
+ *
+ * This function never throws: any malformed payload yields null.
+ */
+function extractAgentPlan(payload, options = {}) {
+    try {
+        const record = asRecord(payload);
+        if (!record) {
+            return null;
+        }
+        const found = findPlanText(record);
+        if (!found) {
+            return null;
+        }
+        const safeText = stripSourceLikePlanText(found.text);
+        const steps = found.steps && found.steps.length > 0
+            ? uniqueNonEmpty(found.steps.map(stripSourceLikePlanText))
+            : uniqueNonEmpty(parsePlanSteps(safeText));
+        // Conservative: an unstructured assistant message must actually contain
+        // multiple steps to qualify as a plan.
+        if (!found.structured && steps.length < 2) {
+            return null;
+        }
+        const { expectedFiles, expectedGlobs } = extractExpectedTargetsFromText(safeText);
+        const summary = firstSentence(safeText) ||
+            (steps.length > 0 ? steps[0] : '') ||
+            'Agent plan';
+        const constraints = extractLabeledLines(safeText, ['constraint', 'guardrail', 'must not', 'do not', 'never']);
+        const risks = extractLabeledLines(safeText, ['risk', 'caveat', 'warning', 'danger']);
+        const capturedAt = (options.now ?? new Date()).toISOString();
+        return {
+            schemaVersion: exports.AGENT_PLAN_SCHEMA_VERSION,
+            summary,
+            steps,
+            expectedFiles,
+            expectedGlobs,
+            constraints,
+            risks,
+            capturedAt,
+            source: options.source ?? found.source,
+            confidence: deriveConfidence({
+                structured: found.structured,
+                steps,
+                expectedFiles,
+                expectedGlobs,
+            }),
+        };
+    }
+    catch {
+        // Plan capture must never fail the hook.
+        return null;
+    }
+}
+function extractLabeledLines(text, labels) {
+    const out = [];
+    const labelRe = new RegExp(`\\b(?:${labels.join('|')})\\b`, 'i');
+    for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.replace(STEP_LINE, '$1').trim();
+        if (trimmed && labelRe.test(trimmed)) {
+            out.push(trimmed);
+        }
+    }
+    return uniqueNonEmpty(out);
+}
+/**
+ * Source-free projection of an agent plan for live sync / evidence export.
+ * Drops nothing sensitive (the model is already source-free) but enforces the
+ * shape and trims away anything unexpected callers may have attached.
+ */
+function sanitizeAgentPlan(value) {
+    const record = asRecord(value);
+    if (!record) {
+        return undefined;
+    }
+    const summary = asString(record.summary) || '';
+    const steps = Array.isArray(record.steps)
+        ? uniqueNonEmpty(record.steps.map((s) => asString(s) || ''))
+        : [];
+    if (!summary && steps.length === 0) {
+        return undefined;
+    }
+    const source = ['claude_prompt', 'manual', 'mcp', 'unknown'].includes(record.source)
+        ? record.source
+        : 'unknown';
+    const confidence = ['high', 'medium', 'low'].includes(record.confidence)
+        ? record.confidence
+        : 'low';
+    const schemaVersion = typeof record.schemaVersion === 'number' ? record.schemaVersion : exports.AGENT_PLAN_SCHEMA_VERSION;
+    return {
+        schemaVersion,
+        summary,
+        steps,
+        expectedFiles: Array.isArray(record.expectedFiles)
+            ? uniqueNonEmpty(record.expectedFiles.map((s) => asString(s) || ''))
+            : [],
+        expectedGlobs: Array.isArray(record.expectedGlobs)
+            ? uniqueNonEmpty(record.expectedGlobs.map((s) => asString(s) || ''))
+            : [],
+        constraints: Array.isArray(record.constraints)
+            ? uniqueNonEmpty(record.constraints.map((s) => asString(s) || ''))
+            : [],
+        risks: Array.isArray(record.risks)
+            ? uniqueNonEmpty(record.risks.map((s) => asString(s) || ''))
+            : [],
+        capturedAt: asString(record.capturedAt) || new Date().toISOString(),
+        source,
+        confidence,
+    };
+}
+/** Sanitize a plan-coherence result coming back over the wire. */
+function sanitizePlanCoherence(value) {
+    const record = asRecord(value);
+    if (!record) {
+        return undefined;
+    }
+    const verdicts = ['planned', 'implied', 'unplanned', 'unknown'];
+    const verdict = verdicts.includes(record.verdict)
+        ? record.verdict
+        : 'unknown';
+    const score = typeof record.score === 'number' ? clampScore(record.score) : 0;
+    return {
+        verdict,
+        score,
+        matchedPlanItems: Array.isArray(record.matchedPlanItems)
+            ? uniqueNonEmpty(record.matchedPlanItems.map((s) => asString(s) || ''))
+            : [],
+        reasons: Array.isArray(record.reasons)
+            ? uniqueNonEmpty(record.reasons.map((s) => asString(s) || ''))
+            : [],
+    };
+}
+//# sourceMappingURL=agent-plan.js.map
+
+/***/ }),
+
+/***/ 1989:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Agent Runtime Adapter Contract V1
+ *
+ * Stable, source-free local ingress shared by hooks, MCP clients, IDE
+ * companions, and future agent integrations. The adapter contract describes
+ * agent lifecycle events; the CLI remains the local enforcement engine.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AGENT_RUNTIME_DECISION_SCHEMA_VERSION = exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION = void 0;
+exports.listAgentRuntimeAdapterCapabilities = listAgentRuntimeAdapterCapabilities;
+exports.getAgentRuntimeAdapterCapability = getAgentRuntimeAdapterCapability;
+exports.normalizeAgentRuntimeEvent = normalizeAgentRuntimeEvent;
+exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION = 'neurcode.agent-runtime-event.v1';
+exports.AGENT_RUNTIME_DECISION_SCHEMA_VERSION = 'neurcode.agent-runtime-decision.v1';
+const ALL_RUNTIME_EVENTS = [
+    'session.handshake',
+    'session.start',
+    'plan.capture',
+    'plan.amend',
+    'edit.before',
+    'edit.after',
+    'session.finish',
+    'approval.apply',
+    'obligation.waive',
+];
+const CAPABILITIES = [
+    {
+        adapter: 'claude-code-hooks',
+        enforcementLevel: 'hard_deny',
+        automatic: true,
+        events: ['session.start', 'plan.capture', 'edit.before', 'session.finish'],
+        description: 'Claude Code lifecycle hooks automatically run the local runtime before writes land.',
+    },
+    {
+        adapter: 'generic-mcp',
+        enforcementLevel: 'cooperative',
+        automatic: false,
+        events: [...ALL_RUNTIME_EVENTS],
+        description: 'Portable MCP ingress for agents that voluntarily call the runtime before edits.',
+    },
+    {
+        adapter: 'codex-mcp',
+        enforcementLevel: 'cooperative',
+        automatic: false,
+        events: [...ALL_RUNTIME_EVENTS],
+        description: 'Codex MCP integration. Governance is enforced when the agent calls the local runtime ingress.',
+    },
+    {
+        adapter: 'cursor-mcp',
+        enforcementLevel: 'cooperative',
+        automatic: false,
+        events: [...ALL_RUNTIME_EVENTS],
+        description: 'Cursor MCP integration. Governance is enforced when the agent calls the local runtime ingress.',
+    },
+    {
+        adapter: 'vscode-extension',
+        enforcementLevel: 'observe_only',
+        automatic: false,
+        events: [...ALL_RUNTIME_EVENTS],
+        description: 'IDE companion ingress for live visibility and post-write containment where pre-write interception is unavailable.',
+    },
+    {
+        adapter: 'github-action',
+        enforcementLevel: 'post_change_backstop',
+        automatic: true,
+        events: ['edit.after', 'session.finish'],
+        description: 'Optional repository backstop after changes exist; never represented as in-flow hard enforcement.',
+    },
+];
+const SOURCE_LIKE_KEYS = new Set([
+    'content',
+    'filecontent',
+    'source',
+    'sourcetext',
+    'sourcecode',
+    'diff',
+    'difftext',
+    'patch',
+    'before',
+    'after',
+]);
+function asRecord(value) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : null;
+}
+function cleanString(value, max = 4000) {
+    if (typeof value !== 'string')
+        return undefined;
+    const cleaned = value.trim();
+    if (!cleaned)
+        return undefined;
+    return cleaned.slice(0, max);
+}
+function cleanStrings(value) {
+    if (!Array.isArray(value))
+        return undefined;
+    const values = Array.from(new Set(value
+        .map((item) => cleanString(item, 400))
+        .filter((item) => Boolean(item))));
+    return values.length > 0 ? values : undefined;
+}
+function assertSourceFree(value, path = 'payload') {
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => assertSourceFree(item, `${path}[${index}]`));
+        return;
+    }
+    const record = asRecord(value);
+    if (!record)
+        return;
+    for (const [key, child] of Object.entries(record)) {
+        const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (SOURCE_LIKE_KEYS.has(normalizedKey)) {
+            throw new Error(`source-like adapter payload key is not allowed: ${path}.${key}`);
+        }
+        assertSourceFree(child, `${path}.${key}`);
+    }
+}
+function isAdapterId(value) {
+    return CAPABILITIES.some((capability) => capability.adapter === value);
+}
+function isEventType(value) {
+    return ALL_RUNTIME_EVENTS.includes(value);
+}
+function cleanPlan(value) {
+    const text = cleanString(value, 12000);
+    if (text)
+        return text;
+    const record = asRecord(value);
+    if (!record)
+        return undefined;
+    const summary = cleanString(record.summary, 1000);
+    const steps = cleanStrings(record.steps);
+    return summary || steps ? { summary, steps } : undefined;
+}
+function requireField(value, label) {
+    if (value === undefined || value === null || value === '') {
+        throw new Error(`${label} is required for this runtime adapter event`);
+    }
+}
+function listAgentRuntimeAdapterCapabilities() {
+    return CAPABILITIES.map((capability) => ({
+        ...capability,
+        events: [...capability.events],
+    }));
+}
+function getAgentRuntimeAdapterCapability(adapter) {
+    const capability = CAPABILITIES.find((item) => item.adapter === adapter);
+    if (!capability)
+        throw new Error(`unknown runtime adapter: ${adapter}`);
+    return { ...capability, events: [...capability.events] };
+}
+function normalizeAgentRuntimeEvent(value) {
+    const record = asRecord(value);
+    if (!record)
+        throw new Error('runtime adapter event must be an object');
+    const schemaVersion = record.schemaVersion ?? exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION;
+    if (schemaVersion !== exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION) {
+        throw new Error(`unsupported runtime adapter schemaVersion: ${String(schemaVersion)}`);
+    }
+    if (!isAdapterId(record.adapter)) {
+        throw new Error(`unsupported runtime adapter: ${String(record.adapter)}`);
+    }
+    if (!isEventType(record.eventType)) {
+        throw new Error(`unsupported runtime adapter eventType: ${String(record.eventType)}`);
+    }
+    const rawPayload = asRecord(record.payload) ?? {};
+    assertSourceFree(rawPayload);
+    const payload = {
+        goal: cleanString(rawPayload.goal),
+        filePath: cleanString(rawPayload.filePath, 1000),
+        toolName: cleanString(rawPayload.toolName, 120),
+        plan: cleanPlan(rawPayload.plan),
+        summary: cleanString(rawPayload.summary, 1000),
+        scope: cleanStrings(rawPayload.scope),
+        reason: cleanString(rawPayload.reason, 1000),
+        path: cleanString(rawPayload.path, 1000),
+        obligationId: cleanString(rawPayload.obligationId, 1000),
+        sessionId: cleanString(rawPayload.sessionId, 200),
+        expiresAt: cleanString(rawPayload.expiresAt, 200),
+        ttlMinutes: typeof rawPayload.ttlMinutes === 'number' && Number.isFinite(rawPayload.ttlMinutes)
+            ? Math.max(0, Math.min(24 * 60, rawPayload.ttlMinutes))
+            : undefined,
+        actor: cleanString(rawPayload.actor, 300),
+    };
+    switch (record.eventType) {
+        case 'session.handshake':
+            break;
+        case 'session.start':
+            requireField(payload.goal, 'payload.goal');
+            break;
+        case 'plan.capture':
+            requireField(payload.plan, 'payload.plan');
+            break;
+        case 'plan.amend':
+            if (!payload.plan && !payload.summary && !payload.scope?.length) {
+                throw new Error('plan.amend requires payload.plan, payload.summary, or payload.scope');
+            }
+            break;
+        case 'edit.before':
+        case 'edit.after':
+            requireField(payload.filePath, 'payload.filePath');
+            break;
+        case 'approval.apply':
+            requireField(payload.path, 'payload.path');
+            break;
+        case 'obligation.waive':
+            requireField(payload.obligationId, 'payload.obligationId');
+            requireField(payload.reason, 'payload.reason');
+            break;
+        case 'session.finish':
+            break;
+    }
+    return {
+        schemaVersion: exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION,
+        adapter: record.adapter,
+        eventType: record.eventType,
+        cwd: cleanString(record.cwd, 2000),
+        eventId: cleanString(record.eventId, 300),
+        timestamp: cleanString(record.timestamp, 200),
+        payload,
+    };
+}
+//# sourceMappingURL=agent-runtime-adapter.js.map
+
+/***/ }),
+
+/***/ 65:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Repository Architecture Graph — V2.
+ *
+ * Turns the path/owner profile into an architecture-aware model that can reason
+ * about module boundaries, ownership, dependency direction, and sensitive
+ * surfaces during agentic development.
+ *
+ * Source-free guarantees:
+ *   - Import *specifiers* (module strings) may be read locally to infer edges,
+ *     but raw source, diffs, and file contents are NEVER stored on the graph.
+ *     The graph holds only module ids, owners, surface tags, and module→module
+ *     dependency edges — architecture metadata, not code.
+ *   - Deterministic: same inputs → same `architectureHash`.
+ *
+ * The extractor + resolver are pure functions so the CLI can read local files,
+ * derive specifiers, build edges, and discard the content immediately.
+ */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION = void 0;
+exports.moduleIdForPath = moduleIdForPath;
+exports.extractImportSpecifiers = extractImportSpecifiers;
+exports.resolveImportSpecifier = resolveImportSpecifier;
+exports.buildArchitectureGraph = buildArchitectureGraph;
+exports.findModuleForPath = findModuleForPath;
+exports.dependentsOf = dependentsOf;
+exports.dependenciesOf = dependenciesOf;
+exports.modulesInPlay = modulesInPlay;
+exports.deriveGraphObligationSeeds = deriveGraphObligationSeeds;
+exports.isModuleTestSatisfiable = isModuleTestSatisfiable;
+const micromatch_1 = __importDefault(__nccwpck_require__(9555));
+const node_crypto_1 = __nccwpck_require__(7598);
+const profile_1 = __nccwpck_require__(6106);
+exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION = 2;
+// ── Language + path helpers ───────────────────────────────────────────────────
+const TS_JS_EXT = new Set(['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts']);
+const PY_EXT = new Set(['py', 'pyi']);
+const SOURCE_EXT = new Set([
+    ...TS_JS_EXT,
+    ...PY_EXT,
+    'go',
+    'rs',
+    'java',
+    'kt',
+    'rb',
+    'php',
+    'cs',
+    // `.sql` is included so migration/database directories form modules even when
+    // they hold only SQL files (no imports are extracted from them).
+    'sql',
+]);
+function extOf(filePath) {
+    const m = filePath.match(/\.([a-z0-9]+)$/i);
+    return m ? m[1].toLowerCase() : '';
+}
+function languageForExt(ext) {
+    if (ext === 'ts' || ext === 'tsx' || ext === 'mts' || ext === 'cts')
+        return 'TypeScript';
+    if (ext === 'js' || ext === 'jsx' || ext === 'mjs' || ext === 'cjs')
+        return 'JavaScript';
+    if (ext === 'py' || ext === 'pyi')
+        return 'Python';
+    if (ext === 'go')
+        return 'Go';
+    if (ext === 'rs')
+        return 'Rust';
+    if (ext === 'java')
+        return 'Java';
+    if (ext === 'kt')
+        return 'Kotlin';
+    if (ext === 'rb')
+        return 'Ruby';
+    if (ext === 'php')
+        return 'PHP';
+    if (ext === 'cs')
+        return 'C#';
+    if (ext === 'sql')
+        return 'SQL';
+    return 'unknown';
+}
+function isSourcePath(filePath) {
+    return SOURCE_EXT.has(extOf(filePath));
+}
+function normalizePath(filePath) {
+    return filePath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').trim();
+}
+/**
+ * Collapse a file path to a module id using the first `depth` directory
+ * segments. Root-level files map to the synthetic module ".".
+ *
+ * When a repository contains an embedded service/app fixture, preserve the
+ * prefix up to a recognizable app root (`src`, `packages`, `services`, etc.)
+ * and then apply depth from there. Without this, paths such as
+ * `fixtures/demo-svc/src/billing/charge.py` collapse to `fixtures/demo-svc`,
+ * mixing billing/auth/migration ownership into one misleading module.
+ */
+function moduleIdForPath(filePath, depth = 2) {
+    const norm = normalizePath(filePath);
+    const segments = norm.split('/').filter(Boolean);
+    if (segments.length <= 1)
+        return '.';
+    const dirSegments = segments.slice(0, -1);
+    const effectiveDepth = Math.max(1, depth);
+    const topLevelWorkspaceRoot = ['packages', 'services', 'apps', 'web', 'actions'].includes(dirSegments[0] ?? '');
+    const embeddedRootIndex = topLevelWorkspaceRoot
+        ? -1
+        : dirSegments.findIndex((segment, index) => {
+            if (index === 0)
+                return false;
+            return ['src', 'packages', 'services', 'apps', 'web', 'actions', 'migrations'].includes(segment);
+        });
+    if (embeddedRootIndex > 0) {
+        const rootSegment = dirSegments[embeddedRootIndex];
+        const rootDepth = rootSegment === 'migrations' ? 1 : effectiveDepth;
+        return dirSegments.slice(0, embeddedRootIndex + rootDepth).join('/');
+    }
+    return dirSegments.slice(0, effectiveDepth).join('/');
+}
+function moduleGlob(moduleId) {
+    return moduleId === '.' ? '*' : `${moduleId}/**`;
+}
+function uniqueSorted(values) {
+    return Array.from(new Set(values)).sort();
+}
+// ── Import specifier extraction (pure, source-free output) ────────────────────
+const TS_IMPORT_RE = /\b(?:import|export)\s+(?:[^'"`;]*?\sfrom\s+)?['"]([^'"]+)['"]/g;
+const TS_BARE_IMPORT_RE = /\bimport\s+['"]([^'"]+)['"]/g;
+const TS_REQUIRE_RE = /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g;
+const TS_DYNAMIC_IMPORT_RE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
+const PY_IMPORT_RE = /^[ \t]*import\s+([a-zA-Z0-9_.]+)/gm;
+const PY_FROM_RE = /^[ \t]*from\s+(\.*[a-zA-Z0-9_.]*)\s+import\b/gm;
+/**
+ * Extract import specifiers (module strings) from a single file's content.
+ *
+ * Returns only the quoted/dotted module specifiers — never source text. The
+ * caller reads file content locally and discards it after calling this.
+ */
+function extractImportSpecifiers(filePath, content) {
+    if (!content)
+        return [];
+    const ext = extOf(filePath);
+    const found = new Set();
+    const collect = (re, input) => {
+        const pattern = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+        let match;
+        while ((match = pattern.exec(input)) !== null) {
+            const spec = match[1]?.trim();
+            if (spec)
+                found.add(spec);
+        }
+    };
+    if (TS_JS_EXT.has(ext)) {
+        collect(TS_IMPORT_RE, content);
+        collect(TS_BARE_IMPORT_RE, content);
+        collect(TS_REQUIRE_RE, content);
+        collect(TS_DYNAMIC_IMPORT_RE, content);
+    }
+    else if (PY_EXT.has(ext)) {
+        collect(PY_IMPORT_RE, content);
+        collect(PY_FROM_RE, content);
+    }
+    return Array.from(found);
+}
+// ── Import resolution (specifier → repo-relative module file) ──────────────────
+const TS_RESOLVE_SUFFIXES = [
+    '',
+    '.ts',
+    '.tsx',
+    '.js',
+    '.jsx',
+    '.mjs',
+    '.cjs',
+    '.mts',
+    '.cts',
+    '/index.ts',
+    '/index.tsx',
+    '/index.js',
+    '/index.jsx',
+    '/index.mjs',
+];
+const PY_RESOLVE_SUFFIXES = ['.py', '.pyi', '/__init__.py', '/__init__.pyi'];
+function joinPath(base, rel) {
+    const stack = base ? base.split('/') : [];
+    for (const part of rel.split('/')) {
+        if (part === '' || part === '.')
+            continue;
+        if (part === '..')
+            stack.pop();
+        else
+            stack.push(part);
+    }
+    return stack.join('/');
+}
+function dirOf(filePath) {
+    const norm = normalizePath(filePath);
+    const idx = norm.lastIndexOf('/');
+    return idx === -1 ? '' : norm.slice(0, idx);
+}
+/**
+ * Resolve an import specifier to a repo-relative source file, if it points to a
+ * known in-repo module. External packages (e.g. "fastapi", "react") resolve to
+ * null and are intentionally excluded from the internal dependency graph.
+ */
+function resolveImportSpecifier(fromFile, specifier, knownPaths) {
+    const ext = extOf(fromFile);
+    const spec = specifier.trim();
+    if (!spec)
+        return null;
+    // ── TypeScript / JavaScript ──────────────────────────────────────────────
+    if (TS_JS_EXT.has(ext)) {
+        if (!spec.startsWith('.'))
+            return null; // bare/package import → external
+        const base = joinPath(dirOf(fromFile), spec.replace(/\/$/, ''));
+        for (const suffix of TS_RESOLVE_SUFFIXES) {
+            const candidate = `${base}${suffix}`;
+            if (knownPaths.has(candidate))
+                return candidate;
+        }
+        return null;
+    }
+    // ── Python ────────────────────────────────────────────────────────────────
+    if (PY_EXT.has(ext)) {
+        if (spec.startsWith('.')) {
+            // Relative import: leading dots indicate package levels.
+            const dots = spec.match(/^\.+/)?.[0].length ?? 0;
+            const rest = spec.slice(dots).replace(/\./g, '/');
+            let base = dirOf(fromFile);
+            for (let i = 1; i < dots; i += 1)
+                base = joinPath(base, '..');
+            const target = rest ? joinPath(base, rest) : base;
+            for (const suffix of PY_RESOLVE_SUFFIXES) {
+                const candidate = `${target}${suffix}`;
+                if (knownPaths.has(candidate))
+                    return candidate;
+            }
+            // `from . import x` → the package's __init__
+            if (!rest) {
+                for (const suffix of PY_RESOLVE_SUFFIXES) {
+                    const candidate = `${base}${suffix}`;
+                    if (knownPaths.has(candidate))
+                        return candidate;
+                }
+            }
+            return null;
+        }
+        // Absolute dotted import: try to map onto a repo file (else external).
+        const asPath = spec.replace(/\./g, '/');
+        for (const suffix of PY_RESOLVE_SUFFIXES) {
+            const candidate = `${asPath}${suffix}`;
+            if (knownPaths.has(candidate))
+                return candidate;
+        }
+        return null;
+    }
+    return null;
+}
+// ── Surface detection ──────────────────────────────────────────────────────
+const SENSITIVE_TAG_TO_SURFACE = {
+    auth: 'auth',
+    crypto: 'crypto',
+    secrets: 'secrets',
+    payments: 'payments',
+    migrations: 'migration',
+    security: 'security',
+    custom: null,
+};
+const PUBLIC_API_SEGMENTS = new Set([
+    'api',
+    'apis',
+    'routes',
+    'router',
+    'routers',
+    'controller',
+    'controllers',
+    'handler',
+    'handlers',
+    'endpoints',
+    'graphql',
+    'resolvers',
+    'rest',
+]);
+const DATABASE_SEGMENTS = new Set([
+    'db',
+    'database',
+    'models',
+    'model',
+    'schema',
+    'schemas',
+    'entities',
+    'entity',
+    'repositories',
+    'repository',
+    'dao',
+    'orm',
+]);
+const MIGRATION_RE = /(^|\/)(migrations?|alembic|flyway|liquibase)(\/|$)/i;
+function surfacesForModule(moduleId, files, sensitiveTags) {
+    const surfaces = new Set();
+    for (const tag of sensitiveTags) {
+        const surface = SENSITIVE_TAG_TO_SURFACE[tag];
+        if (surface)
+            surfaces.add(surface);
+    }
+    const segments = moduleId.split('/').filter(Boolean);
+    for (const seg of segments) {
+        if (PUBLIC_API_SEGMENTS.has(seg))
+            surfaces.add('public-api');
+        if (DATABASE_SEGMENTS.has(seg))
+            surfaces.add('database');
+    }
+    for (const file of files) {
+        if (MIGRATION_RE.test(file))
+            surfaces.add('migration');
+        if (/\.sql$/i.test(file))
+            surfaces.add('database');
+        // Next.js / framework API route convention: pages/api or app/api.
+        if (/(^|\/)(pages|app)\/api(\/|$)/i.test(file))
+            surfaces.add('public-api');
+        if (/(^|\/)openapi|swagger|\.proto$/i.test(file))
+            surfaces.add('public-api');
+    }
+    return uniqueSorted(surfaces);
+}
+function dominantLanguage(languages) {
+    let best = 'unknown';
+    let bestCount = -1;
+    for (const [lang, count] of languages) {
+        if (count > bestCount || (count === bestCount && lang < best)) {
+            best = lang;
+            bestCount = count;
+        }
+    }
+    return best;
+}
+function ownersForModuleFiles(files, ownershipBoundaries) {
+    const counts = new Map();
+    for (const file of files) {
+        const owners = (0, profile_1.ownersForPath)(file, ownershipBoundaries);
+        if (owners.length === 0)
+            continue;
+        const sortedOwners = uniqueSorted(owners);
+        const key = sortedOwners.join('\u0000');
+        const existing = counts.get(key);
+        if (existing) {
+            existing.count += 1;
+            if (file < existing.firstPath)
+                existing.firstPath = file;
+        }
+        else {
+            counts.set(key, { owners: sortedOwners, count: 1, firstPath: file });
+        }
+    }
+    const ranked = Array.from(counts.values()).sort((a, b) => {
+        if (b.count !== a.count)
+            return b.count - a.count;
+        return a.firstPath.localeCompare(b.firstPath);
+    });
+    return ranked[0]?.owners ?? [];
+}
+function sensitiveTagsForModule(moduleId, sensitiveBoundaries) {
+    const tags = new Set();
+    for (const boundary of sensitiveBoundaries) {
+        const prefix = boundary.glob.replace('/**', '').replace('/*', '');
+        if (moduleId === prefix || moduleId.startsWith(prefix + '/') || prefix.startsWith(moduleId + '/')) {
+            tags.add(boundary.tag);
+        }
+    }
+    return uniqueSorted(tags);
+}
+function moduleApprovalRequired(moduleId, approvalRequiredGlobs) {
+    return approvalRequiredGlobs.some((glob) => {
+        const prefix = glob.replace('/**', '').replace('/*', '');
+        return moduleId === prefix || moduleId.startsWith(prefix + '/') || prefix.startsWith(moduleId + '/');
+    });
+}
+/**
+ * Build the deterministic repository architecture graph. Pure and source-free:
+ * the only edge inputs are import *specifiers*, and only module→module edges
+ * are retained.
+ */
+function buildArchitectureGraph(input) {
+    const moduleDepth = Math.max(1, input.moduleDepth ?? 2);
+    const ownershipBoundaries = input.ownershipBoundaries ?? [];
+    const sensitiveBoundaries = input.sensitiveBoundaries ?? [];
+    const approvalRequiredGlobs = input.approvalRequiredGlobs ?? [];
+    const now = input.now || new Date().toISOString();
+    const sourcePaths = input.paths.map(normalizePath).filter(isSourcePath);
+    const knownPaths = new Set(sourcePaths);
+    // 1. Accumulate modules from source paths.
+    const accumulators = new Map();
+    for (const filePath of sourcePaths) {
+        const id = moduleIdForPath(filePath, moduleDepth);
+        let acc = accumulators.get(id);
+        if (!acc) {
+            acc = { id, files: [], languages: new Map() };
+            accumulators.set(id, acc);
+        }
+        acc.files.push(filePath);
+        const lang = languageForExt(extOf(filePath));
+        acc.languages.set(lang, (acc.languages.get(lang) ?? 0) + 1);
+    }
+    const modules = Array.from(accumulators.values())
+        .map((acc) => {
+        const sensitiveTags = sensitiveTagsForModule(acc.id, sensitiveBoundaries);
+        const owners = ownersForModuleFiles(acc.files, ownershipBoundaries);
+        return {
+            id: acc.id,
+            glob: moduleGlob(acc.id),
+            fileCount: acc.files.length,
+            owners,
+            sensitiveTags,
+            surfaces: surfacesForModule(acc.id, acc.files, sensitiveTags),
+            approvalRequired: moduleApprovalRequired(acc.id, approvalRequiredGlobs),
+            language: dominantLanguage(acc.languages),
+        };
+    })
+        .sort((a, b) => a.id.localeCompare(b.id));
+    const moduleIds = new Set(modules.map((m) => m.id));
+    // 2. Resolve import specifiers into module→module edges.
+    const edgeWeights = new Map();
+    let analyzedFiles = 0;
+    let resolvedImports = 0;
+    for (const record of input.imports ?? []) {
+        const fromFile = normalizePath(record.filePath);
+        if (!knownPaths.has(fromFile))
+            continue;
+        analyzedFiles += 1;
+        const fromModule = moduleIdForPath(fromFile, moduleDepth);
+        for (const specifier of record.specifiers) {
+            const targetFile = resolveImportSpecifier(fromFile, specifier, knownPaths);
+            if (!targetFile)
+                continue;
+            const toModule = moduleIdForPath(targetFile, moduleDepth);
+            if (!moduleIds.has(fromModule) || !moduleIds.has(toModule))
+                continue;
+            if (fromModule === toModule)
+                continue; // ignore intra-module imports
+            resolvedImports += 1;
+            const key = `${fromModule} ${toModule}`;
+            edgeWeights.set(key, (edgeWeights.get(key) ?? 0) + 1);
+        }
+    }
+    const edges = Array.from(edgeWeights.entries())
+        .map(([key, weight]) => {
+        const [from, to] = key.split(' ');
+        return { from, to, weight };
+    })
+        .sort((a, b) => (a.from === b.from ? a.to.localeCompare(b.to) : a.from.localeCompare(b.from)));
+    const languages = uniqueSorted(modules.map((m) => m.language).filter((l) => l !== 'unknown'));
+    const stats = {
+        moduleCount: modules.length,
+        edgeCount: edges.length,
+        analyzedFiles,
+        resolvedImports,
+        languages,
+    };
+    const canonical = JSON.stringify({
+        moduleDepth,
+        modules: modules.map((m) => ({
+            id: m.id,
+            owners: [...m.owners].sort(),
+            sensitiveTags: m.sensitiveTags,
+            surfaces: m.surfaces,
+            approvalRequired: m.approvalRequired,
+        })),
+        edges: edges.map((e) => `${e.from}->${e.to}:${e.weight}`),
+    });
+    const architectureHash = (0, node_crypto_1.createHash)('sha256').update(canonical).digest('hex').slice(0, 24);
+    return {
+        schemaVersion: exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION,
+        generatedAt: now,
+        moduleDepth,
+        modules,
+        edges,
+        stats,
+        architectureHash,
+    };
+}
+// ── Graph queries ─────────────────────────────────────────────────────────────
+function findModuleForPath(graph, filePath) {
+    const norm = normalizePath(filePath);
+    const id = moduleIdForPath(norm, graph.moduleDepth);
+    const direct = graph.modules.find((m) => m.id === id);
+    if (direct)
+        return direct;
+    // Fall back to the deepest module whose glob contains the path.
+    const containing = graph.modules
+        .filter((m) => norm === m.id || norm.startsWith(m.id + '/'))
+        .sort((a, b) => b.id.length - a.id.length);
+    return containing[0] ?? null;
+}
+/** Modules that import the given module (its downstream consumers). */
+function dependentsOf(graph, moduleId) {
+    return uniqueSorted(graph.edges.filter((e) => e.to === moduleId).map((e) => e.from));
+}
+/** Modules the given module imports (its upstream providers / dependencies). */
+function dependenciesOf(graph, moduleId) {
+    return uniqueSorted(graph.edges.filter((e) => e.from === moduleId).map((e) => e.to));
+}
+const COMPAT_PLAN_PATTERN = '(backward[- ]?compat|backwards[- ]?compat|breaking change|contract|interface stays|preserve (?:the )?(?:public )?(?:interface|api|contract)|do not break|no breaking)';
+const SECURITY_PLAN_PATTERN = '(security review|security owner|security team|threat model|secure by|authn|authz|access control)';
+const MIGRATION_PLAN_PATTERN = '(rollback|reversible|down migration|backfill safety|restore strategy|migration review|expand[- ]and[- ]contract)';
+function moduleMatchesCandidate(module, candidate) {
+    const norm = normalizePath(candidate);
+    if (!norm)
+        return false;
+    const prefix = norm.replace('/**', '').replace('/*', '');
+    if (module.id === prefix)
+        return true;
+    if (prefix.startsWith(module.id + '/'))
+        return true; // candidate file under module
+    if (module.id.startsWith(prefix + '/'))
+        return true; // candidate glob over module
+    // Glob form (e.g. "src/api/**") matching a file under the module.
+    if (norm.includes('*') && micromatch_1.default.isMatch(module.id, prefix, { dot: true }))
+        return true;
+    return false;
+}
+/** Modules considered "in play" for a set of candidate paths/globs. */
+function modulesInPlay(graph, candidatePaths) {
+    const candidates = candidatePaths.map(normalizePath).filter(Boolean);
+    if (candidates.length === 0)
+        return [];
+    return graph.modules.filter((module) => candidates.some((candidate) => moduleMatchesCandidate(module, candidate)));
+}
+function ownerLabel(owners) {
+    if (owners.length === 0)
+        return 'the owning team';
+    return owners.join(', ');
+}
+/**
+ * Derive graph obligation seeds for the modules currently in play. Deterministic
+ * and ordered by id.
+ */
+function deriveGraphObligationSeeds(args) {
+    const { graph } = args;
+    const inPlay = modulesInPlay(graph, args.candidatePaths);
+    const seeds = [];
+    for (const module of inPlay) {
+        const owners = ownerLabel(module.owners);
+        // Payments: billing/payments-owned code requires explicit approval.
+        if (module.surfaces.includes('payments')) {
+            seeds.push({
+                id: `architecture:payments-approval:${module.id}`,
+                category: 'payments',
+                title: `Approve billing-owned edit in ${module.id}`,
+                description: `This edit touches billing-owned code. Approval required from ${owners}.`,
+                severity: 'critical',
+                module: module.id,
+                requiredPath: module.glob,
+                triggeredBy: [`edit targets payments surface ${module.id}`],
+                requiredEvidence: [`Obtain an approval covering ${module.id} from ${owners}.`],
+                surface: 'payments',
+                satisfy: { approval: true },
+            });
+        }
+        // Auth / security / secrets / crypto: security-owner awareness.
+        const securitySurface = ['auth', 'security', 'secrets', 'crypto'].find((s) => module.surfaces.includes(s));
+        if (securitySurface) {
+            seeds.push({
+                id: `architecture:security-awareness:${module.id}`,
+                category: 'security',
+                title: `Security-owner awareness for ${module.id}`,
+                description: `This edit touches ${securitySurface}-sensitive code in ${module.id}. Security owner (${owners}) awareness required.`,
+                severity: 'critical',
+                module: module.id,
+                requiredPath: module.glob,
+                triggeredBy: [`edit targets ${securitySurface} surface ${module.id}`],
+                requiredEvidence: [
+                    `Approve ${module.id} or record a security-review commitment in the accepted plan.`,
+                ],
+                surface: securitySurface,
+                satisfy: { approval: true, planPattern: SECURITY_PLAN_PATTERN },
+            });
+        }
+        // Migration / database migration: migration review.
+        if (module.surfaces.includes('migration')) {
+            seeds.push({
+                id: `architecture:migration-review:${module.id}`,
+                category: 'data-model',
+                title: `Migration review for ${module.id}`,
+                description: `This edit touches database migration files in ${module.id}. Migration review required.`,
+                severity: 'critical',
+                module: module.id,
+                requiredPath: module.glob,
+                triggeredBy: [`edit targets migration surface ${module.id}`],
+                requiredEvidence: [
+                    `Approve ${module.id} or state a rollback / migration-review commitment in the accepted plan.`,
+                ],
+                surface: 'migration',
+                satisfy: { approval: true, planPattern: MIGRATION_PLAN_PATTERN },
+            });
+        }
+        // Public API: contract compatibility.
+        if (module.surfaces.includes('public-api')) {
+            seeds.push({
+                id: `architecture:api-contract:${module.id}`,
+                category: 'api-contract',
+                title: `Confirm API contract compatibility for ${module.id}`,
+                description: `This edit touches public API routes in ${module.id}. Confirm contract compatibility before shipping.`,
+                severity: 'warn',
+                module: module.id,
+                requiredPath: module.glob,
+                triggeredBy: [`edit targets public-api surface ${module.id}`],
+                requiredEvidence: [
+                    `State a backward-compatibility commitment in the accepted plan, or cover the route with a test.`,
+                ],
+                surface: 'public-api',
+                satisfy: { approval: false, planPattern: COMPAT_PLAN_PATTERN, moduleTest: true },
+            });
+        }
+        // Downstream impact: editing a module with consumers may break their contract.
+        const dependents = dependentsOf(graph, module.id);
+        const contractBearing = module.surfaces.includes('public-api') ||
+            /(^|\/)(lib|core|shared|common|contracts?|api|utils?|types?|models?)(\/|$)/i.test(module.id);
+        if (dependents.length > 0 && (contractBearing || dependents.length >= 3)) {
+            const shown = dependents.slice(0, 3).join(', ');
+            const more = dependents.length > 3 ? ` (+${dependents.length - 3} more)` : '';
+            seeds.push({
+                id: `architecture:downstream-impact:${module.id}`,
+                category: 'dependency',
+                title: `Review downstream impact of ${module.id}`,
+                description: `This edit may affect downstream module${dependents.length === 1 ? '' : 's'} ${shown}${more}. Review obligation pending.`,
+                severity: 'warn',
+                module: module.id,
+                requiredPath: module.glob,
+                triggeredBy: [`${dependents.length} module(s) depend on ${module.id}`],
+                requiredEvidence: [
+                    `State that ${module.id}'s public contract is preserved in the accepted plan, or add a covering test.`,
+                ],
+                surface: 'dependency',
+                satisfy: { approval: false, planPattern: COMPAT_PLAN_PATTERN, moduleTest: true },
+            });
+        }
+    }
+    return seeds.sort((a, b) => a.id.localeCompare(b.id));
+}
+/** True when a graph obligation can be satisfied by editing the module's tests. */
+function isModuleTestSatisfiable(obligationId) {
+    return (obligationId.startsWith('architecture:api-contract:') ||
+        obligationId.startsWith('architecture:downstream-impact:'));
+}
+//# sourceMappingURL=architecture-graph.js.map
+
+/***/ }),
+
+/***/ 568:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = void 0;
+exports.normalizeArchitectureObligationPolicy = normalizeArchitectureObligationPolicy;
+exports.effectiveArchitectureObligationMode = effectiveArchitectureObligationMode;
+exports.isArchitectureObligationWaiverActive = isArchitectureObligationWaiverActive;
+exports.activeArchitectureObligationWaivers = activeArchitectureObligationWaivers;
+exports.deriveArchitectureObligations = deriveArchitectureObligations;
+exports.summarizeArchitectureObligations = summarizeArchitectureObligations;
+exports.evaluateArchitectureObligationFeedback = evaluateArchitectureObligationFeedback;
+exports.evaluateArchitectureEdit = evaluateArchitectureEdit;
+const micromatch_1 = __importDefault(__nccwpck_require__(9555));
+const architecture_graph_1 = __nccwpck_require__(65);
+exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = 1;
+exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = Object.freeze({
+    mode: 'warn',
+    ruleModes: {},
+});
+function unique(values) {
+    return Array.from(new Set(Array.from(values, (value) => String(value ?? '').trim()).filter(Boolean)));
+}
+function planText(plan) {
+    if (!plan)
+        return '';
+    return [
+        plan.summary,
+        ...plan.steps,
+        ...plan.constraints,
+        ...plan.risks,
+        ...plan.expectedFiles,
+        ...plan.expectedGlobs,
+    ].join('\n');
+}
+function isTestPath(filePath) {
+    return (/(^|\/)(tests?|specs?)(\/|$)/i.test(filePath) ||
+        /(?:^|[._-])(test|spec)\.[a-z0-9]+$/i.test(filePath) ||
+        /(?:^|\/)test_[^/]+\.[a-z0-9]+$/i.test(filePath));
+}
+function matchesPath(filePath, pathOrGlob) {
+    const prefix = pathOrGlob.replace('/**', '').replace('/*', '');
+    return (filePath === pathOrGlob ||
+        filePath === prefix ||
+        filePath.startsWith(prefix + '/') ||
+        micromatch_1.default.isMatch(filePath, pathOrGlob, { dot: true, matchBase: true }));
+}
+function allowedTrajectoryPaths(events) {
+    return unique(events
+        .filter((event) => event.type === 'check_ok' || event.type === 'check_warn')
+        .map((event) => event.filePath));
+}
+function approvalRequiredPaths(events) {
+    const paths = [];
+    for (const event of events) {
+        if (event.type !== 'check_block')
+            continue;
+        const raw = event.detail?.approvalContext;
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+            continue;
+        const context = raw;
+        const candidate = context.suggestedApprovalPath || context.blockedPath || event.filePath;
+        if (typeof candidate === 'string' && candidate.trim())
+            paths.push(candidate.trim());
+    }
+    return unique(paths);
+}
+function evidence(kind, summary, path) {
+    return { kind, summary, ...(path ? { path } : {}) };
+}
+/** True when an active approval path covers (or is inside) the module glob. */
+function approvalCoversPath(approvedPaths, moduleGlob) {
+    const prefix = moduleGlob.replace('/**', '').replace('/*', '');
+    for (const approved of approvedPaths) {
+        const approvedPrefix = approved.replace('/**', '').replace('/*', '');
+        if (matchesPath(prefix || moduleGlob, approved) ||
+            approvedPrefix === prefix ||
+            approvedPrefix.startsWith(prefix + '/') ||
+            prefix.startsWith(approvedPrefix + '/')) {
+            return approved;
+        }
+    }
+    return null;
+}
+/** Find a guarded test-path edit that lands inside (or names) the module. */
+function moduleTestEdit(trajectoryPaths, moduleId, moduleGlob) {
+    const lastSegment = moduleId.split('/').filter(Boolean).at(-1) ?? moduleId;
+    for (const filePath of trajectoryPaths) {
+        if (!isTestPath(filePath))
+            continue;
+        if (matchesPath(filePath, moduleGlob))
+            return filePath;
+        if (lastSegment && filePath.toLowerCase().includes(lastSegment.toLowerCase()))
+            return filePath;
+    }
+    return null;
+}
+/**
+ * Collect the source-free paths/globs currently "in play" for graph obligation
+ * derivation: declared intent scope, the accepted plan's expected targets, and
+ * the guarded change trajectory (including attempted approval-required writes).
+ */
+function graphCandidatePaths(input, events) {
+    const candidates = new Set();
+    const add = (value) => {
+        const trimmed = String(value ?? '').trim();
+        if (trimmed)
+            candidates.add(trimmed);
+    };
+    const target = input.intentContract?.target;
+    (target?.expectedPathGlobs ?? []).forEach(add);
+    (target?.pathTokens ?? []).forEach(add);
+    if (input.agentPlan) {
+        input.agentPlan.expectedFiles.forEach(add);
+        input.agentPlan.expectedGlobs.forEach(add);
+    }
+    for (const event of events) {
+        if (event.type === 'check_ok' || event.type === 'check_warn' || event.type === 'check_block') {
+            add(event.filePath);
+        }
+    }
+    for (const requiredPath of approvalRequiredPaths(events))
+        add(requiredPath);
+    return Array.from(candidates);
+}
+/** Build obligation drafts from the architecture graph for the modules in play. */
+function deriveGraphDrafts(input, events, approvedPaths, acceptedPlanText) {
+    if (!input.graph)
+        return [];
+    const candidatePaths = graphCandidatePaths(input, events);
+    const seeds = (0, architecture_graph_1.deriveGraphObligationSeeds)({ graph: input.graph, candidatePaths });
+    const trajectoryPaths = allowedTrajectoryPaths(events);
+    return seeds.map((seed) => {
+        const observedEvidence = [];
+        if (seed.satisfy.approval) {
+            const approved = approvalCoversPath(approvedPaths, seed.requiredPath);
+            if (approved) {
+                observedEvidence.push(evidence('exact-approval', `Active approval covers ${seed.module}: ${approved}`, approved));
+            }
+        }
+        if (seed.satisfy.planPattern) {
+            const pattern = new RegExp(seed.satisfy.planPattern, 'i');
+            if (pattern.test(acceptedPlanText)) {
+                observedEvidence.push(evidence('accepted-plan', `Accepted plan addresses ${seed.surface} obligation for ${seed.module}.`));
+            }
+        }
+        if (seed.satisfy.moduleTest) {
+            const testPath = moduleTestEdit(trajectoryPaths, seed.module, seed.requiredPath);
+            if (testPath) {
+                observedEvidence.push(evidence('change-trajectory', `Guarded test edit covers ${seed.module}: ${testPath}`, testPath));
+            }
+        }
+        return {
+            id: seed.id,
+            category: seed.category,
+            title: seed.title,
+            description: seed.description,
+            severity: seed.severity,
+            triggeredBy: seed.triggeredBy,
+            requiredEvidence: seed.requiredEvidence,
+            observedEvidence,
+            requiredPath: seed.requiredPath,
+        };
+    });
+}
+function normalizePolicyMode(value) {
+    return value === 'off' || value === 'warn' || value === 'block' ? value : null;
+}
+function normalizeArchitectureObligationPolicy(value) {
+    const mode = normalizePolicyMode(value?.mode) || exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY.mode;
+    const ruleModes = {};
+    const rawRuleModes = value?.ruleModes;
+    if (rawRuleModes && typeof rawRuleModes === 'object' && !Array.isArray(rawRuleModes)) {
+        for (const [rawId, rawMode] of Object.entries(rawRuleModes)) {
+            const id = rawId.trim();
+            const ruleMode = normalizePolicyMode(rawMode);
+            if (id && ruleMode)
+                ruleModes[id] = ruleMode;
+        }
+    }
+    return { mode, ruleModes };
+}
+function effectiveArchitectureObligationMode(obligation, policy) {
+    const normalized = normalizeArchitectureObligationPolicy(policy);
+    return normalized.ruleModes[obligation.id] || normalized.mode;
+}
+function isArchitectureObligationWaiverActive(waiver, checkedAt = new Date().toISOString()) {
+    if (!waiver.obligationId || waiver.revokedAt)
+        return false;
+    if (!waiver.expiresAt)
+        return true;
+    const expiresAtMs = Date.parse(waiver.expiresAt);
+    const checkedAtMs = Date.parse(checkedAt);
+    if (!Number.isFinite(expiresAtMs) || !Number.isFinite(checkedAtMs))
+        return false;
+    return expiresAtMs > checkedAtMs;
+}
+function activeArchitectureObligationWaivers(waivers = [], checkedAt = new Date().toISOString()) {
+    return waivers.filter((waiver) => isArchitectureObligationWaiverActive(waiver, checkedAt));
+}
+function finalize(drafts, previous, now, policy, waivers) {
+    const previousById = new Map(previous.map((item) => [item.id, item]));
+    const activeWaivers = activeArchitectureObligationWaivers(waivers, now);
+    const obligations = [];
+    for (const draft of drafts) {
+        const prior = previousById.get(draft.id);
+        const observedEvidence = unique(draft.observedEvidence.map((item) => JSON.stringify(item)))
+            .map((item) => JSON.parse(item));
+        const effectiveMode = effectiveArchitectureObligationMode(draft, policy);
+        if (effectiveMode === 'off')
+            continue;
+        const activeWaiver = activeWaivers.find((waiver) => waiver.obligationId === draft.id);
+        const baseStatus = observedEvidence.length > 0 ? 'satisfied' : 'pending';
+        const status = baseStatus === 'pending' && activeWaiver ? 'waived' : baseStatus;
+        const waiverEvidence = activeWaiver
+            ? {
+                eventId: activeWaiver.eventId,
+                reason: activeWaiver.reason,
+                waivedAt: activeWaiver.waivedAt,
+                expiresAt: activeWaiver.expiresAt,
+                waivedBy: activeWaiver.waivedBy ?? null,
+                source: activeWaiver.source,
+            }
+            : undefined;
+        const finalEvidence = waiverEvidence && baseStatus === 'pending'
+            ? [
+                ...observedEvidence,
+                evidence('waiver', `Waived by ${waiverEvidence.waivedBy || waiverEvidence.source}: ${waiverEvidence.reason}`),
+            ]
+            : observedEvidence;
+        const materiallyChanged = !prior ||
+            prior.status !== status ||
+            prior.effectiveMode !== effectiveMode ||
+            JSON.stringify(prior.observedEvidence) !== JSON.stringify(finalEvidence) ||
+            JSON.stringify(prior.waiver ?? null) !== JSON.stringify(waiverEvidence ?? null);
+        obligations.push({
+            schemaVersion: exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION,
+            ...draft,
+            status,
+            observedEvidence: finalEvidence,
+            firstSeenAt: prior?.firstSeenAt || now,
+            updatedAt: materiallyChanged ? now : prior.updatedAt,
+            effectiveMode,
+            ...(waiverEvidence && status === 'waived' ? { waiver: waiverEvidence } : {}),
+        });
+    }
+    return obligations;
+}
+/**
+ * Derive the live architecture-obligation ledger from source-free metadata.
+ *
+ * The first rule set is intentionally conservative. Every obligation is
+ * explainable from user intent, the accepted agent plan, guarded path attempts,
+ * or exact approval state. Source, diffs, and file contents are never inputs.
+ */
+function deriveArchitectureObligations(input) {
+    const now = input.now || new Date().toISOString();
+    const policy = normalizeArchitectureObligationPolicy(input.policy);
+    const events = input.events ?? [];
+    const trajectoryPaths = allowedTrajectoryPaths(events);
+    const acceptedPlanText = planText(input.agentPlan);
+    const combinedText = `${input.goal}\n${acceptedPlanText}`.toLowerCase();
+    const intentIds = new Set((input.intentContract?.obligations ?? []).map((item) => item.id).filter(Boolean));
+    const domains = new Set(input.intentContract?.target?.domainKeywords ?? []);
+    const drafts = [];
+    const reliabilityTriggered = /\b(retry|retries|backoff|timeout|idempoten|duplicate side effect)\b/i.test(combinedText) ||
+        domains.has('reliability') ||
+        intentIds.has('preserve-idempotency') ||
+        intentIds.has('cover-retry-path');
+    if (reliabilityTriggered) {
+        const retryTest = trajectoryPaths.find(isTestPath);
+        drafts.push({
+            id: 'reliability:retry-path-coverage',
+            category: 'reliability',
+            title: 'Exercise the retry path',
+            description: 'Retry, backoff, and timeout work should include a guarded test-path change before the session finishes.',
+            severity: 'warn',
+            triggeredBy: ['intent or accepted plan references retry, backoff, timeout, or reliability'],
+            requiredEvidence: ['Edit a test or spec path during this governed session.'],
+            observedEvidence: retryTest
+                ? [evidence('change-trajectory', `Guarded test-path edit observed: ${retryTest}`, retryTest)]
+                : [],
+        });
+        const idempotencyCommitment = /\b(idempoten\w*|duplicate side effects?|at[- ]most[- ]once)\b/i.test(acceptedPlanText);
+        drafts.push({
+            id: 'reliability:idempotency-reasoning',
+            category: 'reliability',
+            title: 'State the idempotency strategy',
+            description: 'Retry work needs an accepted-plan commitment explaining how duplicate side effects are avoided.',
+            severity: 'critical',
+            triggeredBy: ['intent or accepted plan references retry, backoff, timeout, or reliability'],
+            requiredEvidence: ['Add an idempotency or duplicate-side-effect commitment to the accepted agent plan.'],
+            observedEvidence: idempotencyCommitment
+                ? [evidence('accepted-plan', 'Accepted plan states an idempotency or duplicate-side-effect strategy.')]
+                : [],
+        });
+    }
+    const migrationTriggered = /\b(migration|migrate|schema change|database migration|backfill)\b/i.test(combinedText) ||
+        input.agentPlan?.expectedFiles.some((filePath) => /(^|\/)(migrations?|schema)(\/|$)/i.test(filePath));
+    if (migrationTriggered) {
+        const rollbackCommitment = /\b(rollback|reversible|down migration|backfill safety|restore strategy)\b/i.test(acceptedPlanText);
+        drafts.push({
+            id: 'data-model:migration-rollback-plan',
+            category: 'data-model',
+            title: 'State the migration rollback strategy',
+            description: 'Schema and migration work needs an accepted-plan commitment for rollback or reversibility.',
+            severity: 'critical',
+            triggeredBy: ['intent or accepted plan references migration, schema change, or backfill'],
+            requiredEvidence: ['Add a rollback, reversible migration, or restore-strategy commitment to the accepted agent plan.'],
+            observedEvidence: rollbackCommitment
+                ? [evidence('accepted-plan', 'Accepted plan states a rollback or reversibility strategy.')]
+                : [],
+        });
+    }
+    const refactorTriggered = input.intentContract?.primaryAction === 'refactor' ||
+        /\b(refactor|restructure|cleanup)\b/i.test(input.goal);
+    if (refactorTriggered) {
+        const behaviorCommitment = /\b(preserve (?:existing )?behavio[u]?r|backward compat|no behavio[u]?r change|regression tests?)\b/i.test(acceptedPlanText);
+        drafts.push({
+            id: 'behavior:refactor-preservation-plan',
+            category: 'behavior',
+            title: 'State the behavior-preservation strategy',
+            description: 'Refactors should name how existing behavior remains stable before implementation expands.',
+            severity: 'warn',
+            triggeredBy: ['user intent declares a refactor or restructure'],
+            requiredEvidence: ['Add a behavior-preservation, compatibility, or regression-test commitment to the accepted agent plan.'],
+            observedEvidence: behaviorCommitment
+                ? [evidence('accepted-plan', 'Accepted plan states a behavior-preservation or regression strategy.')]
+                : [],
+        });
+    }
+    const approvedPaths = input.approvedPaths ?? [];
+    for (const requiredPath of approvalRequiredPaths(events)) {
+        const approved = approvedPaths.find((approvedPath) => matchesPath(requiredPath, approvedPath));
+        drafts.push({
+            id: `ownership:exact-approval:${requiredPath}`,
+            category: 'ownership',
+            title: `Approve sensitive path ${requiredPath}`,
+            description: 'A guarded sensitive or team-owned path must have an explicit session-scoped approval before the write lands.',
+            severity: 'critical',
+            triggeredBy: [`guarded write attempted: ${requiredPath}`],
+            requiredEvidence: [`Approve exactly ${requiredPath} or an explicitly chosen broader glob.`],
+            observedEvidence: approved
+                ? [evidence('exact-approval', `Active session approval recorded: ${approved}`, approved)]
+                : [],
+            requiredPath,
+        });
+    }
+    // V2: architecture-graph-derived structural obligations (auth/payments/
+    // public-api/migration/downstream-impact) for the modules currently in play.
+    drafts.push(...deriveGraphDrafts(input, events, approvedPaths, acceptedPlanText));
+    return finalize(drafts, input.previous ?? [], now, policy, input.waivers ?? []);
+}
+function summarizeArchitectureObligations(obligations = []) {
+    return {
+        total: obligations.length,
+        pending: obligations.filter((item) => item.status === 'pending').length,
+        satisfied: obligations.filter((item) => item.status === 'satisfied').length,
+        waived: obligations.filter((item) => item.status === 'waived').length,
+        criticalPending: obligations.filter((item) => item.status === 'pending' && item.severity === 'critical').length,
+        blockingPending: obligations.filter((item) => item.status === 'pending' && (item.effectiveMode ?? 'warn') === 'block').length,
+    };
+}
+/**
+ * Whether an obligation applies to a given edit path, independent of its status.
+ *  - `ownership` + path-scoped graph obligations apply only when the edit lands
+ *    in (or names) their module.
+ *  - test-satisfiable graph obligations and retry-coverage do not nag the
+ *    satisfying test edit itself.
+ *  - global intent/plan obligations apply to every guarded edit.
+ */
+function obligationScopeMatches(item, filePath) {
+    if (item.id === 'reliability:retry-path-coverage' && isTestPath(filePath))
+        return false;
+    if (item.category === 'ownership')
+        return item.requiredPath ? matchesPath(filePath, item.requiredPath) : false;
+    if (item.requiredPath) {
+        if ((0, architecture_graph_1.isModuleTestSatisfiable)(item.id) && isTestPath(filePath))
+            return false;
+        return matchesPath(filePath, item.requiredPath);
+    }
+    return true;
+}
+function evaluateArchitectureObligationFeedback(obligations = [], filePath) {
+    const pending = obligations.filter((item) => {
+        if (item.status !== 'pending')
+            return false;
+        if ((item.effectiveMode ?? 'warn') === 'off')
+            return false;
+        return obligationScopeMatches(item, filePath);
+    });
+    const blocking = pending.filter((item) => (item.effectiveMode ?? 'warn') === 'block');
+    return {
+        action: blocking.length > 0 ? 'block' : pending.length > 0 ? 'warn' : 'none',
+        filePath,
+        pending,
+        blocking,
+        reasons: pending.map((item) => `${item.title}: ${item.requiredEvidence[0]}`),
+    };
+}
+const SEVERITY_RANK = { critical: 0, warn: 1 };
+function pickPrimary(obligations) {
+    if (obligations.length === 0)
+        return null;
+    return [...obligations].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])[0];
+}
+/**
+ * Evaluate one edit against the architecture graph + live obligation ledger and
+ * return a single structured verdict:
+ *   pass · warn · block · obligation_pending · obligation_waived
+ *
+ * Boundary blocks always win. Block-mode pending obligations also block. Open
+ * warn-mode obligations surface as `obligation_pending` (the edit is allowed but
+ * carries an open obligation). When the only applicable obligations are waived,
+ * the status is `obligation_waived`.
+ */
+function evaluateArchitectureEdit(input) {
+    const filePath = input.filePath;
+    const boundaryVerdict = input.boundaryVerdict ?? 'ok';
+    const obligations = input.obligations ?? [];
+    const graph = input.graph ?? null;
+    const module = graph ? (0, architecture_graph_1.findModuleForPath)(graph, filePath) : null;
+    const surfaces = module?.surfaces ?? [];
+    const dependents = graph && module ? (0, architecture_graph_1.dependentsOf)(graph, module.id) : [];
+    const applicable = obligations.filter((item) => (item.effectiveMode ?? 'warn') !== 'off' && obligationScopeMatches(item, filePath));
+    const pending = applicable.filter((item) => item.status === 'pending');
+    const blocking = pending.filter((item) => (item.effectiveMode ?? 'warn') === 'block');
+    const waived = applicable.filter((item) => item.status === 'waived');
+    const satisfied = applicable.filter((item) => item.status === 'satisfied');
+    let status;
+    if (boundaryVerdict === 'block' || blocking.length > 0)
+        status = 'block';
+    else if (pending.length > 0)
+        status = 'obligation_pending';
+    else if (waived.length > 0)
+        status = 'obligation_waived';
+    else if (boundaryVerdict === 'warn')
+        status = 'warn';
+    else
+        status = 'pass';
+    const reasons = [];
+    const primary = pickPrimary(blocking.length > 0 ? blocking : pending.length > 0 ? pending : waived);
+    let message = '';
+    if (status === 'block') {
+        if (blocking.length > 0 && primary) {
+            message = `${primary.description} (architecture obligation enforced as block).`;
+            reasons.push(...blocking.map((item) => item.description));
+        }
+        else {
+            message = module
+                ? `Edit to ${filePath} is blocked by a governance boundary in module ${module.id}.`
+                : `Edit to ${filePath} is blocked by a governance boundary.`;
+            reasons.push('boundary policy block');
+        }
+    }
+    else if (status === 'obligation_pending' && primary) {
+        message = primary.description;
+        reasons.push(...pending.map((item) => `${item.title}: ${item.requiredEvidence[0] ?? ''}`.trim()));
+    }
+    else if (status === 'obligation_waived' && primary) {
+        const who = primary.waiver?.waivedBy || primary.waiver?.source || 'a human';
+        message = `${primary.description} A waiver is active (${who}); proceeding under accepted risk.`;
+        reasons.push(...waived.map((item) => `${item.title} waived`));
+    }
+    else if (status === 'warn') {
+        message = module
+            ? `Edit to ${filePath} in module ${module.id} is allowed with an advisory warning.`
+            : `Edit to ${filePath} is allowed with an advisory warning.`;
+    }
+    else {
+        message = '';
+    }
+    let options;
+    if (status === 'block') {
+        const ownershipDriven = blocking.some((item) => item.category === 'ownership' || item.category === 'payments' || item.category === 'security') ||
+            Boolean(module?.approvalRequired);
+        options = ownershipDriven ? ['approve', 'waive', 'narrow', 'replan'] : ['waive', 'narrow', 'replan'];
+    }
+    else if (status === 'obligation_pending') {
+        options = ['continue', 'approve', 'waive', 'replan'];
+    }
+    else {
+        options = ['continue'];
+    }
+    return {
+        status,
+        filePath,
+        module: module?.id ?? null,
+        surfaces,
+        dependents,
+        boundaryVerdict,
+        obligations: { blocking, pending, waived, satisfied },
+        reasons: reasons.filter(Boolean),
+        message,
+        options,
+    };
+}
+//# sourceMappingURL=architecture-obligations.js.map
+
+/***/ }),
+
+/***/ 4631:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.compileDeterministicConstraints = compileDeterministicConstraints;
+const PROHIBITIVE_PATTERN = /\b(no|do not|don't|without|avoid|ban|disallow|never|must not)\b/i;
+const CONSTRAINT_TEMPLATES = [
+    {
+        id: 'no_useeffect',
+        displayName: 'No useEffect',
+        triggerTokens: ['useeffect'],
+        pattern: /\buseEffect\s*\(/i,
+        matchToken: 'useeffect',
+    },
+    {
+        id: 'no_console_log',
+        displayName: 'No console.log',
+        triggerTokens: ['console.log', 'console log'],
+        pattern: /\bconsole\.log\s*\(/i,
+        matchToken: 'console.log',
+    },
+    {
+        id: 'no_debugger',
+        displayName: 'No debugger statements',
+        triggerTokens: ['debugger'],
+        pattern: /\bdebugger\b/i,
+        matchToken: 'debugger',
+    },
+    {
+        id: 'no_eval',
+        displayName: 'No eval usage',
+        triggerTokens: ['eval'],
+        pattern: /\beval\s*\(/i,
+        matchToken: 'eval',
+    },
+    {
+        id: 'no_process_env',
+        displayName: 'No process.env access',
+        triggerTokens: ['process.env', 'process env'],
+        pattern: /\bprocess\.env\b/i,
+        matchToken: 'process.env',
+    },
+    {
+        id: 'no_any_type',
+        displayName: 'No any type',
+        triggerTokens: [' any', 'type any', ': any', '<any>'],
+        pattern: /(:\s*any\b|<\s*any\s*>|\bArray<any>\b|\bPromise<any>\b)/i,
+        matchToken: 'any',
+    },
+    {
+        id: 'no_todo_fixme',
+        displayName: 'No TODO/FIXME markers',
+        triggerTokens: ['todo', 'fixme'],
+        pattern: /\b(TODO|FIXME)\b/i,
+        matchToken: 'todo/fixme',
+    },
+    {
+        id: 'no_network_calls',
+        displayName: 'No network calls',
+        triggerTokens: ['network call', 'network calls', 'http call', 'api call', 'external call'],
+        pattern: /\b(fetch\s*\(|axios\.[a-z]+\s*\(|axios\s*\(|XMLHttpRequest\b|http\.request\s*\(|https\.request\s*\(|got\s*\(|superagent\s*\()/i,
+        matchToken: 'network-call',
+    },
+    {
+        id: 'no_child_process',
+        displayName: 'No child_process execution',
+        triggerTokens: ['child_process', 'shell command', 'exec(', 'spawn('],
+        pattern: /\b(child_process|exec\s*\(|execFile\s*\(|spawn\s*\(|fork\s*\()/i,
+        matchToken: 'child_process',
+    },
+    {
+        id: 'no_innerhtml',
+        displayName: 'No innerHTML / dangerouslySetInnerHTML',
+        triggerTokens: ['innerhtml', 'dangerouslysetinnerhtml', 'dom injection'],
+        pattern: /\b(innerHTML|dangerouslySetInnerHTML)\b/i,
+        matchToken: 'innerHTML',
+    },
+];
+function splitStatements(raw) {
+    return raw
+        .split(/[\n;]+/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+}
+function normalizeStatement(statement) {
+    return statement
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+function normalizePathScopeToken(rawValue) {
+    return rawValue
+        .trim()
+        .replace(/^[`'"]+|[`'"]+$/g, '')
+        .replace(/\\/g, '/')
+        .replace(/^\.\//, '')
+        .replace(/\/{2,}/g, '/');
+}
+function looksLikePathScope(token) {
+    if (!token)
+        return false;
+    if (/\s/.test(token))
+        return false;
+    if (token.includes('/'))
+        return true;
+    if (token.includes('*'))
+        return true;
+    return /\.[a-z0-9]{1,8}$/i.test(token);
+}
+function globLikeToRegex(pattern) {
+    const escaped = pattern
+        .split('*')
+        .map((segment) => segment.replace(/[.+^${}()|[\]\\]/g, '\\$&'))
+        .join('.*');
+    return new RegExp(`^${escaped}$`, 'i');
+}
+function compilePathPatterns(patterns) {
+    return patterns
+        .map((pattern) => {
+        try {
+            return globLikeToRegex(pattern);
+        }
+        catch {
+            return null;
+        }
+    })
+        .filter((item) => item instanceof RegExp);
+}
+function parsePathScopes(statement) {
+    const includePatterns = new Set();
+    const excludePatterns = new Set();
+    const includeRegex = /\b(?:in|within|under|inside)\s+[`'"]?([A-Za-z0-9_./*?-]+)[`'"]?/gi;
+    const excludeRegex = /\b(?:except|excluding|but\s+not\s+in|not\s+in)\s+[`'"]?([A-Za-z0-9_./*?-]+)[`'"]?/gi;
+    for (const match of statement.matchAll(includeRegex)) {
+        const candidate = normalizePathScopeToken(match[1] || '');
+        if (looksLikePathScope(candidate)) {
+            includePatterns.add(candidate);
+        }
+    }
+    for (const match of statement.matchAll(excludeRegex)) {
+        const candidate = normalizePathScopeToken(match[1] || '');
+        if (looksLikePathScope(candidate)) {
+            excludePatterns.add(candidate);
+        }
+    }
+    return {
+        includePatterns: [...includePatterns],
+        excludePatterns: [...excludePatterns],
+    };
+}
+function uniqueSorted(values) {
+    return [...new Set(values.filter(Boolean))].sort((left, right) => left.localeCompare(right));
+}
+function buildProvenance(input) {
+    const contributingGraphPaths = input.pathScopes.includePatterns.length > 0
+        ? uniqueSorted(input.pathScopes.includePatterns)
+        : ['<repo-scope>'];
+    return {
+        why: input.why,
+        evidence: uniqueSorted(input.evidence),
+        contributingGraphPaths,
+        trustBoundaries: uniqueSorted(input.trustBoundaries),
+    };
+}
+function applyPathScopes(rule, pathScopes) {
+    const includePatterns = [...pathScopes.includePatterns];
+    const excludePatterns = [...pathScopes.excludePatterns];
+    return {
+        ...rule,
+        ...(includePatterns.length > 0
+            ? {
+                pathIncludePatterns: includePatterns,
+                pathIncludes: compilePathPatterns(includePatterns),
+            }
+            : {}),
+        ...(excludePatterns.length > 0
+            ? {
+                pathExcludePatterns: excludePatterns,
+                pathExcludes: compilePathPatterns(excludePatterns),
+            }
+            : {}),
+    };
+}
+function escapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function parseInvocationLimitRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const fnPatterns = [
+        {
+            regex: /\b([a-z_$][a-z0-9_$]*)\s+(?:function\s+)?(?:should\s+be\s+)?(?:invoked|called)\s+(?:only\s+)?(\d+)\s+times?\b/i,
+            fnIndex: 1,
+            countIndex: 2,
+            comparator: 'max',
+        },
+        {
+            regex: /\b([a-z_$][a-z0-9_$]*)\s+(?:function\s+)?(?:should\s+be\s+)?(?:invoked|called)\s+(?:at\s+most|no\s+more\s+than|maximum)\s+(\d+)\s+times?\b/i,
+            fnIndex: 1,
+            countIndex: 2,
+            comparator: 'max',
+        },
+        {
+            regex: /\b([a-z_$][a-z0-9_$]*)\s+(?:function\s+)?(?:should\s+be\s+)?(?:invoked|called)\s+(?:at\s+least|no\s+less\s+than|minimum)\s+(\d+)\s+times?\b/i,
+            fnIndex: 1,
+            countIndex: 2,
+            comparator: 'min',
+        },
+        {
+            regex: /\b([a-z_$][a-z0-9_$]*)\s+(?:function\s+)?(?:should\s+be\s+)?(?:invoked|called)\s+(?:exactly)\s+(\d+)\s+times?\b/i,
+            fnIndex: 1,
+            countIndex: 2,
+            comparator: 'exact',
+        },
+        {
+            regex: /\bonly\s+(\d+)\s+calls?\s+to\s+([a-z_$][a-z0-9_$]*)\b/i,
+            fnIndex: 2,
+            countIndex: 1,
+            comparator: 'max',
+        },
+        {
+            regex: /\bat\s+most\s+(\d+)\s+calls?\s+to\s+([a-z_$][a-z0-9_$]*)\b/i,
+            fnIndex: 2,
+            countIndex: 1,
+            comparator: 'max',
+        },
+        {
+            regex: /\bat\s+least\s+(\d+)\s+calls?\s+to\s+([a-z_$][a-z0-9_$]*)\b/i,
+            fnIndex: 2,
+            countIndex: 1,
+            comparator: 'min',
+        },
+        {
+            regex: /\bexactly\s+(\d+)\s+calls?\s+to\s+([a-z_$][a-z0-9_$]*)\b/i,
+            fnIndex: 2,
+            countIndex: 1,
+            comparator: 'exact',
+        },
+    ];
+    let fnName = null;
+    let rawLimit = null;
+    let comparator = 'max';
+    for (const pattern of fnPatterns) {
+        const match = normalized.match(pattern.regex);
+        if (!match) {
+            continue;
+        }
+        fnName = match[pattern.fnIndex] || null;
+        rawLimit = match[pattern.countIndex] || null;
+        comparator = pattern.comparator;
+        break;
+    }
+    if (!fnName || !rawLimit) {
+        return null;
+    }
+    const limit = Number(rawLimit);
+    if (!Number.isFinite(limit) || limit < 0) {
+        return null;
+    }
+    const repoScopeHint = /\b(across\s+(?:the\s+)?(?:repo|repository|codebase)|globally|in\s+the\s+entire\s+repo)\b/i.test(normalized);
+    const displaySuffix = comparator === 'exact'
+        ? `exactly ${limit}`
+        : comparator === 'min'
+            ? `at least ${limit}`
+            : `at most ${limit}`;
+    const minMatches = comparator === 'min' || comparator === 'exact' ? limit : undefined;
+    const maxMatches = comparator === 'max' || comparator === 'exact' ? limit : undefined;
+    return applyPathScopes({
+        id: `${source}:${comparator}_invocations_${fnName.toLowerCase()}${repoScopeHint ? '_repo' : ''}`,
+        source,
+        statement,
+        displayName: `${fnName}() invocation limit (${displaySuffix}${repoScopeHint ? ', repo-wide' : ''})`,
+        pattern: new RegExp(`(?<!function\\s)\\b${escapeRegex(fnName)}\\s*\\(`, 'i'),
+        matchToken: `${fnName}(`,
+        ...(typeof minMatches === 'number' ? { minMatchesPerFile: minMatches } : {}),
+        ...(typeof maxMatches === 'number' ? { maxMatchesPerFile: maxMatches } : {}),
+        evaluationMode: 'full_file',
+        evaluationScope: repoScopeHint ? 'repo' : 'file',
+        provenance: buildProvenance({
+            why: 'Statement imposes deterministic invocation cardinality limits.',
+            evidence: [fnName, rawLimit, comparator, repoScopeHint ? 'repo-scope' : 'file-scope'],
+            trustBoundaries: repoScopeHint ? ['cross-module'] : ['local-module'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+const EXPORTED_SIGNATURE_PATTERN = /\bexport\s+(?:async\s+)?function\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(|\bexport\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|\bexport\s+(?:interface|type)\s+[A-Za-z_$][A-Za-z0-9_$]*/i;
+function parseSignatureDriftRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsSignature = /\b(signature|contract|public api|api surface|exported api)\b/i.test(normalized);
+    const mentionsChange = /\b(change|changed|modify|modified|drift|mutation|alter)\b/i.test(normalized);
+    const prohibitive = PROHIBITIVE_PATTERN.test(normalized)
+        || /\bkeep\b/i.test(normalized)
+        || /\bpreserve\b/i.test(normalized);
+    if (!mentionsSignature || !mentionsChange || !prohibitive) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:no_api_signature_drift`,
+        source,
+        statement,
+        displayName: 'No exported API signature drift',
+        pattern: EXPORTED_SIGNATURE_PATTERN,
+        matchToken: 'api-signature-drift',
+        evaluationMode: 'signature_delta',
+        evaluationScope: 'file',
+        provenance: buildProvenance({
+            why: 'Statement protects external API signature stability.',
+            evidence: ['signature', 'public api', 'change/modify'],
+            trustBoundaries: ['public-api', 'external-consumer'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function parseBackwardCompatibilityRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsCompatibility = /\b(backward compatibility|backwards compatibility|breaking change|non-breaking|existing consumers?)\b/i.test(normalized);
+    if (!mentionsCompatibility) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:backward_compatibility`,
+        source,
+        statement,
+        displayName: 'Backward compatibility guard (public contract drift)',
+        pattern: EXPORTED_SIGNATURE_PATTERN,
+        matchToken: 'backward-compatibility',
+        evaluationMode: 'signature_delta',
+        evaluationScope: 'file',
+        provenance: buildProvenance({
+            why: 'Statement requires non-breaking compatibility guarantees for existing consumers.',
+            evidence: ['backward compatibility', 'breaking change', 'existing consumers'],
+            trustBoundaries: ['public-api', 'external-consumer'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function parseAsyncOrderingRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsOrdering = /\b(async ordering|message ordering|out of order|preserve order|ordered workflow|ordering guarantees?|fifo)\b/i.test(normalized);
+    const mentionsParallelRisk = /\b(parallel|promise\.all|allsettled|race|fan-?out|parallelize)\b/i.test(normalized);
+    if (!mentionsOrdering && !mentionsParallelRisk) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:async_ordering`,
+        source,
+        statement,
+        displayName: 'Async ordering guard (parallelization risk)',
+        pattern: /\bPromise\.(?:all|allSettled|race|any)\s*\(|\bp-?map\s*\(|\bparallel(?:ize|Map)?\s*\(/i,
+        matchToken: 'async-ordering',
+        evaluationMode: 'added_lines',
+        evaluationScope: 'file',
+        provenance: buildProvenance({
+            why: 'Statement flags async ordering sensitivity and blocks risky parallel fan-out patterns.',
+            evidence: ['ordering', 'out of order', 'parallel execution'],
+            trustBoundaries: ['async-workflow', 'downstream-capacity'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function parseEventSchemaConsistencyRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsEventSchema = /\b(event schema|event payload|event contract|subscriber|downstream event|schema evolution|required fields?)\b/i.test(normalized);
+    if (!mentionsEventSchema) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:event_schema_consistency`,
+        source,
+        statement,
+        displayName: 'Event/schema consistency guard',
+        pattern: /\b(?:interface|type)\s+[A-Za-z_$][A-Za-z0-9_$]*(?:Event|Payload|Message|Envelope)\b|\bevent[A-Za-z0-9_$]*\s*:\s*|\bschemaVersion\b/i,
+        matchToken: 'event-schema-drift',
+        evaluationMode: 'signature_delta',
+        evaluationScope: 'file',
+        provenance: buildProvenance({
+            why: 'Statement requires event contract continuity for downstream consumers.',
+            evidence: ['event schema', 'subscriber', 'required fields'],
+            trustBoundaries: ['event-bus', 'external-subscriber'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function parseMultiTenantIsolationRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsTenantIsolation = /\b(multi-tenant|tenant isolation|cross-tenant|tenant boundaries?|tenant_id|tenant guard)\b/i.test(normalized);
+    if (!mentionsTenantIsolation) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:multi_tenant_isolation`,
+        source,
+        statement,
+        displayName: 'Multi-tenant isolation guard',
+        pattern: /\b(?:bypassTenant(?:Guard|Scope)?|ignoreTenant(?:Scope)?|crossTenant|allTenants|tenantScope\s*:\s*false|setTenantContext\s*\(\s*null\s*\)|withoutTenantScope)\b/i,
+        matchToken: 'tenant-isolation',
+        evaluationMode: 'full_file',
+        evaluationScope: 'file',
+        provenance: buildProvenance({
+            why: 'Statement enforces tenant boundary safety and isolation constraints.',
+            evidence: ['multi-tenant', 'tenant_id', 'cross-tenant'],
+            trustBoundaries: ['tenant-boundary', 'data-access-layer'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function parseCacheInvariantRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsCache = /\b(cache invalidation|cache invariant|cache keys?|cache consistency|evict cache|clear(?:ing)? (?:shared )?cache|shared cache|invalidate .*cache)\b/i.test(normalized);
+    if (!mentionsCache) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:cache_invariant`,
+        source,
+        statement,
+        displayName: 'Cache invariant guard (global invalidation risk)',
+        pattern: /\b(?:cache\.(?:clear|reset)\s*\(\s*\)|invalidateAll\s*\(|flushAll\s*\(|redis\.flush(?:all|db)\s*\(|\bFLUSH(?:ALL|DB)\b)\b/i,
+        matchToken: 'cache-invariant',
+        evaluationMode: 'added_lines',
+        evaluationScope: 'file',
+        provenance: buildProvenance({
+            why: 'Statement marks cache behavior as operationally sensitive and blocks global flush patterns.',
+            evidence: ['cache invalidation', 'cache key', 'clear cache'],
+            trustBoundaries: ['cache-layer', 'operational-safety'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function parseIdempotencyRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsIdempotency = /\b(idempotency|idempotent|retryable write|retries|exactly once|at-least-once)\b/i.test(normalized);
+    if (!mentionsIdempotency) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:idempotency`,
+        source,
+        statement,
+        displayName: 'Idempotency expectation guard',
+        pattern: /\b(?:idempotency[-_ ]key|x-idempotency-key|idempotencyKey|dedupe(?:Key|Id)?)\b/i,
+        matchToken: 'idempotency-key',
+        minMatchesPerFile: 1,
+        evaluationMode: 'full_file',
+        evaluationScope: 'repo',
+        provenance: buildProvenance({
+            why: 'Statement requires deterministic retry safety via idempotency markers.',
+            evidence: ['idempotency', 'retryable write', 'exactly once'],
+            trustBoundaries: ['api-edge', 'write-path'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function parseMigrationSafetyRule(statement, source, pathScopes) {
+    const normalized = normalizeStatement(statement);
+    const mentionsMigration = /\b(migration safety|schema migration|destructive migration|drop column|drop table|truncate table|backfill safety)\b/i.test(normalized);
+    if (!mentionsMigration) {
+        return null;
+    }
+    return applyPathScopes({
+        id: `${source}:migration_safety`,
+        source,
+        statement,
+        displayName: 'Migration safety guard (destructive operation risk)',
+        pattern: /\b(?:DROP\s+COLUMN|DROP\s+TABLE|TRUNCATE\s+TABLE|ALTER\s+TABLE\s+[A-Za-z0-9_`".]+\s+DROP\s+COLUMN|DELETE\s+FROM\s+[A-Za-z0-9_`".]+\s*;)\b/i,
+        matchToken: 'destructive-migration',
+        evaluationMode: 'added_lines',
+        evaluationScope: 'file',
+        provenance: buildProvenance({
+            why: 'Statement requires non-destructive migration behavior for production safety.',
+            evidence: ['migration safety', 'drop column', 'truncate table'],
+            trustBoundaries: ['data-store', 'migration-pipeline'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function statementMatchesTemplate(normalizedStatement, template) {
+    return template.triggerTokens.some((token) => normalizedStatement.includes(token));
+}
+function createRule(template, source, statement, pathScopes) {
+    return applyPathScopes({
+        id: `${source}:${template.id}`,
+        source,
+        statement,
+        displayName: template.displayName,
+        pattern: template.pattern,
+        matchToken: template.matchToken,
+        provenance: buildProvenance({
+            why: 'Statement matched deterministic constraint template.',
+            evidence: template.triggerTokens,
+            trustBoundaries: ['code-hygiene'],
+            pathScopes,
+        }),
+    }, pathScopes);
+}
+function compileStatements(statements, source) {
+    const rules = [];
+    const unmatchedStatements = [];
+    for (const rawStatement of statements) {
+        const normalized = normalizeStatement(rawStatement);
+        if (!normalized) {
+            continue;
+        }
+        const pathScopes = parsePathScopes(rawStatement);
+        const invocationLimitRule = parseInvocationLimitRule(rawStatement, source, pathScopes);
+        if (invocationLimitRule) {
+            rules.push(invocationLimitRule);
+            continue;
+        }
+        const signatureDriftRule = parseSignatureDriftRule(rawStatement, source, pathScopes);
+        if (signatureDriftRule) {
+            rules.push(signatureDriftRule);
+            continue;
+        }
+        const backwardCompatibilityRule = parseBackwardCompatibilityRule(rawStatement, source, pathScopes);
+        if (backwardCompatibilityRule) {
+            rules.push(backwardCompatibilityRule);
+            continue;
+        }
+        const asyncOrderingRule = parseAsyncOrderingRule(rawStatement, source, pathScopes);
+        if (asyncOrderingRule) {
+            rules.push(asyncOrderingRule);
+            continue;
+        }
+        const eventSchemaRule = parseEventSchemaConsistencyRule(rawStatement, source, pathScopes);
+        if (eventSchemaRule) {
+            rules.push(eventSchemaRule);
+            continue;
+        }
+        const multiTenantRule = parseMultiTenantIsolationRule(rawStatement, source, pathScopes);
+        if (multiTenantRule) {
+            rules.push(multiTenantRule);
+            continue;
+        }
+        const cacheInvariantRule = parseCacheInvariantRule(rawStatement, source, pathScopes);
+        if (cacheInvariantRule) {
+            rules.push(cacheInvariantRule);
+            continue;
+        }
+        const idempotencyRule = parseIdempotencyRule(rawStatement, source, pathScopes);
+        if (idempotencyRule) {
+            rules.push(idempotencyRule);
+            continue;
+        }
+        const migrationSafetyRule = parseMigrationSafetyRule(rawStatement, source, pathScopes);
+        if (migrationSafetyRule) {
+            rules.push(migrationSafetyRule);
+            continue;
+        }
+        const requiresProhibitiveLanguage = source === 'intent';
+        if (requiresProhibitiveLanguage && !PROHIBITIVE_PATTERN.test(normalized)) {
+            continue;
+        }
+        const matches = CONSTRAINT_TEMPLATES.filter((template) => statementMatchesTemplate(normalized, template));
+        if (matches.length === 0) {
+            unmatchedStatements.push(rawStatement);
+            continue;
+        }
+        for (const match of matches) {
+            rules.push(createRule(match, source, rawStatement, pathScopes));
+        }
+    }
+    return {
+        rules,
+        unmatchedStatements,
+    };
+}
+function dedupeRules(rules) {
+    const seen = new Set();
+    const deduped = [];
+    for (const rule of rules) {
+        const key = [
+            rule.id,
+            rule.statement.toLowerCase(),
+            rule.pathIncludePatterns?.join('|') || '',
+            rule.pathExcludePatterns?.join('|') || '',
+            typeof rule.minMatchesPerFile === 'number' ? String(rule.minMatchesPerFile) : '',
+            typeof rule.maxMatchesPerFile === 'number' ? String(rule.maxMatchesPerFile) : '',
+            rule.evaluationMode || '',
+            rule.evaluationScope || '',
+        ].join('::');
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        deduped.push(rule);
+    }
+    return deduped;
+}
+function compileDeterministicConstraints(input) {
+    const intentStatements = splitStatements(input.intentConstraints || '');
+    const policyStatements = (input.policyRules || [])
+        .map((rule) => String(rule || '').trim())
+        .filter(Boolean);
+    const compiledIntent = compileStatements(intentStatements, 'intent');
+    const compiledPolicy = compileStatements(policyStatements, 'policy');
+    return {
+        rules: dedupeRules([...compiledIntent.rules, ...compiledPolicy.rules]),
+        unmatchedStatements: [...compiledIntent.unmatchedStatements, ...compiledPolicy.unmatchedStatements],
+    };
+}
+//# sourceMappingURL=constraints.js.map
+
+/***/ }),
+
+/***/ 7399:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.findModuleForPath = exports.extractImportSpecifiers = exports.deriveGraphObligationSeeds = exports.dependentsOf = exports.dependenciesOf = exports.buildArchitectureGraph = exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION = exports.summarizeArchitectureObligations = exports.normalizeArchitectureObligationPolicy = exports.isArchitectureObligationWaiverActive = exports.evaluateArchitectureEdit = exports.evaluateArchitectureObligationFeedback = exports.effectiveArchitectureObligationMode = exports.deriveArchitectureObligations = exports.activeArchitectureObligationWaivers = exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = exports.buildAgentGuardPostureSummary = exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION = exports.buildAgentInvocationSummary = exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION = exports.sessionPath = exports.sessionsDir = exports.replaySession = exports.finishSession = exports.buildPlanTimeline = exports.activeAgentPlanRevision = exports.evaluateSessionPlanCoherence = exports.classifyAgentPlanAmendment = exports.decideAgentPlanAmendment = exports.amendAgentPlan = exports.captureAgentPlan = exports.attachAgentPlan = exports.evaluatePlanCoherencePolicy = exports.evaluateIntentCoherence = exports.refreshArchitectureObligations = exports.waiveArchitectureObligation = exports.expireArchitectureObligationWaivers = exports.expireSessionApprovals = exports.activeApprovalPaths = exports.revokeSessionApproval = exports.approveSession = exports.appendEvent = exports.loadSession = exports.loadActiveSession = exports.createSession = exports.ownersForPath = exports.DEFAULT_PLAN_COHERENCE_MODE = exports.checkFileBoundary = exports.buildRepoGovernanceProfile = void 0;
+exports.normalizeAgentRuntimeEvent = exports.listAgentRuntimeAdapterCapabilities = exports.getAgentRuntimeAdapterCapability = exports.AGENT_RUNTIME_DECISION_SCHEMA_VERSION = exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION = exports.sanitizePlanCoherence = exports.sanitizeAgentPlan = exports.isTestOrUtilityPath = exports.planImpliesSupportWork = exports.evaluatePlanCoherence = exports.parsePlanSteps = exports.extractExpectedTargetsFromText = exports.extractAgentPlan = exports.AGENT_PLAN_SCHEMA_VERSION = exports.validateSelfAttestedRecordConsistency = exports.unionCoverageManifests = exports.unionCoverageEntries = exports.sortDeltaEntries = exports.sortCoverageEntries = exports.readSelfAttestedAdmissionRecordFromText = exports.readSelfAttestedAdmissionRecord = exports.normalizeDeltaEntries = exports.deriveCoverageEntries = exports.computeDeltaHash = exports.computeCoverageSetHash = exports.buildCoverageManifest = exports.compileDeterministicConstraints = exports.resolveImportSpecifier = exports.modulesInPlay = exports.moduleIdForPath = exports.isModuleTestSatisfiable = void 0;
+exports.extractPlannedFilePaths = extractPlannedFilePaths;
+exports.resolvePlanVerdict = resolvePlanVerdict;
+exports.buildPlanVerificationMessage = buildPlanVerificationMessage;
+exports.evaluatePlanVerification = evaluatePlanVerification;
+// V0: Repo Governance Profile
+var profile_1 = __nccwpck_require__(6106);
+Object.defineProperty(exports, "buildRepoGovernanceProfile", ({ enumerable: true, get: function () { return profile_1.buildRepoGovernanceProfile; } }));
+Object.defineProperty(exports, "checkFileBoundary", ({ enumerable: true, get: function () { return profile_1.checkFileBoundary; } }));
+Object.defineProperty(exports, "DEFAULT_PLAN_COHERENCE_MODE", ({ enumerable: true, get: function () { return profile_1.DEFAULT_PLAN_COHERENCE_MODE; } }));
+Object.defineProperty(exports, "ownersForPath", ({ enumerable: true, get: function () { return profile_1.ownersForPath; } }));
+// V0: Session store
+var session_1 = __nccwpck_require__(9463);
+Object.defineProperty(exports, "createSession", ({ enumerable: true, get: function () { return session_1.createSession; } }));
+Object.defineProperty(exports, "loadActiveSession", ({ enumerable: true, get: function () { return session_1.loadActiveSession; } }));
+Object.defineProperty(exports, "loadSession", ({ enumerable: true, get: function () { return session_1.loadSession; } }));
+Object.defineProperty(exports, "appendEvent", ({ enumerable: true, get: function () { return session_1.appendEvent; } }));
+Object.defineProperty(exports, "approveSession", ({ enumerable: true, get: function () { return session_1.approveSession; } }));
+Object.defineProperty(exports, "revokeSessionApproval", ({ enumerable: true, get: function () { return session_1.revokeSessionApproval; } }));
+Object.defineProperty(exports, "activeApprovalPaths", ({ enumerable: true, get: function () { return session_1.activeApprovalPaths; } }));
+Object.defineProperty(exports, "expireSessionApprovals", ({ enumerable: true, get: function () { return session_1.expireSessionApprovals; } }));
+Object.defineProperty(exports, "expireArchitectureObligationWaivers", ({ enumerable: true, get: function () { return session_1.expireArchitectureObligationWaivers; } }));
+Object.defineProperty(exports, "waiveArchitectureObligation", ({ enumerable: true, get: function () { return session_1.waiveArchitectureObligation; } }));
+Object.defineProperty(exports, "refreshArchitectureObligations", ({ enumerable: true, get: function () { return session_1.refreshArchitectureObligations; } }));
+Object.defineProperty(exports, "evaluateIntentCoherence", ({ enumerable: true, get: function () { return session_1.evaluateIntentCoherence; } }));
+Object.defineProperty(exports, "evaluatePlanCoherencePolicy", ({ enumerable: true, get: function () { return session_1.evaluatePlanCoherencePolicy; } }));
+Object.defineProperty(exports, "attachAgentPlan", ({ enumerable: true, get: function () { return session_1.attachAgentPlan; } }));
+Object.defineProperty(exports, "captureAgentPlan", ({ enumerable: true, get: function () { return session_1.captureAgentPlan; } }));
+Object.defineProperty(exports, "amendAgentPlan", ({ enumerable: true, get: function () { return session_1.amendAgentPlan; } }));
+Object.defineProperty(exports, "decideAgentPlanAmendment", ({ enumerable: true, get: function () { return session_1.decideAgentPlanAmendment; } }));
+Object.defineProperty(exports, "classifyAgentPlanAmendment", ({ enumerable: true, get: function () { return session_1.classifyAgentPlanAmendment; } }));
+Object.defineProperty(exports, "evaluateSessionPlanCoherence", ({ enumerable: true, get: function () { return session_1.evaluateSessionPlanCoherence; } }));
+Object.defineProperty(exports, "activeAgentPlanRevision", ({ enumerable: true, get: function () { return session_1.activeAgentPlanRevision; } }));
+Object.defineProperty(exports, "buildPlanTimeline", ({ enumerable: true, get: function () { return session_1.buildPlanTimeline; } }));
+Object.defineProperty(exports, "finishSession", ({ enumerable: true, get: function () { return session_1.finishSession; } }));
+Object.defineProperty(exports, "replaySession", ({ enumerable: true, get: function () { return session_1.replaySession; } }));
+Object.defineProperty(exports, "sessionsDir", ({ enumerable: true, get: function () { return session_1.sessionsDir; } }));
+Object.defineProperty(exports, "sessionPath", ({ enumerable: true, get: function () { return session_1.sessionPath; } }));
+var agent_invocation_observability_1 = __nccwpck_require__(1349);
+Object.defineProperty(exports, "AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION", ({ enumerable: true, get: function () { return agent_invocation_observability_1.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "buildAgentInvocationSummary", ({ enumerable: true, get: function () { return agent_invocation_observability_1.buildAgentInvocationSummary; } }));
+var agent_guard_posture_1 = __nccwpck_require__(4839);
+Object.defineProperty(exports, "AGENT_GUARD_POSTURE_SCHEMA_VERSION", ({ enumerable: true, get: function () { return agent_guard_posture_1.AGENT_GUARD_POSTURE_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "buildAgentGuardPostureSummary", ({ enumerable: true, get: function () { return agent_guard_posture_1.buildAgentGuardPostureSummary; } }));
+var architecture_obligations_1 = __nccwpck_require__(568);
+Object.defineProperty(exports, "ARCHITECTURE_OBLIGATION_SCHEMA_VERSION", ({ enumerable: true, get: function () { return architecture_obligations_1.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "DEFAULT_ARCHITECTURE_OBLIGATION_POLICY", ({ enumerable: true, get: function () { return architecture_obligations_1.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY; } }));
+Object.defineProperty(exports, "activeArchitectureObligationWaivers", ({ enumerable: true, get: function () { return architecture_obligations_1.activeArchitectureObligationWaivers; } }));
+Object.defineProperty(exports, "deriveArchitectureObligations", ({ enumerable: true, get: function () { return architecture_obligations_1.deriveArchitectureObligations; } }));
+Object.defineProperty(exports, "effectiveArchitectureObligationMode", ({ enumerable: true, get: function () { return architecture_obligations_1.effectiveArchitectureObligationMode; } }));
+Object.defineProperty(exports, "evaluateArchitectureObligationFeedback", ({ enumerable: true, get: function () { return architecture_obligations_1.evaluateArchitectureObligationFeedback; } }));
+Object.defineProperty(exports, "evaluateArchitectureEdit", ({ enumerable: true, get: function () { return architecture_obligations_1.evaluateArchitectureEdit; } }));
+Object.defineProperty(exports, "isArchitectureObligationWaiverActive", ({ enumerable: true, get: function () { return architecture_obligations_1.isArchitectureObligationWaiverActive; } }));
+Object.defineProperty(exports, "normalizeArchitectureObligationPolicy", ({ enumerable: true, get: function () { return architecture_obligations_1.normalizeArchitectureObligationPolicy; } }));
+Object.defineProperty(exports, "summarizeArchitectureObligations", ({ enumerable: true, get: function () { return architecture_obligations_1.summarizeArchitectureObligations; } }));
+// V2: Repository Architecture Graph (module boundaries + dependency edges)
+var architecture_graph_1 = __nccwpck_require__(65);
+Object.defineProperty(exports, "ARCHITECTURE_GRAPH_SCHEMA_VERSION", ({ enumerable: true, get: function () { return architecture_graph_1.ARCHITECTURE_GRAPH_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "buildArchitectureGraph", ({ enumerable: true, get: function () { return architecture_graph_1.buildArchitectureGraph; } }));
+Object.defineProperty(exports, "dependenciesOf", ({ enumerable: true, get: function () { return architecture_graph_1.dependenciesOf; } }));
+Object.defineProperty(exports, "dependentsOf", ({ enumerable: true, get: function () { return architecture_graph_1.dependentsOf; } }));
+Object.defineProperty(exports, "deriveGraphObligationSeeds", ({ enumerable: true, get: function () { return architecture_graph_1.deriveGraphObligationSeeds; } }));
+Object.defineProperty(exports, "extractImportSpecifiers", ({ enumerable: true, get: function () { return architecture_graph_1.extractImportSpecifiers; } }));
+Object.defineProperty(exports, "findModuleForPath", ({ enumerable: true, get: function () { return architecture_graph_1.findModuleForPath; } }));
+Object.defineProperty(exports, "isModuleTestSatisfiable", ({ enumerable: true, get: function () { return architecture_graph_1.isModuleTestSatisfiable; } }));
+Object.defineProperty(exports, "moduleIdForPath", ({ enumerable: true, get: function () { return architecture_graph_1.moduleIdForPath; } }));
+Object.defineProperty(exports, "modulesInPlay", ({ enumerable: true, get: function () { return architecture_graph_1.modulesInPlay; } }));
+Object.defineProperty(exports, "resolveImportSpecifier", ({ enumerable: true, get: function () { return architecture_graph_1.resolveImportSpecifier; } }));
+var constraints_1 = __nccwpck_require__(4631);
+Object.defineProperty(exports, "compileDeterministicConstraints", ({ enumerable: true, get: function () { return constraints_1.compileDeterministicConstraints; } }));
+// Runtime Admission — pure provenance core (Phase A)
+var admission_provenance_1 = __nccwpck_require__(6960);
+Object.defineProperty(exports, "buildCoverageManifest", ({ enumerable: true, get: function () { return admission_provenance_1.buildCoverageManifest; } }));
+Object.defineProperty(exports, "computeCoverageSetHash", ({ enumerable: true, get: function () { return admission_provenance_1.computeCoverageSetHash; } }));
+Object.defineProperty(exports, "computeDeltaHash", ({ enumerable: true, get: function () { return admission_provenance_1.computeDeltaHash; } }));
+Object.defineProperty(exports, "deriveCoverageEntries", ({ enumerable: true, get: function () { return admission_provenance_1.deriveCoverageEntries; } }));
+Object.defineProperty(exports, "normalizeDeltaEntries", ({ enumerable: true, get: function () { return admission_provenance_1.normalizeDeltaEntries; } }));
+Object.defineProperty(exports, "readSelfAttestedAdmissionRecord", ({ enumerable: true, get: function () { return admission_provenance_1.readSelfAttestedAdmissionRecord; } }));
+Object.defineProperty(exports, "readSelfAttestedAdmissionRecordFromText", ({ enumerable: true, get: function () { return admission_provenance_1.readSelfAttestedAdmissionRecordFromText; } }));
+Object.defineProperty(exports, "sortCoverageEntries", ({ enumerable: true, get: function () { return admission_provenance_1.sortCoverageEntries; } }));
+Object.defineProperty(exports, "sortDeltaEntries", ({ enumerable: true, get: function () { return admission_provenance_1.sortDeltaEntries; } }));
+Object.defineProperty(exports, "unionCoverageEntries", ({ enumerable: true, get: function () { return admission_provenance_1.unionCoverageEntries; } }));
+Object.defineProperty(exports, "unionCoverageManifests", ({ enumerable: true, get: function () { return admission_provenance_1.unionCoverageManifests; } }));
+Object.defineProperty(exports, "validateSelfAttestedRecordConsistency", ({ enumerable: true, get: function () { return admission_provenance_1.validateSelfAttestedRecordConsistency; } }));
+// V1: Agent Plan Capture (source-free model of the agent's stated plan)
+var agent_plan_1 = __nccwpck_require__(9864);
+Object.defineProperty(exports, "AGENT_PLAN_SCHEMA_VERSION", ({ enumerable: true, get: function () { return agent_plan_1.AGENT_PLAN_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "extractAgentPlan", ({ enumerable: true, get: function () { return agent_plan_1.extractAgentPlan; } }));
+Object.defineProperty(exports, "extractExpectedTargetsFromText", ({ enumerable: true, get: function () { return agent_plan_1.extractExpectedTargetsFromText; } }));
+Object.defineProperty(exports, "parsePlanSteps", ({ enumerable: true, get: function () { return agent_plan_1.parsePlanSteps; } }));
+Object.defineProperty(exports, "evaluatePlanCoherence", ({ enumerable: true, get: function () { return agent_plan_1.evaluatePlanCoherence; } }));
+Object.defineProperty(exports, "planImpliesSupportWork", ({ enumerable: true, get: function () { return agent_plan_1.planImpliesSupportWork; } }));
+Object.defineProperty(exports, "isTestOrUtilityPath", ({ enumerable: true, get: function () { return agent_plan_1.isTestOrUtilityPath; } }));
+Object.defineProperty(exports, "sanitizeAgentPlan", ({ enumerable: true, get: function () { return agent_plan_1.sanitizeAgentPlan; } }));
+Object.defineProperty(exports, "sanitizePlanCoherence", ({ enumerable: true, get: function () { return agent_plan_1.sanitizePlanCoherence; } }));
+// V1: Agent Runtime Adapter Layer (hooks / MCP / IDE / future agents)
+var agent_runtime_adapter_1 = __nccwpck_require__(1989);
+Object.defineProperty(exports, "AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION", ({ enumerable: true, get: function () { return agent_runtime_adapter_1.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "AGENT_RUNTIME_DECISION_SCHEMA_VERSION", ({ enumerable: true, get: function () { return agent_runtime_adapter_1.AGENT_RUNTIME_DECISION_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "getAgentRuntimeAdapterCapability", ({ enumerable: true, get: function () { return agent_runtime_adapter_1.getAgentRuntimeAdapterCapability; } }));
+Object.defineProperty(exports, "listAgentRuntimeAdapterCapabilities", ({ enumerable: true, get: function () { return agent_runtime_adapter_1.listAgentRuntimeAdapterCapabilities; } }));
+Object.defineProperty(exports, "normalizeAgentRuntimeEvent", ({ enumerable: true, get: function () { return agent_runtime_adapter_1.normalizeAgentRuntimeEvent; } }));
+const constraints_2 = __nccwpck_require__(4631);
+function normalizeRepoPath(pathValue) {
+    return pathValue.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+}
+function extractPlannedFilePaths(planFiles) {
+    const plannedFilePaths = new Set();
+    for (const file of planFiles) {
+        const normalizedPath = normalizeRepoPath(file.path);
+        if (!normalizedPath) {
+            continue;
+        }
+        if (file.action === 'MODIFY' || file.action === 'CREATE') {
+            plannedFilePaths.add(normalizedPath);
+        }
+    }
+    return Array.from(plannedFilePaths);
+}
+function detectConstraintViolations(intentConstraints, policyRules, extraConstraintRules, changedFiles, fileContents) {
+    const compiled = (0, constraints_2.compileDeterministicConstraints)({
+        intentConstraints,
+        policyRules,
+    });
+    const rules = [
+        ...compiled.rules,
+        ...(extraConstraintRules || []),
+    ];
+    if (rules.length === 0) {
+        return [];
+    }
+    const violations = [];
+    const seenViolations = new Set();
+    const normalizedFileContents = {};
+    for (const [path, content] of Object.entries(fileContents || {})) {
+        normalizedFileContents[normalizeRepoPath(path)] = content;
+    }
+    const pathMatchesRule = (rule, filePath) => {
+        const include = rule.pathIncludes || [];
+        const exclude = rule.pathExcludes || [];
+        if (include.length > 0 && !include.some((pattern) => pattern.test(filePath))) {
+            return false;
+        }
+        if (exclude.length > 0 && exclude.some((pattern) => pattern.test(filePath))) {
+            return false;
+        }
+        return true;
+    };
+    const countMatches = (pattern, input) => {
+        if (!input)
+            return 0;
+        const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+        const re = new RegExp(pattern.source, flags);
+        let total = 0;
+        for (const _match of input.matchAll(re)) {
+            total += 1;
+        }
+        return total;
+    };
+    const addedLinesByPath = new Map();
+    for (const file of changedFiles) {
+        const addedLines = (file.hunks || []).flatMap((hunk) => hunk.lines
+            .filter((line) => line.type === 'added')
+            .map((line) => line.content));
+        addedLinesByPath.set(file.path, addedLines.join('\n'));
+    }
+    const candidateRepoPaths = new Set([
+        ...changedFiles.map((file) => file.path),
+        ...Object.keys(normalizedFileContents),
+    ]);
+    for (const rule of rules) {
+        if (rule.evaluationMode === 'signature_delta') {
+            for (const file of changedFiles) {
+                if (!pathMatchesRule(rule, file.path)) {
+                    continue;
+                }
+                const addedSignatureLines = (file.hunks || []).flatMap((hunk) => hunk.lines
+                    .filter((line) => line.type === 'added' && new RegExp(rule.pattern.source, rule.pattern.flags).test(line.content))
+                    .map((line) => line.content));
+                const removedSignatureLines = (file.hunks || []).flatMap((hunk) => hunk.lines
+                    .filter((line) => line.type === 'removed' && new RegExp(rule.pattern.source, rule.pattern.flags).test(line.content))
+                    .map((line) => line.content));
+                const deltaCount = addedSignatureLines.length + removedSignatureLines.length;
+                if (deltaCount === 0) {
+                    continue;
+                }
+                const violation = `Exported API signature delta detected in ${file.path} ` +
+                    `(added ${addedSignatureLines.length}, removed ${removedSignatureLines.length}, violates constraint: "${rule.displayName}")`;
+                if (!seenViolations.has(violation)) {
+                    seenViolations.add(violation);
+                    violations.push(violation);
+                }
+            }
+            continue;
+        }
+        const hasMatchBounds = (typeof rule.maxMatchesPerFile === 'number' && Number.isFinite(rule.maxMatchesPerFile))
+            || (typeof rule.minMatchesPerFile === 'number' && Number.isFinite(rule.minMatchesPerFile));
+        if (rule.evaluationScope === 'repo' && hasMatchBounds) {
+            let repoMatchCount = 0;
+            let scannedPaths = 0;
+            for (const filePath of candidateRepoPaths) {
+                if (!pathMatchesRule(rule, filePath)) {
+                    continue;
+                }
+                const fullContent = normalizedFileContents[filePath];
+                const addedFallback = addedLinesByPath.get(filePath) || '';
+                const haystack = rule.evaluationMode === 'full_file' && typeof fullContent === 'string'
+                    ? fullContent
+                    : addedFallback;
+                if (!haystack) {
+                    continue;
+                }
+                scannedPaths += 1;
+                repoMatchCount += countMatches(rule.pattern, haystack);
+            }
+            if (typeof rule.maxMatchesPerFile === 'number'
+                && Number.isFinite(rule.maxMatchesPerFile)
+                && repoMatchCount > rule.maxMatchesPerFile) {
+                const violation = `${rule.matchToken} matched ${repoMatchCount} times across repository scope ` +
+                    `(limit ${rule.maxMatchesPerFile}, scanned ${scannedPaths} file(s), violates constraint: "${rule.displayName}")`;
+                if (!seenViolations.has(violation)) {
+                    seenViolations.add(violation);
+                    violations.push(violation);
+                }
+            }
+            if (typeof rule.minMatchesPerFile === 'number'
+                && Number.isFinite(rule.minMatchesPerFile)
+                && repoMatchCount < rule.minMatchesPerFile) {
+                const violation = `${rule.matchToken} matched ${repoMatchCount} times across repository scope ` +
+                    `(minimum ${rule.minMatchesPerFile}, scanned ${scannedPaths} file(s), violates constraint: "${rule.displayName}")`;
+                if (!seenViolations.has(violation)) {
+                    seenViolations.add(violation);
+                    violations.push(violation);
+                }
+            }
+            continue;
+        }
+        for (const file of changedFiles) {
+            if (!pathMatchesRule(rule, file.path)) {
+                continue;
+            }
+            if (!file.hunks || file.hunks.length === 0) {
+                continue;
+            }
+            const addedLines = addedLinesByPath.get(file.path) || '';
+            if (hasMatchBounds) {
+                const fullContent = normalizedFileContents[file.path];
+                const haystack = rule.evaluationMode === 'full_file' && typeof fullContent === 'string'
+                    ? fullContent
+                    : addedLines;
+                const matchCount = countMatches(rule.pattern, haystack);
+                if (typeof rule.maxMatchesPerFile === 'number'
+                    && Number.isFinite(rule.maxMatchesPerFile)
+                    && matchCount > rule.maxMatchesPerFile) {
+                    const violation = `${rule.matchToken} matched ${matchCount} times in ${file.path} ` +
+                        `(limit ${rule.maxMatchesPerFile}, violates constraint: "${rule.displayName}")`;
+                    if (!seenViolations.has(violation)) {
+                        seenViolations.add(violation);
+                        violations.push(violation);
+                    }
+                }
+                if (typeof rule.minMatchesPerFile === 'number'
+                    && Number.isFinite(rule.minMatchesPerFile)
+                    && matchCount < rule.minMatchesPerFile) {
+                    const violation = `${rule.matchToken} matched ${matchCount} times in ${file.path} ` +
+                        `(minimum ${rule.minMatchesPerFile}, violates constraint: "${rule.displayName}")`;
+                    if (!seenViolations.has(violation)) {
+                        seenViolations.add(violation);
+                        violations.push(violation);
+                    }
+                }
+                continue;
+            }
+            for (const hunk of file.hunks) {
+                for (const line of hunk.lines) {
+                    if (line.type !== 'added') {
+                        continue;
+                    }
+                    const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
+                    if (!pattern.test(line.content)) {
+                        continue;
+                    }
+                    const violation = `${rule.matchToken} found in ${file.path} (violates constraint: \"${rule.displayName}\")`;
+                    if (seenViolations.has(violation)) {
+                        continue;
+                    }
+                    seenViolations.add(violation);
+                    violations.push(violation);
+                }
+            }
+        }
+    }
+    return violations;
+}
+function resolvePlanVerdict(input) {
+    if (input.constraintViolations.length > 0) {
+        return 'FAIL';
+    }
+    if (input.totalPlannedFiles === 0 && input.plannedFilesModified === 0) {
+        // 0/0 is treated as incomplete, not perfect adherence.
+        return 'FAIL';
+    }
+    if (input.bloatCount > 0 && input.adherenceScore < 50) {
+        return 'FAIL';
+    }
+    if (input.bloatCount > 0 || input.adherenceScore < 80) {
+        return 'WARN';
+    }
+    return 'PASS';
+}
+function buildPlanVerificationMessage(result) {
+    if (result.constraintViolations.length > 0) {
+        return `❌ Constraint violation: ${result.constraintViolations[0]}${result.constraintViolations.length > 1 ? ` (+${result.constraintViolations.length - 1} more)` : ''}`;
+    }
+    if (result.totalPlannedFiles === 0 && result.plannedFilesModified === 0) {
+        return '❌ Incomplete: No planned files to verify (0/0). Plan may be malformed.';
+    }
+    if (result.verdict === 'PASS') {
+        return `✅ Plan adherence: ${result.adherenceScore}% (${result.plannedFilesModified}/${result.totalPlannedFiles} planned files modified)`;
+    }
+    if (result.verdict === 'WARN') {
+        return `⚠️  Plan adherence: ${result.adherenceScore}% (${result.plannedFilesModified}/${result.totalPlannedFiles} planned files modified)${result.bloatCount > 0 ? `, ${result.bloatCount} unexpected file(s) changed` : ''}`;
+    }
+    return `❌ Plan adherence: ${result.adherenceScore}% (${result.plannedFilesModified}/${result.totalPlannedFiles} planned files modified), ${result.bloatCount} unexpected file(s) changed`;
+}
+function evaluatePlanVerification(input) {
+    const plannedFilePaths = extractPlannedFilePaths(input.planFiles);
+    const plannedSet = new Set(plannedFilePaths);
+    const normalizedChangedFiles = input.changedFiles.map((file) => ({
+        ...file,
+        path: normalizeRepoPath(file.path),
+        oldPath: file.oldPath ? normalizeRepoPath(file.oldPath) : undefined,
+        hunks: file.hunks || [],
+    }));
+    const changedFilePaths = Array.from(new Set(normalizedChangedFiles
+        .map((file) => file.path)
+        .filter(Boolean)));
+    const changedSet = new Set(changedFilePaths);
+    const bloatFiles = changedFilePaths.filter((pathValue) => !plannedSet.has(pathValue));
+    const bloatCount = bloatFiles.length;
+    const totalPlannedFiles = plannedSet.size;
+    const plannedFilesModified = plannedFilePaths.filter((pathValue) => changedSet.has(pathValue)).length;
+    const adherenceScore = totalPlannedFiles > 0
+        ? Math.round((plannedFilesModified / totalPlannedFiles) * 100)
+        : 0;
+    const constraintViolations = detectConstraintViolations(input.intentConstraints, input.policyRules, input.extraConstraintRules, normalizedChangedFiles, input.fileContents);
+    const verdict = resolvePlanVerdict({
+        bloatCount,
+        adherenceScore,
+        totalPlannedFiles,
+        plannedFilesModified,
+        constraintViolations,
+    });
+    const totalAdded = input.diffStats
+        ? input.diffStats.totalAdded
+        : normalizedChangedFiles.reduce((sum, file) => sum + file.added, 0);
+    const totalRemoved = input.diffStats
+        ? input.diffStats.totalRemoved
+        : normalizedChangedFiles.reduce((sum, file) => sum + file.removed, 0);
+    const diffSummary = {
+        added: totalAdded,
+        removed: totalRemoved,
+        files: normalizedChangedFiles.map((file) => ({
+            path: file.path,
+            oldPath: file.oldPath,
+            changeType: file.changeType,
+            added: file.added,
+            removed: file.removed,
+            hunks: file.hunks || [],
+        })),
+        bloatFiles,
+        plannedFilesModified,
+        totalPlannedFiles,
+    };
+    const message = buildPlanVerificationMessage({
+        constraintViolations,
+        totalPlannedFiles,
+        plannedFilesModified,
+        verdict,
+        adherenceScore,
+        bloatCount,
+    });
+    return {
+        adherenceScore,
+        bloatCount,
+        bloatFiles,
+        plannedFilesModified,
+        totalPlannedFiles,
+        scopeGuardPassed: bloatCount === 0,
+        constraintViolations,
+        verdict,
+        diffSummary,
+        message,
+    };
+}
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6106:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Repo Governance Profile — V0 composer.
+ *
+ * Derives a deterministic, metadata-only profile from:
+ *   - the repo file tree (paths only, no content)
+ *   - CODEOWNERS content (optional)
+ *   - manifest content snippets (package.json / pyproject.toml / etc.)
+ *
+ * No source files are read. No network calls. Same inputs → same profileHash.
+ */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEFAULT_PLAN_COHERENCE_MODE = void 0;
+exports.ownersForPath = ownersForPath;
+exports.buildRepoGovernanceProfile = buildRepoGovernanceProfile;
+exports.checkFileBoundary = checkFileBoundary;
+const node_crypto_1 = __nccwpck_require__(7598);
+const micromatch_1 = __importDefault(__nccwpck_require__(9555));
+const architecture_obligations_1 = __nccwpck_require__(568);
+const architecture_graph_1 = __nccwpck_require__(65);
+exports.DEFAULT_PLAN_COHERENCE_MODE = 'warn';
+// ── Security token map ────────────────────────────────────────────────────────
+//
+// Conservative: tokens are matched WHOLE against path-segment parts only.
+// A segment like "auth_service" splits into ["auth","service"] → "auth" matches.
+// A segment like "tokenizer" splits into ["tokenizer"] → no token matches.
+//
+// Deliberately excluded (too noisy as filename stems):
+//   session  — common across non-auth code (session_store, session_manager…)
+//   token    — tokenizer, tokenize, access_token in non-auth paths
+//   login    — login_form in UI code; not always a sensitive boundary
+//   signin   — same reason as login
+//   charge   — electrical charge, no-charge, surcharge
+//   invoice  — document generation, not always payments
+//
+// These are still caught when they appear as DIRECTORY names or as part of
+// a recognized sensitive directory prefix (e.g. src/auth/ → auth boundary).
+const SENSITIVE_TOKENS = {
+    // auth
+    auth: 'auth',
+    oauth: 'auth',
+    oidc: 'auth',
+    sso: 'auth',
+    jwt: 'auth',
+    // crypto
+    crypto: 'crypto',
+    cryptography: 'crypto',
+    encryption: 'crypto',
+    cipher: 'crypto',
+    // secrets
+    secret: 'secrets',
+    secrets: 'secrets',
+    credential: 'secrets',
+    credentials: 'secrets',
+    vault: 'secrets',
+    keystore: 'secrets',
+    // payments
+    payment: 'payments',
+    payments: 'payments',
+    billing: 'payments',
+    checkout: 'payments',
+    stripe: 'payments',
+    // migrations
+    migration: 'migrations',
+    migrations: 'migrations',
+    alembic: 'migrations',
+    flyway: 'migrations',
+    // security
+    security: 'security',
+};
+/**
+ * Return the security tag for a raw path segment using CONSERVATIVE matching.
+ *
+ * Rules:
+ *  1. Split the segment by [-_] separators (after stripping file extension).
+ *  2. Require an EXACT match of a part against a known token.
+ *  3. No substring/includes matching — "tokenizer" must not match "token".
+ *
+ * Examples:
+ *   "auth"             → 'auth'   ✓  (exact)
+ *   "auth_service"     → 'auth'   ✓  (split: ["auth","service"])
+ *   "oauth2"           → null     ✓  (split: ["oauth2"] — no exact match; "oauth2"≠"oauth")
+ *   "tokenizer.py"     → null     ✓  (split: ["tokenizer"] — no exact match)
+ *   "session_manager"  → null     ✓  (split: ["session","manager"] — "session" not in map)
+ *   "billing"          → 'payments' ✓
+ *   "charge.py"        → null     ✓  (excluded from map)
+ */
+function tagForSegment(rawSeg) {
+    // Strip file extension, lowercase
+    const stem = rawSeg.replace(/\.[^.]+$/, '').toLowerCase();
+    // Split by separators; each part must exactly match a token
+    const parts = stem.split(/[-_]/);
+    for (const part of parts) {
+        const tag = SENSITIVE_TOKENS[part];
+        if (tag)
+            return tag;
+    }
+    return null;
+}
+/**
+ * Walk each segment of a path and return the first security tag found.
+ * Checks directory segments first (they are higher-signal), then filename.
+ */
+function securityTagForPath(rawPath) {
+    const segments = rawPath.split('/');
+    for (const seg of segments) {
+        const tag = tagForSegment(seg);
+        if (tag)
+            return tag;
+    }
+    return null;
+}
+function detectStack(paths, manifestContent) {
+    const ext = {};
+    for (const p of paths) {
+        const m = p.match(/\.([a-z0-9]+)$/i);
+        if (m)
+            ext[m[1].toLowerCase()] = (ext[m[1].toLowerCase()] || 0) + 1;
+    }
+    const total = paths.length || 1;
+    const tsCount = (ext['ts'] || 0) + (ext['tsx'] || 0);
+    const jsCount = (ext['js'] || 0) + (ext['jsx'] || 0);
+    const pyCount = ext['py'] || 0;
+    const goCount = ext['go'] || 0;
+    const rsCount = ext['rs'] || 0;
+    const javaCount = (ext['java'] || 0) + (ext['kt'] || 0);
+    let lang = 'unknown';
+    let framework = 'generic';
+    let confidence = 0.5;
+    const dominant = Math.max(tsCount, jsCount, pyCount, goCount, rsCount, javaCount);
+    if (dominant === 0) {
+        return { primaryLanguage: 'unknown', frameworkEcosystem: 'generic', confidence: 0.2 };
+    }
+    if (dominant === tsCount || dominant === jsCount) {
+        lang = tsCount > jsCount ? 'TypeScript' : 'JavaScript';
+        confidence = Math.min(0.95, (tsCount + jsCount) / total + 0.4);
+        if (manifestContent) {
+            if (manifestContent.includes('"next"') || manifestContent.includes('"nextjs"'))
+                framework = 'Next.js';
+            else if (manifestContent.includes('"react"'))
+                framework = 'React';
+            else if (manifestContent.includes('"fastify"'))
+                framework = 'Fastify';
+            else if (manifestContent.includes('"express"'))
+                framework = 'Express';
+            else if (manifestContent.includes('"@nestjs'))
+                framework = 'NestJS';
+            else
+                framework = 'Node.js';
+        }
+        else {
+            framework = 'Node.js';
+        }
+    }
+    else if (dominant === pyCount) {
+        lang = 'Python';
+        confidence = Math.min(0.95, pyCount / total + 0.4);
+        if (manifestContent) {
+            if (manifestContent.includes('fastapi') || manifestContent.includes('FastAPI'))
+                framework = 'FastAPI';
+            else if (manifestContent.includes('django'))
+                framework = 'Django';
+            else if (manifestContent.includes('flask'))
+                framework = 'Flask';
+            else if (manifestContent.includes('celery'))
+                framework = 'Celery';
+            else if (manifestContent.includes('airflow'))
+                framework = 'Airflow';
+            else
+                framework = 'Python';
+        }
+        else {
+            framework = 'Python';
+        }
+    }
+    else if (dominant === goCount) {
+        lang = 'Go';
+        confidence = Math.min(0.95, goCount / total + 0.4);
+        framework = 'Go';
+    }
+    else if (dominant === rsCount) {
+        lang = 'Rust';
+        confidence = Math.min(0.95, rsCount / total + 0.4);
+        framework = 'Rust';
+    }
+    else if (dominant === javaCount) {
+        lang = (ext['kt'] ?? 0) > (ext['java'] ?? 0) ? 'Kotlin' : 'Java';
+        confidence = Math.min(0.95, javaCount / total + 0.4);
+        framework = 'JVM';
+    }
+    return { primaryLanguage: lang, frameworkEcosystem: framework, confidence };
+}
+// ── CODEOWNERS parser ─────────────────────────────────────────────────────────
+function parseCodeowners(content) {
+    const rules = [];
+    for (const raw of content.split('\n')) {
+        const line = raw.replace(/#.*$/, '').trim();
+        if (!line)
+            continue;
+        const parts = line.split(/\s+/);
+        const glob = parts[0];
+        const owners = parts.slice(1).filter((o) => o.startsWith('@') || o.includes('@'));
+        if (glob && owners.length > 0)
+            rules.push({ glob, owners });
+    }
+    return rules;
+}
+/** Return the owners for a path, applying GitHub CODEOWNERS semantics (last rule wins). */
+function ownersForPath(path, rules) {
+    let matched = [];
+    for (const rule of rules) {
+        let pattern = rule.glob.startsWith('/') ? rule.glob.slice(1) : rule.glob;
+        if (pattern.endsWith('/'))
+            pattern += '**';
+        if (!pattern.includes('*')) {
+            if (path === pattern || path.startsWith(pattern + '/')) {
+                matched = rule.owners;
+                continue;
+            }
+        }
+        if (micromatch_1.default.isMatch(path, pattern, { dot: true, nocase: true })) {
+            matched = rule.owners;
+        }
+    }
+    return matched;
+}
+// ── Sensitive boundary extraction ────────────────────────────────────────────
+function deriveSensitiveBoundaries(paths) {
+    const seen = new Map();
+    for (const p of paths) {
+        const segments = p.split('/');
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            const tag = tagForSegment(seg);
+            if (!tag)
+                continue;
+            // Anchor to the directory containing the triggering segment.
+            // If the triggering segment is the filename (last), use its parent directory.
+            const isFilename = i === segments.length - 1 && seg.includes('.');
+            const dirEnd = isFilename ? i : i + 1;
+            const dir = segments.slice(0, dirEnd).join('/');
+            const dirGlob = dir ? dir + '/**' : isFilename ? p : '**';
+            if (!seen.has(dirGlob))
+                seen.set(dirGlob, tag);
+            break; // stop at the first (shallowest) match per path
+        }
+    }
+    return Array.from(seen.entries())
+        .map(([glob, tag]) => ({ glob, tag }))
+        .sort((a, b) => a.glob.localeCompare(b.glob));
+}
+// ── Approval-required derivation ─────────────────────────────────────────────
+//
+// V0 rule: a path is approval-required when it is sensitive AND (owned OR
+// is a migration). Sensitive-but-unowned paths are still sensitive (warn/block
+// based on scope) but don't require the approval gate.
+function deriveApprovalRequired(sensitive, ownership, paths) {
+    const required = new Set();
+    if (ownership.length === 0) {
+        // No CODEOWNERS — all sensitive paths require approval (nobody to delegate to)
+        for (const s of sensitive)
+            required.add(s.glob);
+    }
+    else {
+        for (const sb of sensitive) {
+            const prefix = sb.glob.replace('/**', '');
+            const underBoundary = paths.filter((p) => p.startsWith(prefix + '/') || p === prefix);
+            const anyOwned = underBoundary.some((p) => ownersForPath(p, ownership).length > 0);
+            if (anyOwned)
+                required.add(sb.glob);
+        }
+    }
+    // Migrations are always approval-required regardless of ownership
+    for (const p of paths) {
+        if (/migrat/i.test(p)) {
+            const dir = p.split('/').slice(0, -1).join('/');
+            if (dir)
+                required.add(dir + '/**');
+        }
+    }
+    return Array.from(required).sort();
+}
+// ── Unowned percentage ────────────────────────────────────────────────────────
+function computeUnownedPercent(paths, ownership) {
+    if (ownership.length === 0)
+        return 100;
+    const sourcePaths = paths.filter((p) => /\.(ts|tsx|js|jsx|py|go|rs|java|kt|rb|php|cs|cpp|c|h)$/.test(p));
+    if (sourcePaths.length === 0)
+        return 0;
+    const unowned = sourcePaths.filter((p) => ownersForPath(p, ownership).length === 0);
+    return Math.round((unowned.length / sourcePaths.length) * 100);
+}
+// ── Readiness ─────────────────────────────────────────────────────────────────
+function computeReadiness(stack, ownership, sensitive, paths) {
+    const reasons = [];
+    let score = 0;
+    score += Math.round(stack.confidence * 40);
+    if (stack.confidence < 0.4)
+        reasons.push('stack confidence low — add a manifest file');
+    if (ownership.length > 0) {
+        score += 30;
+    }
+    else {
+        reasons.push('no CODEOWNERS — add one to enable ownership-based governance');
+    }
+    if (sensitive.length > 0) {
+        score += 20;
+    }
+    else if (paths.length > 0) {
+        reasons.push('no sensitive boundaries detected — profile may be incomplete for this repo');
+    }
+    if (paths.length >= 5)
+        score += 10;
+    else
+        reasons.push('very few files found — run in a populated repo directory');
+    const status = score >= 70 ? 'READY' : score >= 40 ? 'PARTIAL' : 'LOW';
+    return { status, score: Math.min(100, score), reasons };
+}
+// ── Profile hash ──────────────────────────────────────────────────────────────
+function computeProfileHash(paths, sensitive, ownership, runtimeConfig, architectureHash) {
+    const canonical = JSON.stringify({
+        paths: [...paths].sort(),
+        sensitive: sensitive.map((s) => `${s.glob}:${s.tag}`).sort(),
+        ownership: ownership.map((o) => `${o.glob}:${o.owners.sort().join(',')}`).sort(),
+        runtimeConfig: canonicalRuntimeConfig(runtimeConfig),
+        // Only present when a dependency graph was derived, so legacy
+        // (no-imports) profiles keep a byte-identical canonical form + hash.
+        ...(architectureHash ? { architecture: architectureHash } : {}),
+    });
+    return (0, node_crypto_1.createHash)('sha256').update(canonical).digest('hex').slice(0, 24);
+}
+function digestNullable(content) {
+    if (content === null || content === undefined)
+        return null;
+    return (0, node_crypto_1.createHash)('sha256').update(content).digest('hex').slice(0, 24);
+}
+function normalizeGlobList(values) {
+    if (!Array.isArray(values))
+        return [];
+    return Array.from(new Set(values
+        .filter((value) => typeof value === 'string')
+        .map((value) => value.trim().replace(/^\.\//, '').replace(/\/+$/, ''))
+        .filter(Boolean))).sort();
+}
+function normalizePlanCoherenceMode(value) {
+    if (value === undefined || value === null || value === '') {
+        return exports.DEFAULT_PLAN_COHERENCE_MODE;
+    }
+    return value === 'off' || value === 'warn' || value === 'block'
+        ? value
+        : exports.DEFAULT_PLAN_COHERENCE_MODE;
+}
+function normalizeRuntimeConfig(input) {
+    return {
+        approvalRequiredGlobs: normalizeGlobList(input?.approvalRequiredGlobs),
+        sensitiveGlobs: normalizeGlobList(input?.sensitiveGlobs),
+        safeSupportGlobs: normalizeGlobList(input?.safeSupportGlobs),
+        ignoredGlobs: normalizeGlobList(input?.ignoredGlobs),
+        planCoherence: normalizePlanCoherenceMode(input?.planCoherence),
+        architectureObligations: (0, architecture_obligations_1.normalizeArchitectureObligationPolicy)(input?.architectureObligations),
+    };
+}
+function canonicalRuntimeConfig(config) {
+    const normalized = normalizeRuntimeConfig(config);
+    return {
+        approvalRequiredGlobs: normalized.approvalRequiredGlobs,
+        sensitiveGlobs: normalized.sensitiveGlobs,
+        safeSupportGlobs: normalized.safeSupportGlobs,
+        ignoredGlobs: normalized.ignoredGlobs,
+        ...(normalized.planCoherence && normalized.planCoherence !== exports.DEFAULT_PLAN_COHERENCE_MODE
+            ? { planCoherence: normalized.planCoherence }
+            : {}),
+        ...(normalized.architectureObligations
+            && (normalized.architectureObligations.mode !== 'warn'
+                || Object.keys(normalized.architectureObligations.ruleModes).length > 0)
+            ? { architectureObligations: normalized.architectureObligations }
+            : {}),
+    };
+}
+function runtimeConfigDigest(config) {
+    const canonical = canonicalRuntimeConfig(config);
+    const hasEntries = Object.values(canonical).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value));
+    if (!hasEntries)
+        return null;
+    return (0, node_crypto_1.createHash)('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 24);
+}
+function computeTopology(paths, codeownersContent, manifestContent, runtimeConfig, architectureHash) {
+    const canonical = JSON.stringify({
+        paths: [...paths].sort(),
+        codeownersContent: codeownersContent ?? null,
+        manifestContent: manifestContent ?? null,
+        runtimeConfig: canonicalRuntimeConfig(runtimeConfig),
+        // Conditional so legacy (no-imports) profiles keep the same topology hash;
+        // when imports are supplied, changing the dependency graph invalidates it.
+        ...(architectureHash ? { architecture: architectureHash } : {}),
+    });
+    return {
+        hash: (0, node_crypto_1.createHash)('sha256').update(canonical).digest('hex').slice(0, 24),
+        trackedFileCount: paths.length,
+        codeownersHash: digestNullable(codeownersContent),
+        manifestHash: digestNullable(manifestContent),
+        governanceConfigHash: runtimeConfigDigest(runtimeConfig),
+        ...(architectureHash ? { architectureHash } : {}),
+    };
+}
+function mergeConfiguredSensitiveBoundaries(detected, config) {
+    const byGlob = new Map();
+    for (const boundary of detected)
+        byGlob.set(boundary.glob, boundary);
+    for (const glob of config.sensitiveGlobs) {
+        if (!byGlob.has(glob))
+            byGlob.set(glob, { glob, tag: 'custom' });
+    }
+    return Array.from(byGlob.values()).sort((a, b) => a.glob.localeCompare(b.glob));
+}
+function mergeConfiguredApprovalPaths(detected, config) {
+    return Array.from(new Set([...detected, ...config.approvalRequiredGlobs])).sort();
+}
+// ── Main composer ─────────────────────────────────────────────────────────────
+function buildRepoGovernanceProfile(input) {
+    const { paths, codeownersContent, manifestContent, repoName, source } = input;
+    const runtimeConfig = normalizeRuntimeConfig(input.runtimeConfig);
+    const stack = detectStack(paths, manifestContent);
+    const sensitiveBoundaries = mergeConfiguredSensitiveBoundaries(deriveSensitiveBoundaries(paths), runtimeConfig);
+    const ownershipBoundaries = codeownersContent ? parseCodeowners(codeownersContent) : [];
+    const approvalRequiredPaths = mergeConfiguredApprovalPaths(deriveApprovalRequired(sensitiveBoundaries, ownershipBoundaries, paths), runtimeConfig);
+    const unownedPercent = computeUnownedPercent(paths, ownershipBoundaries);
+    const readiness = computeReadiness(stack, ownershipBoundaries, sensitiveBoundaries, paths);
+    // V2: derive the architecture dependency graph when import metadata is
+    // supplied (source-free — only specifiers are passed in).
+    const architecture = input.imports && input.imports.length > 0
+        ? (0, architecture_graph_1.buildArchitectureGraph)({
+            paths,
+            ownershipBoundaries,
+            sensitiveBoundaries,
+            approvalRequiredGlobs: approvalRequiredPaths,
+            imports: input.imports,
+        })
+        : undefined;
+    const architectureHash = architecture?.architectureHash ?? null;
+    const profileHash = computeProfileHash(paths, sensitiveBoundaries, ownershipBoundaries, runtimeConfig, architectureHash);
+    const topology = computeTopology(paths, codeownersContent, manifestContent, runtimeConfig, architectureHash);
+    const agentCompat = stack.confidence >= 0.5
+        ? 'supported'
+        : stack.primaryLanguage !== 'unknown'
+            ? 'best-effort'
+            : 'unsupported';
+    return {
+        schemaVersion: 1,
+        repo: { name: repoName, source },
+        topology,
+        runtimeConfig,
+        stack: {
+            primaryLanguage: stack.primaryLanguage,
+            frameworkEcosystem: stack.frameworkEcosystem,
+            confidence: Math.round(stack.confidence * 100) / 100,
+        },
+        sensitiveBoundaries,
+        ownershipBoundaries,
+        approvalRequiredPaths,
+        unownedPercent,
+        agentCompatibility: { claudeCode: agentCompat },
+        ...(architecture ? { architecture } : {}),
+        profileHash,
+        readiness,
+        generatedAt: new Date().toISOString(),
+    };
+}
+function checkFileBoundary(input) {
+    const { filePath, allowedGlobs, ownershipRules, sensitiveGlobs, approvalRequiredGlobs, approvedPaths = [], approvalGrants = [], checkedAt, scopeMode = 'inferred', } = input;
+    // ── Scope check ──────────────────────────────────────────────────────────────
+    const inScope = allowedGlobs.length === 0
+        ? true
+        : allowedGlobs.some((g) => micromatch_1.default.isMatch(filePath, g, { dot: true, matchBase: true }) ||
+            filePath.startsWith(g.replace('/**', '').replace('/*', '') + '/') ||
+            filePath === g.replace('/**', '').replace('/*', ''));
+    const isSensitive = sensitiveGlobs.some((g) => matchesGlob(filePath, g));
+    const isApprovalRequired = approvalRequiredGlobs.some((g) => matchesGlob(filePath, g));
+    const owners = ownersForPath(filePath, ownershipRules);
+    // ── Approval gate ────────────────────────────────────────────────────────────
+    //
+    // Approval-required paths ALWAYS block unless the session holds explicit approval.
+    // When the path IS approved, treat it as effectively in-scope so the remainder
+    // of the decision matrix can apply (sensitive warn / ok).
+    const checkedAtMs = Date.parse(checkedAt || new Date().toISOString());
+    const effectiveCheckedAtMs = Number.isFinite(checkedAtMs) ? checkedAtMs : Date.now();
+    const activeGrantPaths = approvalGrants
+        .filter((grant) => {
+        if (!grant || typeof grant.path !== 'string' || !grant.path.trim())
+            return false;
+        if (grant.revokedAt)
+            return false;
+        if (!grant.expiresAt)
+            return true;
+        const expiresAtMs = Date.parse(grant.expiresAt);
+        return Number.isFinite(expiresAtMs) && expiresAtMs > effectiveCheckedAtMs;
+    })
+        .map((grant) => grant.path);
+    const candidateApprovedPaths = approvalGrants.length > 0 ? activeGrantPaths : approvedPaths;
+    const expiredGrant = approvalGrants.find((grant) => {
+        if (!grant || typeof grant.path !== 'string' || !grant.path.trim() || !grant.expiresAt || grant.revokedAt) {
+            return false;
+        }
+        const expiresAtMs = Date.parse(grant.expiresAt);
+        if (!Number.isFinite(expiresAtMs) || expiresAtMs > effectiveCheckedAtMs)
+            return false;
+        return (matchesGlob(filePath, grant.path) ||
+            filePath.startsWith(grant.path.replace('/**', '').replace('/*', '') + '/') ||
+            filePath === grant.path.replace('/**', '').replace('/*', ''));
+    });
+    const isApproved = isApprovalRequired &&
+        candidateApprovedPaths.length > 0 &&
+        candidateApprovedPaths.some((ap) => matchesGlob(filePath, ap) ||
+            filePath.startsWith(ap.replace('/**', '').replace('/*', '') + '/') ||
+            filePath === ap.replace('/**', '').replace('/*', ''));
+    if (isApprovalRequired && !isApproved) {
+        const ownerNote = owners.length ? ` (owned by ${owners.join(', ')})` : '';
+        const expiredNote = expiredGrant?.expiresAt ? ` Previous approval expired at ${expiredGrant.expiresAt}.` : '';
+        return {
+            verdict: 'block',
+            inScope,
+            isSensitive,
+            isApprovalRequired,
+            owners,
+            message: `⏸ Neurcode: ${filePath} is in an approval-required boundary${ownerNote}. ` +
+                `No approval on record for this session. ` +
+                `Use neurcode_session_approve to approve this path, or narrow the task.` +
+                expiredNote,
+            options: ['narrow', 'replan'],
+            approvalContext: {
+                blockedPath: filePath,
+                approvalRequired: true,
+                owners,
+                // Suggest the exact file path as the tightest possible approval scope.
+                // The human can approve a broader glob (e.g. src/billing/**) if they choose to.
+                suggestedApprovalPath: filePath,
+            },
+        };
+    }
+    // When isApproved=true, the path is cleared to proceed — treat it as in-scope
+    // for the remaining checks regardless of the allowedGlobs set.
+    const effectivelyInScope = inScope || isApproved;
+    // ── Scope violations (non-approval-required) ─────────────────────────────────
+    if (!effectivelyInScope && owners.length > 0) {
+        return {
+            verdict: 'block',
+            inScope,
+            isSensitive,
+            isApprovalRequired,
+            owners,
+            message: `⏸ Neurcode: ${filePath} is owned by ${owners.join(', ')} and outside the declared scope.`,
+            options: ['narrow', 'replan'],
+        };
+    }
+    if (!effectivelyInScope && isSensitive) {
+        const matchedGlob = sensitiveGlobs.find((g) => matchesGlob(filePath, g));
+        return {
+            verdict: 'block',
+            inScope,
+            isSensitive,
+            isApprovalRequired,
+            owners,
+            message: `⏸ Neurcode: ${filePath} is a sensitive boundary (${matchedGlob}) and outside the declared scope.`,
+            options: ['narrow', 'replan'],
+        };
+    }
+    if (!effectivelyInScope) {
+        return {
+            verdict: 'block',
+            inScope,
+            isSensitive,
+            isApprovalRequired,
+            owners,
+            message: `⏸ Neurcode: ${filePath} is outside the declared scope for this task.`,
+            options: ['narrow', 'replan'],
+        };
+    }
+    // ── In-scope but sensitive — advisory warning ─────────────────────────────
+    if (isSensitive) {
+        const ownerNote = owners.length ? ` (owned by ${owners.join(', ')})` : '';
+        return {
+            verdict: 'warn',
+            inScope,
+            isSensitive,
+            isApprovalRequired,
+            owners,
+            message: `⚠️ Neurcode: ${filePath} is sensitive${ownerNote}. Proceeding — recorded in session.`,
+            options: ['continue'],
+        };
+    }
+    // ── Clean pass ───────────────────────────────────────────────────────────────
+    return {
+        verdict: 'ok',
+        inScope,
+        isSensitive,
+        isApprovalRequired,
+        owners,
+        message: '',
+        options: ['continue'],
+    };
+}
+function matchesGlob(filePath, glob) {
+    const prefix = glob.replace('/**', '').replace('/*', '');
+    if (filePath.startsWith(prefix + '/') || filePath === prefix)
+        return true;
+    return micromatch_1.default.isMatch(filePath, glob, { dot: true });
+}
+//# sourceMappingURL=profile.js.map
+
+/***/ }),
+
+/***/ 9463:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * V0 session store — lightweight JSON-file-backed governance session.
+ *
+ * One session per .neurcode/sessions/<id>.json.
+ * No daemon required; CLI commands and hooks read/write directly.
+ */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEFAULT_OBLIGATION_WAIVER_TTL_MS = exports.DEFAULT_APPROVAL_TTL_MS = void 0;
+exports.sessionsDir = sessionsDir;
+exports.sessionPath = sessionPath;
+exports.createSession = createSession;
+exports.loadActiveSession = loadActiveSession;
+exports.loadSession = loadSession;
+exports.appendEvent = appendEvent;
+exports.refreshArchitectureObligations = refreshArchitectureObligations;
+exports.activeApprovalPaths = activeApprovalPaths;
+exports.expireSessionApprovals = expireSessionApprovals;
+exports.expireArchitectureObligationWaivers = expireArchitectureObligationWaivers;
+exports.waiveArchitectureObligation = waiveArchitectureObligation;
+exports.approveSession = approveSession;
+exports.revokeSessionApproval = revokeSessionApproval;
+exports.finishSession = finishSession;
+exports.replaySession = replaySession;
+exports.evaluateIntentCoherence = evaluateIntentCoherence;
+exports.attachAgentPlan = attachAgentPlan;
+exports.classifyAgentPlanAmendment = classifyAgentPlanAmendment;
+exports.captureAgentPlan = captureAgentPlan;
+exports.amendAgentPlan = amendAgentPlan;
+exports.decideAgentPlanAmendment = decideAgentPlanAmendment;
+exports.evaluateSessionPlanCoherence = evaluateSessionPlanCoherence;
+exports.evaluatePlanCoherencePolicy = evaluatePlanCoherencePolicy;
+exports.activeAgentPlanRevision = activeAgentPlanRevision;
+exports.buildPlanTimeline = buildPlanTimeline;
+const node_crypto_1 = __nccwpck_require__(7598);
+const node_fs_1 = __nccwpck_require__(3024);
+const node_path_1 = __nccwpck_require__(6760);
+const micromatch_1 = __importDefault(__nccwpck_require__(9555));
+const profile_1 = __nccwpck_require__(6106);
+const agent_plan_1 = __nccwpck_require__(9864);
+const architecture_obligations_1 = __nccwpck_require__(568);
+exports.DEFAULT_APPROVAL_TTL_MS = 60 * 60 * 1000;
+exports.DEFAULT_OBLIGATION_WAIVER_TTL_MS = 60 * 60 * 1000;
+// ── Path helpers ──────────────────────────────────────────────────────────────
+function sessionsDir(projectRoot) {
+    return (0, node_path_1.join)(projectRoot, '.neurcode', 'sessions');
+}
+function sessionPath(projectRoot, sessionId) {
+    return (0, node_path_1.join)(sessionsDir(projectRoot), `${sessionId}.json`);
+}
+function activePointerPath(projectRoot) {
+    return (0, node_path_1.join)(projectRoot, '.neurcode', 'active-session.json');
+}
+const SESSION_EVENT_LOCK_TIMEOUT_MS = 2_000;
+const SESSION_EVENT_LOCK_STALE_MS = 30_000;
+const SESSION_EVENT_LOCK_WAIT_MS = 10;
+const SESSION_EVENT_LOCK_SLEEP = new Int32Array(new SharedArrayBuffer(4));
+function withSessionEventLock(projectRoot, sessionId, operation) {
+    const lockPath = `${sessionPath(projectRoot, sessionId)}.events.lock`;
+    (0, node_fs_1.mkdirSync)(sessionsDir(projectRoot), { recursive: true });
+    const deadline = Date.now() + SESSION_EVENT_LOCK_TIMEOUT_MS;
+    while (true) {
+        try {
+            (0, node_fs_1.mkdirSync)(lockPath);
+            break;
+        }
+        catch (error) {
+            const code = error && typeof error === 'object' && 'code' in error
+                ? String(error.code)
+                : '';
+            if (code !== 'EEXIST')
+                throw error;
+            try {
+                if (Date.now() - (0, node_fs_1.statSync)(lockPath).mtimeMs > SESSION_EVENT_LOCK_STALE_MS) {
+                    (0, node_fs_1.rmSync)(lockPath, { recursive: true, force: true });
+                    continue;
+                }
+            }
+            catch {
+                continue;
+            }
+            if (Date.now() >= deadline) {
+                throw new Error(`Timed out waiting to mutate session ${sessionId}.`);
+            }
+            Atomics.wait(SESSION_EVENT_LOCK_SLEEP, 0, 0, SESSION_EVENT_LOCK_WAIT_MS);
+        }
+    }
+    try {
+        return operation();
+    }
+    finally {
+        (0, node_fs_1.rmSync)(lockPath, { recursive: true, force: true });
+    }
+}
+// ── CRUD ──────────────────────────────────────────────────────────────────────
+function createSession(projectRoot, profile, goal) {
+    const sessionId = (0, node_crypto_1.randomBytes)(6).toString('hex');
+    const dir = sessionsDir(projectRoot);
+    if (!(0, node_fs_1.existsSync)(dir))
+        (0, node_fs_1.mkdirSync)(dir, { recursive: true });
+    const { allowedGlobs, scopeMode } = deriveAllowedGlobs(goal, profile);
+    const intentContract = deriveIntentContract(goal, profile, allowedGlobs, scopeMode);
+    const startedAt = new Date().toISOString();
+    const architectureObligationPolicy = (0, architecture_obligations_1.normalizeArchitectureObligationPolicy)(profile.runtimeConfig?.architectureObligations);
+    const architectureGraph = profile.architecture;
+    const architectureObligations = (0, architecture_obligations_1.deriveArchitectureObligations)({
+        goal,
+        intentContract,
+        graph: architectureGraph,
+        policy: architectureObligationPolicy,
+        now: startedAt,
+    });
+    const session = {
+        schemaVersion: 1,
+        sessionId,
+        profileHash: profile.profileHash,
+        repoName: profile.repo.name,
+        contract: {
+            goal,
+            allowedGlobs,
+            sensitiveGlobs: profile.sensitiveBoundaries.map((s) => s.glob),
+            approvalRequiredGlobs: profile.approvalRequiredPaths,
+            ownershipRules: profile.ownershipBoundaries,
+            scopeMode,
+            safeSupportGlobs: profile.runtimeConfig?.safeSupportGlobs ?? [],
+            ignoredGlobs: profile.runtimeConfig?.ignoredGlobs ?? [],
+            approvedPaths: [],
+            approvalGrants: [],
+            intentContract,
+            planCoherenceMode: profile.runtimeConfig?.planCoherence ?? profile_1.DEFAULT_PLAN_COHERENCE_MODE,
+            architectureObligations,
+            architectureObligationPolicy,
+            architectureObligationWaivers: [],
+            ...(architectureGraph ? { architectureGraph } : {}),
+        },
+        events: [
+            {
+                type: 'session_start',
+                ts: startedAt,
+                message: `Goal: ${goal}`,
+                detail: {
+                    allowedGlobs,
+                    scopeMode,
+                    intentContract,
+                    planCoherenceMode: profile.runtimeConfig?.planCoherence ?? profile_1.DEFAULT_PLAN_COHERENCE_MODE,
+                    architectureObligations,
+                    architectureObligationPolicy,
+                },
+            },
+        ],
+        status: 'active',
+    };
+    (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+    const neurcodeDir = (0, node_path_1.join)(projectRoot, '.neurcode');
+    if (!(0, node_fs_1.existsSync)(neurcodeDir))
+        (0, node_fs_1.mkdirSync)(neurcodeDir, { recursive: true });
+    (0, node_fs_1.writeFileSync)(activePointerPath(projectRoot), JSON.stringify({ sessionId }, null, 2) + '\n', 'utf8');
+    return session;
+}
+function loadActiveSession(projectRoot) {
+    const ptr = activePointerPath(projectRoot);
+    if (!(0, node_fs_1.existsSync)(ptr))
+        return null;
+    try {
+        const parsed = JSON.parse((0, node_fs_1.readFileSync)(ptr, 'utf8'));
+        if (!parsed.sessionId)
+            return null;
+        return loadSession(projectRoot, parsed.sessionId);
+    }
+    catch {
+        return null;
+    }
+}
+function loadSession(projectRoot, sessionId) {
+    const p = sessionPath(projectRoot, sessionId);
+    if (!(0, node_fs_1.existsSync)(p))
+        return null;
+    try {
+        return JSON.parse((0, node_fs_1.readFileSync)(p, 'utf8'));
+    }
+    catch {
+        return null;
+    }
+}
+function appendEvent(projectRoot, sessionId, event) {
+    return withSessionEventLock(projectRoot, sessionId, () => {
+        const session = loadSession(projectRoot, sessionId);
+        if (!session)
+            return null;
+        session.events.push(event);
+        (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+        return session;
+    });
+}
+function recomputeArchitectureObligations(session, now = new Date().toISOString()) {
+    const previous = session.contract.architectureObligations ?? [];
+    const next = (0, architecture_obligations_1.deriveArchitectureObligations)({
+        goal: session.contract.goal,
+        intentContract: session.contract.intentContract,
+        agentPlan: session.contract.agentPlan,
+        events: session.events,
+        approvedPaths: activeApprovalPaths(session.contract, now),
+        graph: session.contract.architectureGraph,
+        policy: session.contract.architectureObligationPolicy,
+        waivers: (0, architecture_obligations_1.activeArchitectureObligationWaivers)(session.contract.architectureObligationWaivers ?? [], now),
+        previous,
+        now,
+    });
+    session.contract.architectureObligations = next;
+    const previousById = new Map(previous.map((item) => [item.id, item]));
+    const transitions = next
+        .filter((item) => previousById.get(item.id)?.status !== item.status)
+        .map((item) => ({
+        id: item.id,
+        title: item.title,
+        severity: item.severity,
+        effectiveMode: item.effectiveMode ?? 'warn',
+        previousStatus: previousById.get(item.id)?.status ?? null,
+        status: item.status,
+        observedEvidence: item.observedEvidence,
+        waiver: item.waiver ?? null,
+    }));
+    if (transitions.length > 0) {
+        session.events.push({
+            type: 'obligation_state_changed',
+            ts: now,
+            message: `${transitions.length} architecture obligation state change${transitions.length === 1 ? '' : 's'}`,
+            detail: {
+                transitions,
+                architectureObligationSummary: (0, architecture_obligations_1.summarizeArchitectureObligations)(next),
+            },
+        });
+    }
+    return next;
+}
+function refreshArchitectureObligations(projectRoot, sessionId, now = new Date().toISOString()) {
+    const session = loadSession(projectRoot, sessionId);
+    if (!session)
+        return null;
+    recomputeArchitectureObligations(session, now);
+    (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+    return session;
+}
+/**
+ * Append an explicit approval for a path/glob to the active (or named) session.
+ *
+ * Safety invariant: this does NOT expand approval beyond the given path/glob.
+ * Approving "src/billing/charge.py" does not approve "src/billing/**".
+ * The boundary check in checkFileBoundary enforces this by matching approvedPaths
+ * against the exact filePath.
+ */
+/**
+ * Normalise an approval path to be repo-relative.
+ *
+ * Rules (in order):
+ *  1. Absolute globs under projectRoot — strip the repo prefix, keep the glob suffix.
+ *  2. Absolute globs NOT under projectRoot — rejected.
+ *  3. Relative globs — used as-is (strip leading / or ./).
+ *  4. Absolute exact paths under projectRoot — make repo-relative via path.relative().
+ *  5. Absolute exact paths NOT under projectRoot — rejected.
+ *  6. Relative exact paths — used as-is.
+ */
+function normaliseApprovalPath(projectRoot, raw) {
+    const trimmed = raw.trim();
+    if (!trimmed)
+        throw new Error('approvedPath must not be empty.');
+    const isGlob = trimmed.includes('*') || trimmed.includes('?');
+    if (isGlob) {
+        if (!(0, node_path_1.isAbsolute)(trimmed)) {
+            // Relative glob — strip a leading ./ if present, nothing else
+            return trimmed.replace(/^\.\//, '');
+        }
+        // Absolute glob — resolve the repo root (symlinks), then check prefix.
+        // Globs cannot be passed to realpathSync (file doesn't exist), so we
+        // split at the first wildcard, realpath the concrete prefix, then
+        // reattach the glob suffix.
+        let absRepo;
+        try {
+            absRepo = (0, node_fs_1.realpathSync)(projectRoot);
+        }
+        catch {
+            absRepo = (0, node_path_1.resolve)(projectRoot);
+        }
+        // Extract the non-glob prefix (everything before the first * or ?)
+        const firstWild = trimmed.search(/[*?]/);
+        const concretePart = trimmed.slice(0, firstWild); // e.g. "/repo/src/billing/"
+        const globSuffix = trimmed.slice(firstWild); // e.g. "**"
+        // Resolve the concrete prefix, following symlinks where possible.
+        // realpathSync may fail if the directory doesn't exist; in that case
+        // fall back to plain resolve() and re-resolve the repo the same way.
+        let resolvedConcrete;
+        try {
+            resolvedConcrete = (0, node_fs_1.realpathSync)(concretePart.replace(/\/$/, '') || '/');
+        }
+        catch {
+            resolvedConcrete = (0, node_path_1.resolve)(concretePart);
+            absRepo = (0, node_path_1.resolve)(projectRoot);
+        }
+        if (!resolvedConcrete.startsWith(absRepo + '/') && resolvedConcrete !== absRepo) {
+            throw new Error(`Approval path "${trimmed}" is outside the repo root "${projectRoot}". ` +
+                `Only paths within the repo may be approved.`);
+        }
+        const relConcrete = (0, node_path_1.relative)(absRepo, resolvedConcrete); // e.g. "src/billing"
+        // Reattach the glob suffix; the concretePart may end with "/" which becomes
+        // part of relConcrete already, so normalise double-slashes.
+        const joined = relConcrete ? relConcrete + '/' + globSuffix : globSuffix;
+        return joined.replace(/\/\//g, '/');
+    }
+    // ── Exact (non-glob) path ─────────────────────────────────────────────────
+    if ((0, node_path_1.isAbsolute)(trimmed)) {
+        // Use realpathSync to resolve symlinks (e.g. /tmp → /private/tmp on macOS)
+        // so that the comparison is reliable on all platforms.
+        let absRepo;
+        let absPath;
+        try {
+            absRepo = (0, node_fs_1.realpathSync)(projectRoot);
+        }
+        catch {
+            absRepo = (0, node_path_1.resolve)(projectRoot);
+        }
+        try {
+            absPath = (0, node_fs_1.realpathSync)(trimmed);
+        }
+        catch {
+            // File may not exist yet — fall back to syntactic resolution
+            absPath = (0, node_path_1.resolve)(trimmed);
+            absRepo = (0, node_path_1.resolve)(projectRoot);
+        }
+        if (!absPath.startsWith(absRepo + '/') && absPath !== absRepo) {
+            throw new Error(`Approval path "${trimmed}" is outside the repo root "${projectRoot}". ` +
+                `Only paths within the repo may be approved.`);
+        }
+        const rel = (0, node_path_1.relative)(absRepo, absPath);
+        if (!rel || rel.startsWith('..')) {
+            throw new Error(`Could not make "${trimmed}" relative to repo root "${projectRoot}".`);
+        }
+        return rel;
+    }
+    // Already relative — remove a leading ./ if present
+    return trimmed.replace(/^\.\//, '');
+}
+function normaliseApprovalArgs(reasonOrOptions, sessionId) {
+    if (reasonOrOptions && typeof reasonOrOptions === 'object') {
+        return { ...reasonOrOptions };
+    }
+    return {
+        reason: reasonOrOptions,
+        sessionId,
+    };
+}
+function resolveApprovalExpiry(options, approvedAt) {
+    if (options.expiresAt === null || options.ttlMs === null)
+        return null;
+    if (typeof options.expiresAt === 'string' && options.expiresAt.trim()) {
+        const parsed = Date.parse(options.expiresAt);
+        if (!Number.isFinite(parsed))
+            throw new Error(`Invalid approval expiry "${options.expiresAt}".`);
+        return new Date(parsed).toISOString();
+    }
+    const ttlMs = typeof options.ttlMs === 'number' && Number.isFinite(options.ttlMs)
+        ? Math.max(0, Math.floor(options.ttlMs))
+        : exports.DEFAULT_APPROVAL_TTL_MS;
+    if (ttlMs === 0)
+        return new Date(Date.parse(approvedAt)).toISOString();
+    return new Date(Date.parse(approvedAt) + ttlMs).toISOString();
+}
+function approvalGrants(contract) {
+    return Array.isArray(contract.approvalGrants) ? contract.approvalGrants : [];
+}
+function isApprovalGrantActive(grant, checkedAt = new Date().toISOString()) {
+    if (!grant.path || grant.revokedAt)
+        return false;
+    if (!grant.expiresAt)
+        return true;
+    const expiresAtMs = Date.parse(grant.expiresAt);
+    const checkedAtMs = Date.parse(checkedAt);
+    if (!Number.isFinite(expiresAtMs) || !Number.isFinite(checkedAtMs))
+        return false;
+    return expiresAtMs > checkedAtMs;
+}
+function activeApprovalPaths(contract, checkedAt = new Date().toISOString()) {
+    const grants = approvalGrants(contract);
+    if (grants.length === 0)
+        return [...(contract.approvedPaths ?? [])];
+    return Array.from(new Set(grants
+        .filter((grant) => isApprovalGrantActive(grant, checkedAt))
+        .map((grant) => grant.path)));
+}
+function expireSessionApprovals(projectRoot, sessionId, checkedAt = new Date().toISOString()) {
+    const session = loadSession(projectRoot, sessionId);
+    if (!session)
+        return null;
+    const grants = approvalGrants(session.contract);
+    if (grants.length === 0)
+        return session;
+    const checkedAtMs = Date.parse(checkedAt);
+    const expired = grants.filter((grant) => {
+        if (!grant.expiresAt || grant.revokedAt)
+            return false;
+        const expiresAtMs = Date.parse(grant.expiresAt);
+        if (!Number.isFinite(expiresAtMs) || !Number.isFinite(checkedAtMs))
+            return false;
+        return expiresAtMs <= checkedAtMs;
+    });
+    if (expired.length === 0) {
+        const activePaths = activeApprovalPaths(session.contract, checkedAt);
+        if (JSON.stringify(activePaths) !==
+            JSON.stringify(session.contract.approvedPaths ?? [])) {
+            session.contract.approvedPaths = activePaths;
+            recomputeArchitectureObligations(session, checkedAt);
+            (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+        }
+        return session;
+    }
+    const alreadyRecorded = new Set(session.events
+        .filter((event) => event.type === 'approval_decision' && event.decision === 'expired')
+        .map((event) => String(event.detail?.approvalEventId || '')));
+    for (const grant of expired) {
+        if (alreadyRecorded.has(grant.eventId))
+            continue;
+        session.events.push({
+            type: 'approval_decision',
+            ts: checkedAt,
+            filePath: grant.path,
+            decision: 'expired',
+            detail: {
+                reason: 'approval expired',
+                approvalEventId: grant.eventId,
+                expiresAt: grant.expiresAt,
+            },
+        });
+    }
+    session.contract.approvedPaths = activeApprovalPaths(session.contract, checkedAt);
+    recomputeArchitectureObligations(session, checkedAt);
+    (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+    return session;
+}
+function resolveDecisionExpiry(expiresAt, ttlMs, decidedAt, defaultTtlMs, label) {
+    if (expiresAt === null || ttlMs === null)
+        return null;
+    if (typeof expiresAt === 'string' && expiresAt.trim()) {
+        const parsed = Date.parse(expiresAt);
+        if (!Number.isFinite(parsed))
+            throw new Error(`Invalid ${label} expiry "${expiresAt}".`);
+        return new Date(parsed).toISOString();
+    }
+    const ttl = typeof ttlMs === 'number' && Number.isFinite(ttlMs)
+        ? Math.max(0, Math.floor(ttlMs))
+        : defaultTtlMs;
+    if (ttl === 0)
+        return new Date(Date.parse(decidedAt)).toISOString();
+    return new Date(Date.parse(decidedAt) + ttl).toISOString();
+}
+function expireArchitectureObligationWaivers(projectRoot, sessionId, checkedAt = new Date().toISOString()) {
+    const session = loadSession(projectRoot, sessionId);
+    if (!session)
+        return null;
+    const waivers = Array.isArray(session.contract.architectureObligationWaivers)
+        ? session.contract.architectureObligationWaivers
+        : [];
+    if (waivers.length === 0)
+        return session;
+    const checkedAtMs = Date.parse(checkedAt);
+    const expired = waivers.filter((waiver) => {
+        if (!waiver.expiresAt || waiver.revokedAt)
+            return false;
+        const expiresAtMs = Date.parse(waiver.expiresAt);
+        if (!Number.isFinite(expiresAtMs) || !Number.isFinite(checkedAtMs))
+            return false;
+        return expiresAtMs <= checkedAtMs;
+    });
+    const alreadyRecorded = new Set(session.events
+        .filter((event) => event.type === 'obligation_waiver_decision' && event.decision === 'expired')
+        .map((event) => String(event.detail?.waiverEventId || '')));
+    let recorded = false;
+    for (const waiver of expired) {
+        if (alreadyRecorded.has(waiver.eventId))
+            continue;
+        recorded = true;
+        session.events.push({
+            type: 'obligation_waiver_decision',
+            ts: checkedAt,
+            decision: 'expired',
+            detail: {
+                obligationId: waiver.obligationId,
+                reason: 'obligation waiver expired',
+                waiverEventId: waiver.eventId,
+                expiresAt: waiver.expiresAt,
+            },
+        });
+    }
+    recomputeArchitectureObligations(session, checkedAt);
+    if (recorded || expired.length > 0) {
+        (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+    }
+    return session;
+}
+function waiveArchitectureObligation(projectRoot, obligationId, options = {}) {
+    const id = obligationId.trim();
+    if (!id)
+        throw new Error('obligationId must not be empty.');
+    const session = options.sessionId
+        ? loadSession(projectRoot, options.sessionId)
+        : loadActiveSession(projectRoot);
+    if (!session)
+        throw new Error('No active session found. Run a task first.');
+    if (session.status !== 'active')
+        throw new Error(`Session ${session.sessionId} is already finished.`);
+    recomputeArchitectureObligations(session, options.waivedAt || new Date().toISOString());
+    const target = session.contract.architectureObligations?.find((item) => item.id === id);
+    if (!target)
+        throw new Error(`Architecture obligation not found: ${id}`);
+    if (target.status === 'satisfied')
+        throw new Error(`Architecture obligation is already satisfied: ${id}`);
+    const waivedAt = options.waivedAt || new Date().toISOString();
+    const expiresAt = resolveDecisionExpiry(options.expiresAt, options.ttlMs, waivedAt, exports.DEFAULT_OBLIGATION_WAIVER_TTL_MS, 'obligation waiver');
+    const eventId = `obligation_waiver_${Date.now()}_${(0, node_crypto_1.randomBytes)(3).toString('hex')}`;
+    const waiver = {
+        obligationId: id,
+        reason: options.reason?.trim() || 'human accepted obligation risk in session',
+        waivedAt,
+        expiresAt,
+        source: options.source || 'local_cli',
+        eventId,
+        waivedBy: options.waivedBy || null,
+    };
+    const existingWaivers = Array.isArray(session.contract.architectureObligationWaivers)
+        ? session.contract.architectureObligationWaivers
+        : [];
+    session.contract.architectureObligationWaivers = [
+        ...existingWaivers.filter((existing) => existing.obligationId !== id || existing.revokedAt),
+        waiver,
+    ];
+    session.events.push({
+        type: 'obligation_waiver_decision',
+        ts: waivedAt,
+        decision: 'waived',
+        detail: {
+            obligationId: id,
+            reason: waiver.reason,
+            eventId,
+            expiresAt,
+            source: waiver.source,
+            waivedBy: waiver.waivedBy,
+        },
+    });
+    const architectureObligations = recomputeArchitectureObligations(session, waivedAt);
+    (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+    return {
+        sessionId: session.sessionId,
+        obligationId: id,
+        waiver,
+        expiresAt,
+        eventId,
+        architectureObligations,
+    };
+}
+function approveSession(projectRoot, approvedPath, reason, sessionId) {
+    const options = normaliseApprovalArgs(reason, sessionId);
+    const initialSession = options.sessionId
+        ? loadSession(projectRoot, options.sessionId)
+        : loadActiveSession(projectRoot);
+    if (!initialSession)
+        throw new Error('No active session found. Run a task first.');
+    return withSessionEventLock(projectRoot, initialSession.sessionId, () => {
+        const session = loadSession(projectRoot, initialSession.sessionId);
+        if (!session)
+            throw new Error(`Session ${initialSession.sessionId} not found.`);
+        if (session.status !== 'active')
+            throw new Error(`Session ${session.sessionId} is already finished.`);
+        const normalised = normaliseApprovalPath(projectRoot, approvedPath);
+        if (!normalised)
+            throw new Error('approvedPath must not be empty.');
+        const approvedAt = options.approvedAt || new Date().toISOString();
+        const expiresAt = resolveApprovalExpiry(options, approvedAt);
+        const eventId = `approval_${Date.now()}_${(0, node_crypto_1.randomBytes)(3).toString('hex')}`;
+        const grant = {
+            path: normalised,
+            reason: options.reason?.trim() || 'human approved in session',
+            approvedAt,
+            expiresAt,
+            source: options.source || 'local_cli',
+            eventId,
+            approvedBy: options.approvedBy || null,
+            requestId: options.requestId || null,
+        };
+        const grants = approvalGrants(session.contract).filter((existing) => existing.path !== normalised);
+        grants.push(grant);
+        session.contract.approvalGrants = grants;
+        // Backward-compatible active path list. Structured grants are authoritative
+        // when present; this list remains for old clients and simple UI counters.
+        if (!session.contract.approvedPaths.includes(normalised)) {
+            session.contract.approvedPaths.push(normalised);
+        }
+        session.contract.approvedPaths = activeApprovalPaths(session.contract, approvedAt);
+        session.events.push({
+            type: 'approval_decision',
+            ts: approvedAt,
+            filePath: normalised,
+            decision: 'approved',
+            detail: {
+                reason: grant.reason,
+                eventId,
+                expiresAt,
+                source: grant.source,
+                approvedBy: grant.approvedBy,
+                requestId: grant.requestId,
+            },
+        });
+        recomputeArchitectureObligations(session, approvedAt);
+        (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+        return {
+            sessionId: session.sessionId,
+            approvedPath: normalised,
+            approvedPaths: session.contract.approvedPaths,
+            approvalGrant: grant,
+            expiresAt,
+            eventId,
+        };
+    });
+}
+/**
+ * Revoke one exact session grant and recompute the backward-compatible active
+ * path list. Dashboard revocations prefer requestId so the same path can be
+ * approved again later without revoking the wrong historical grant.
+ */
+function revokeSessionApproval(projectRoot, approvedPath, options = {}) {
+    const initialSession = options.sessionId
+        ? loadSession(projectRoot, options.sessionId)
+        : loadActiveSession(projectRoot);
+    if (!initialSession)
+        throw new Error('No active session found. Run a task first.');
+    return withSessionEventLock(projectRoot, initialSession.sessionId, () => {
+        const session = loadSession(projectRoot, initialSession.sessionId);
+        if (!session)
+            throw new Error(`Session ${initialSession.sessionId} not found.`);
+        if (session.status !== 'active')
+            throw new Error(`Session ${session.sessionId} is already finished.`);
+        const normalised = normaliseApprovalPath(projectRoot, approvedPath);
+        if (!normalised)
+            throw new Error('approvedPath must not be empty.');
+        const grants = approvalGrants(session.contract);
+        const targetIndex = grants.findIndex((grant) => options.requestId
+            ? grant.requestId === options.requestId
+            : grant.path === normalised && !grant.revokedAt);
+        if (targetIndex < 0)
+            throw new Error(`Approval grant not found for ${normalised}.`);
+        const revokedAt = options.revokedAt || new Date().toISOString();
+        const target = grants[targetIndex];
+        if (!target.revokedAt) {
+            target.revokedAt = revokedAt;
+            target.revokedBy = options.revokedBy || null;
+            target.revocationReason = options.reason?.trim() || 'human revoked approval in session';
+            session.events.push({
+                type: 'approval_decision',
+                ts: revokedAt,
+                filePath: target.path,
+                decision: 'revoked',
+                detail: {
+                    reason: target.revocationReason,
+                    approvalEventId: target.eventId,
+                    requestId: target.requestId,
+                    source: options.source || 'local_cli',
+                    revokedBy: target.revokedBy,
+                },
+            });
+        }
+        session.contract.approvalGrants = grants;
+        session.contract.approvedPaths = activeApprovalPaths(session.contract, revokedAt);
+        recomputeArchitectureObligations(session, revokedAt);
+        (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+        return {
+            sessionId: session.sessionId,
+            revokedPath: target.path,
+            approvedPaths: session.contract.approvedPaths,
+            approvalGrant: target,
+            revokedAt: target.revokedAt || revokedAt,
+        };
+    });
+}
+function finishSession(projectRoot, sessionId, options = {}) {
+    const session = loadSession(projectRoot, sessionId);
+    if (!session)
+        return null;
+    session.status = 'finished';
+    session.finishedAt = new Date().toISOString();
+    recomputeArchitectureObligations(session, session.finishedAt);
+    const canonical = JSON.stringify({
+        sessionId: session.sessionId,
+        profileHash: session.profileHash,
+        contract: session.contract,
+        events: session.events.map((e) => ({
+            type: e.type,
+            filePath: e.filePath,
+            verdict: e.verdict,
+            decision: e.decision,
+        })),
+    });
+    session.replayHash = (0, node_crypto_1.createHash)('sha256').update(canonical).digest('hex').slice(0, 24);
+    session.events.push({
+        type: 'session_finish',
+        ts: session.finishedAt,
+        detail: {
+            replayHash: session.replayHash,
+            ...(options.reason ? { reason: options.reason } : {}),
+            ...(options.unresolvedApprovalBlocks?.length
+                ? { unresolvedApprovalBlocks: options.unresolvedApprovalBlocks }
+                : {}),
+        },
+    });
+    (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+    const ptr = activePointerPath(projectRoot);
+    if ((0, node_fs_1.existsSync)(ptr)) {
+        (0, node_fs_1.writeFileSync)(ptr, JSON.stringify({ sessionId: null }, null, 2) + '\n', 'utf8');
+    }
+    return session;
+}
+function replaySession(session) {
+    const canonical = JSON.stringify({
+        sessionId: session.sessionId,
+        profileHash: session.profileHash,
+        contract: session.contract,
+        events: session.events
+            .filter((e) => e.type !== 'session_finish')
+            .map((e) => ({
+            type: e.type,
+            filePath: e.filePath,
+            verdict: e.verdict,
+            decision: e.decision,
+        })),
+    });
+    const replayHash = (0, node_crypto_1.createHash)('sha256').update(canonical).digest('hex').slice(0, 24);
+    return {
+        replayHash,
+        matchesOriginal: replayHash === session.replayHash,
+        originalHash: session.replayHash,
+    };
+}
+// ── Intent contract and coherence ────────────────────────────────────────────
+function unique(values) {
+    return Array.from(new Set(values.filter(Boolean)));
+}
+function uniqueTrimmed(values) {
+    const out = [];
+    const seen = new Set();
+    for (const raw of values) {
+        const value = String(raw ?? '').trim();
+        if (!value || seen.has(value))
+            continue;
+        seen.add(value);
+        out.push(value);
+    }
+    return out;
+}
+function removeTrimmed(existing, removals) {
+    const removeSet = new Set(removals.map((value) => value.trim()).filter(Boolean));
+    if (removeSet.size === 0)
+        return uniqueTrimmed(existing);
+    return uniqueTrimmed(existing.filter((value) => !removeSet.has(value.trim())));
+}
+function normalizePlanPath(pathValue) {
+    return pathValue.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\//, '').trim();
+}
+function normalizePlanPaths(values) {
+    return uniqueTrimmed(Array.from(values, (value) => normalizePlanPath(String(value ?? ''))));
+}
+function normalizeGoal(goal) {
+    return goal.replace(/\s+/g, ' ').trim().slice(0, 280);
+}
+const SCOPE_PATH_ROOTS = new Set([
+    'app',
+    'apps',
+    'bin',
+    'cmd',
+    'config',
+    'docs',
+    'fixtures',
+    'lib',
+    'migrations',
+    'packages',
+    'scripts',
+    'services',
+    'src',
+    'test',
+    'tests',
+    'web',
+    '.github',
+]);
+function cleanScopePathToken(raw) {
+    return raw
+        .replace(/\\/g, '/')
+        .replace(/^\.\//, '')
+        .replace(/^\//, '')
+        .replace(/^[("'`<\[]+/, '')
+        .replace(/[)"'`>\].,;:]+$/, '')
+        .trim();
+}
+function isLikelyRepoScopePath(token) {
+    if (!token || token.length > 240 || token.includes('://'))
+        return false;
+    if (!token.includes('/'))
+        return false;
+    if (/\s/.test(token))
+        return false;
+    const segments = token.split('/').filter(Boolean);
+    if (segments.length < 2)
+        return false;
+    const first = segments[0];
+    if (!SCOPE_PATH_ROOTS.has(first))
+        return false;
+    const lastSeg = segments.at(-1) ?? '';
+    if (!lastSeg || lastSeg === '*' || lastSeg === '**')
+        return false;
+    if (/^[A-Z][A-Za-z]+$/.test(first))
+        return false;
+    return true;
+}
+function extractPathTokens(goal) {
+    return unique((goal.match(/[a-z0-9_./-]+\/[a-z0-9_./-]+/gi) ?? [])
+        .map(cleanScopePathToken)
+        .filter(isLikelyRepoScopePath));
+}
+function primaryActionForGoal(lower) {
+    if (/\b(add|create|implement|build|introduce)\b/.test(lower))
+        return 'add';
+    if (/\b(fix|bug|hotfix|repair|resolve)\b/.test(lower))
+        return 'fix';
+    if (/\b(refactor|cleanup|simplify|restructure)\b/.test(lower))
+        return 'refactor';
+    if (/\b(test|spec|coverage)\b/.test(lower))
+        return 'test';
+    if (/\b(doc|docs|document|readme)\b/.test(lower))
+        return 'document';
+    if (/\b(remove|delete|drop)\b/.test(lower))
+        return 'remove';
+    if (/\b(migration|migrate|schema)\b/.test(lower))
+        return 'migrate';
+    if (/\b(modify|update|change|edit)\b/.test(lower))
+        return 'modify';
+    return 'unknown';
+}
+function domainKeywordsForGoal(lower) {
+    const domains = [
+        [/\b(tasks?|exports?|jobs?|workers?)\b/, 'tasks'],
+        [/\bservices?\b/, 'services'],
+        [/\b(routes?|api|handlers?|controllers?)\b/, 'api'],
+        [/\bcomponents?|pages?|ui\b/, 'frontend'],
+        [/\bmodels?|schemas?\b/, 'data-model'],
+        [/\btests?|specs?|coverage\b/, 'tests'],
+        [/\bauth|oauth|sso|jwt|session\b/, 'auth'],
+        [/\bbilling|payments?|checkout|stripe|invoice\b/, 'payments'],
+        [/\bmigrations?|schema|database|db\b/, 'database'],
+        [/\bretry|backoff|timeout|idempotent|idempotency\b/, 'reliability'],
+        [/\bsecurity|secret|credential|encryption|crypto\b/, 'security'],
+        [/\bdocs?|readme|guide\b/, 'docs'],
+        [/\bconfig|settings|env\b/, 'config'],
+    ];
+    return domains.filter(([re]) => re.test(lower)).map(([, domain]) => domain);
+}
+function supportGlobsForIntent(goal, profile) {
+    const lower = goal.toLowerCase();
+    const globs = [
+        'tests/**',
+        'test/**',
+        'src/util/**',
+        'src/utils/**',
+        'src/helpers/**',
+        'src/lib/**',
+        'lib/**',
+        ...(profile.runtimeConfig?.safeSupportGlobs ?? []),
+    ];
+    if (/\b(doc|docs|readme|guide)\b/.test(lower)) {
+        globs.push('docs/**', '*.md');
+    }
+    if (/\bconfig|settings\b/.test(lower)) {
+        globs.push('config/**', '*.config.*');
+    }
+    return unique(globs);
+}
+function intentObligations(goal, action, domains, scopeMode) {
+    const lower = goal.toLowerCase();
+    const obligations = [
+        {
+            id: 'stay-within-intent-scope',
+            title: 'Stay within the declared task intent',
+            description: 'Changes should remain tied to the target paths, domains, or support files implied by the user prompt.',
+            severity: scopeMode === 'ambiguous' ? 'warn' : 'info',
+        },
+    ];
+    if (scopeMode === 'ambiguous') {
+        obligations.push({
+            id: 'narrow-ambiguous-intent',
+            title: 'Narrow ambiguous intent before broad edits',
+            description: 'The user prompt did not identify a clear module or path, so unrelated edits should be treated as drift.',
+            severity: 'warn',
+        });
+    }
+    if (action === 'refactor') {
+        obligations.push({
+            id: 'preserve-behavior',
+            title: 'Preserve existing behavior',
+            description: 'Refactors should avoid public API, data model, or cross-boundary behavior changes unless explicitly requested.',
+            severity: 'critical',
+        });
+    }
+    if (action === 'fix') {
+        obligations.push({
+            id: 'minimize-fix-blast-radius',
+            title: 'Keep fix blast radius small',
+            description: 'Bug fixes should prefer the smallest coherent change and avoid unrelated cleanup.',
+            severity: 'warn',
+        });
+    }
+    if (/\bretry|backoff|timeout\b/.test(lower) || domains.includes('reliability')) {
+        obligations.push({
+            id: 'preserve-idempotency',
+            title: 'Preserve idempotency around retries',
+            description: 'Retry/backoff work must avoid duplicate side effects in billing, auth, and external calls.',
+            severity: 'critical',
+        }, {
+            id: 'cover-retry-path',
+            title: 'Cover retry behavior',
+            description: 'A retry/backoff task should normally include or preserve tests for failure and retry paths.',
+            severity: 'warn',
+        });
+    }
+    if (domains.some((domain) => domain === 'auth' || domain === 'payments' || domain === 'security' || domain === 'database')) {
+        obligations.push({
+            id: 'respect-owned-sensitive-boundaries',
+            title: 'Respect owned sensitive boundaries',
+            description: 'Sensitive owned paths require exact approval before writes and should not be expanded silently.',
+            severity: 'critical',
+        });
+    }
+    return obligations;
+}
+function pathMatchesAny(filePath, globs) {
+    return globs.filter((glob) => {
+        const prefix = glob.replace('/**', '').replace('/*', '');
+        return (filePath === prefix ||
+            filePath.startsWith(prefix + '/') ||
+            micromatch_1.default.isMatch(filePath, glob, { dot: true, matchBase: true }));
+    });
+}
+function deriveIntentContract(goal, profile, allowedGlobs, scopeMode) {
+    const lower = goal.toLowerCase();
+    const pathTokens = extractPathTokens(goal);
+    const primaryAction = primaryActionForGoal(lower);
+    const domainKeywords = domainKeywordsForGoal(lower);
+    const supportPathGlobs = supportGlobsForIntent(goal, profile);
+    const supportSet = new Set(supportPathGlobs);
+    const expectedPathGlobs = unique(allowedGlobs).filter((glob) => !supportSet.has(glob));
+    const confidence = scopeMode === 'explicit' ? 'high' : scopeMode === 'inferred' ? 'medium' : 'low';
+    const outOfScopeGlobs = unique([
+        ...profile.approvalRequiredPaths,
+        ...profile.sensitiveBoundaries.map((boundary) => boundary.glob),
+    ]).filter((glob) => pathMatchesAny(glob.replace('/**', ''), expectedPathGlobs).length === 0);
+    const riskNotes = [];
+    if (scopeMode === 'ambiguous') {
+        riskNotes.push('Prompt did not name a clear file, module, or domain; coherence checks should be treated as low-confidence.');
+    }
+    if (profile.approvalRequiredPaths.length > 0) {
+        riskNotes.push(`${profile.approvalRequiredPaths.length} approval-required boundaries excluded from normal scope.`);
+    }
+    if (profile.unownedPercent > 25) {
+        riskNotes.push(`${profile.unownedPercent}% of source paths are not covered by CODEOWNERS.`);
+    }
+    return {
+        schemaVersion: 1,
+        summary: normalizeGoal(goal),
+        primaryAction,
+        confidence,
+        target: {
+            pathTokens,
+            domainKeywords,
+            expectedPathGlobs,
+            supportPathGlobs,
+        },
+        obligations: intentObligations(goal, primaryAction, domainKeywords, scopeMode),
+        outOfScopeGlobs,
+        riskNotes,
+        createdAt: new Date().toISOString(),
+    };
+}
+function evaluateIntentCoherence(contract, filePath) {
+    const intent = contract.intentContract;
+    if (!intent) {
+        return {
+            verdict: 'unknown',
+            score: 50,
+            filePath,
+            matchedGlobs: [],
+            reasons: ['No intent contract is present on this session.'],
+            obligations: [],
+        };
+    }
+    const expectedMatches = pathMatchesAny(filePath, intent.target.expectedPathGlobs);
+    if (expectedMatches.length > 0) {
+        return {
+            verdict: 'aligned',
+            score: intent.confidence === 'high' ? 96 : 88,
+            filePath,
+            matchedGlobs: expectedMatches,
+            reasons: [`File matches expected intent scope: ${expectedMatches.join(', ')}`],
+            obligations: intent.obligations,
+        };
+    }
+    const supportMatches = pathMatchesAny(filePath, intent.target.supportPathGlobs);
+    if (supportMatches.length > 0) {
+        return {
+            verdict: 'supporting',
+            score: 74,
+            filePath,
+            matchedGlobs: supportMatches,
+            reasons: [`File is a plausible support/test/helper path for the task: ${supportMatches.join(', ')}`],
+            obligations: intent.obligations,
+        };
+    }
+    const outOfScopeMatches = pathMatchesAny(filePath, intent.outOfScopeGlobs);
+    if (outOfScopeMatches.length > 0) {
+        return {
+            verdict: 'drift',
+            score: 25,
+            filePath,
+            matchedGlobs: outOfScopeMatches,
+            reasons: [`File is in a sensitive or approval-required boundary outside the intent contract: ${outOfScopeMatches.join(', ')}`],
+            obligations: intent.obligations,
+        };
+    }
+    const domainMatch = intent.target.domainKeywords.find((domain) => filePath.toLowerCase().includes(domain));
+    if (domainMatch) {
+        return {
+            verdict: 'supporting',
+            score: 68,
+            filePath,
+            matchedGlobs: [],
+            reasons: [`File path loosely matches the task domain keyword "${domainMatch}".`],
+            obligations: intent.obligations,
+        };
+    }
+    return {
+        verdict: 'drift',
+        score: intent.confidence === 'low' ? 45 : 38,
+        filePath,
+        matchedGlobs: [],
+        reasons: ['File does not match expected intent scope, support paths, or task domain keywords.'],
+        obligations: intent.obligations,
+    };
+}
+// ── Agent plan capture and plan coherence ─────────────────────────────────────
+function currentAgentPlanRevision(contract) {
+    if (typeof contract.agentPlanRevision === 'number' && contract.agentPlanRevision > 0) {
+        return Math.floor(contract.agentPlanRevision);
+    }
+    const revisions = Array.isArray(contract.agentPlanRevisions)
+        ? contract.agentPlanRevisions
+        : [];
+    const latest = revisions.reduce((max, revision) => {
+        const value = typeof revision.revision === 'number' ? revision.revision : 0;
+        return Math.max(max, value);
+    }, 0);
+    if (latest > 0)
+        return latest;
+    return contract.agentPlan ? 1 : 0;
+}
+function planRevisionLedger(contract) {
+    const revisions = Array.isArray(contract.agentPlanRevisions)
+        ? contract.agentPlanRevisions.filter((revision) => revision?.plan)
+        : [];
+    if (revisions.length > 0) {
+        return [...revisions];
+    }
+    if (!contract.agentPlan) {
+        return [];
+    }
+    const revision = currentAgentPlanRevision(contract) || 1;
+    return [
+        {
+            revision,
+            kind: 'captured',
+            plan: contract.agentPlan,
+            reason: 'legacy active plan snapshot',
+            source: contract.agentPlan.source || 'unknown',
+            capturedAt: contract.agentPlan.capturedAt || new Date().toISOString(),
+            eventId: `plan_legacy_${revision}`,
+        },
+    ];
+}
+function makePlanEventId(prefix = 'plan') {
+    return `${prefix}_${Date.now()}_${(0, node_crypto_1.randomBytes)(3).toString('hex')}`;
+}
+function recordAgentPlanRevision(args) {
+    const previousRevision = currentAgentPlanRevision(args.session.contract);
+    const revision = previousRevision === 0 ? 1 : previousRevision + 1;
+    const eventId = makePlanEventId(args.kind);
+    const capturedAt = args.plan.capturedAt || new Date().toISOString();
+    const ledger = planRevisionLedger(args.session.contract).filter((entry) => entry.revision < revision);
+    args.session.contract.agentPlan = args.plan;
+    args.session.contract.agentPlanRevision = revision;
+    args.session.contract.agentPlanRevisions = [
+        ...ledger,
+        {
+            revision,
+            kind: args.kind,
+            plan: args.plan,
+            reason: args.reason,
+            source: args.source,
+            capturedAt,
+            eventId,
+        },
+    ];
+    args.session.events.push({
+        type: args.eventType,
+        ts: capturedAt,
+        message: args.kind === 'captured'
+            ? `Agent plan captured as revision ${revision} (${args.source}, confidence ${args.plan.confidence}, ${args.plan.steps.length} step${args.plan.steps.length === 1 ? '' : 's'})`
+            : `Agent plan amended to revision ${revision} (${args.source})`,
+        detail: {
+            eventId,
+            previousRevision,
+            revision,
+            agentPlan: args.plan,
+            ...(args.amendment
+                ? {
+                    planAmendment: {
+                        previousRevision,
+                        revision,
+                        amendedAt: capturedAt,
+                        activePlan: args.plan,
+                        ...args.amendment,
+                    },
+                }
+                : {}),
+        },
+    });
+    recomputeArchitectureObligations(args.session, capturedAt);
+    (0, node_fs_1.writeFileSync)(sessionPath(args.projectRoot, args.session.sessionId), JSON.stringify(args.session, null, 2) + '\n', 'utf8');
+    return args.session;
+}
+/**
+ * Attach (or replace) the agent's captured plan on a session contract and record
+ * a `plan_captured` event. Source-free: only the AgentPlan metadata is stored.
+ * Returns null when the session cannot be loaded; never throws on a missing plan.
+ */
+function attachAgentPlan(projectRoot, sessionId, plan) {
+    const session = loadSession(projectRoot, sessionId);
+    if (!session)
+        return null;
+    const hasExistingPlan = Boolean(session.contract.agentPlan);
+    return recordAgentPlanRevision({
+        projectRoot,
+        session,
+        plan,
+        kind: hasExistingPlan ? 'amended' : 'captured',
+        reason: hasExistingPlan ? 'agent published an updated plan' : 'initial agent plan captured',
+        source: plan.source || 'unknown',
+        eventType: hasExistingPlan ? 'plan_amended' : 'plan_captured',
+        amendment: hasExistingPlan
+            ? {
+                action: 'replace',
+                reason: 'agent published an updated plan',
+                source: plan.source || 'unknown',
+                activePlan: plan,
+            }
+            : undefined,
+    });
+}
+function emptyAgentPlan(now, source) {
+    return {
+        schemaVersion: 1,
+        summary: 'Agent plan',
+        steps: [],
+        expectedFiles: [],
+        expectedGlobs: [],
+        constraints: [],
+        risks: [],
+        capturedAt: now,
+        source,
+        confidence: 'low',
+    };
+}
+function hasPatchChanges(input) {
+    return Boolean(input.summary?.trim() ||
+        input.planText?.trim() ||
+        (input.addSteps?.length ?? 0) > 0 ||
+        (input.removeSteps?.length ?? 0) > 0 ||
+        (input.addExpectedFiles?.length ?? 0) > 0 ||
+        (input.removeExpectedFiles?.length ?? 0) > 0 ||
+        (input.addExpectedGlobs?.length ?? 0) > 0 ||
+        (input.removeExpectedGlobs?.length ?? 0) > 0 ||
+        (input.addConstraints?.length ?? 0) > 0 ||
+        (input.removeConstraints?.length ?? 0) > 0 ||
+        (input.addRisks?.length ?? 0) > 0 ||
+        (input.removeRisks?.length ?? 0) > 0);
+}
+function confidenceForPlan(plan) {
+    if ((plan.expectedFiles.length + plan.expectedGlobs.length > 0) && plan.steps.length >= 1) {
+        return 'high';
+    }
+    if (plan.steps.length > 0 || plan.expectedFiles.length + plan.expectedGlobs.length > 0) {
+        return 'medium';
+    }
+    return 'low';
+}
+function planMateriallyChanged(existing, next) {
+    if (!existing)
+        return true;
+    const stable = (values) => JSON.stringify(values);
+    return (existing.summary !== next.summary ||
+        stable(existing.steps) !== stable(next.steps) ||
+        stable(existing.expectedFiles) !== stable(next.expectedFiles) ||
+        stable(existing.expectedGlobs) !== stable(next.expectedGlobs) ||
+        stable(existing.constraints) !== stable(next.constraints) ||
+        stable(existing.risks) !== stable(next.risks));
+}
+function addedValues(existing, next) {
+    const before = new Set((existing ?? []).map((value) => value.trim()).filter(Boolean));
+    return uniqueTrimmed((next ?? []).filter((value) => !before.has(value.trim())));
+}
+function removedValues(existing, next) {
+    const after = new Set((next ?? []).map((value) => value.trim()).filter(Boolean));
+    return uniqueTrimmed((existing ?? []).filter((value) => !after.has(value.trim())));
+}
+function fileMatchesAny(filePath, globs) {
+    return pathMatchesAny(filePath, globs).length > 0;
+}
+/**
+ * Deterministically classify a proposed plan change. The risk model is
+ * intentionally conservative around permission-envelope expansion:
+ *  - broad globs require human review;
+ *  - newly named sensitive / approval-required / owned files require review;
+ *  - files outside the original intent envelope require review;
+ *  - removing a stated constraint requires review.
+ *
+ * Adding a concrete file already inside the declared task intent stays fluid,
+ * which preserves normal iterative implementation work.
+ */
+function classifyAgentPlanAmendment(contract, proposedPlan) {
+    const existing = contract.agentPlan;
+    const addedFiles = addedValues(existing?.expectedFiles, proposedPlan.expectedFiles)
+        .map(normalizePlanPath);
+    const addedGlobs = addedValues(existing?.expectedGlobs, proposedPlan.expectedGlobs)
+        .map(normalizePlanPath);
+    const removedConstraints = removedValues(existing?.constraints, proposedPlan.constraints);
+    const reasons = [];
+    let level = 'low';
+    const escalate = (next, reason) => {
+        const order = { low: 0, medium: 1, high: 2 };
+        if (order[next] > order[level])
+            level = next;
+        reasons.push(reason);
+    };
+    if (addedGlobs.length > 0) {
+        escalate('high', `Plan adds broad target glob${addedGlobs.length === 1 ? '' : 's'}: ${addedGlobs.join(', ')}`);
+    }
+    if (removedConstraints.length > 0) {
+        escalate('high', `Plan removes stated constraint${removedConstraints.length === 1 ? '' : 's'}: ${removedConstraints.join(', ')}`);
+    }
+    if (addedFiles.length > 5) {
+        escalate('high', `Plan expands to ${addedFiles.length} additional files in one amendment.`);
+    }
+    const intentGlobs = unique([
+        ...(contract.intentContract?.target.expectedPathGlobs ?? []),
+        ...(contract.intentContract?.target.supportPathGlobs ?? []),
+    ]);
+    const ownedGlobs = contract.ownershipRules.map((rule) => rule.glob);
+    for (const filePath of addedFiles) {
+        if (fileMatchesAny(filePath, contract.approvalRequiredGlobs)) {
+            escalate('high', `Added file requires explicit boundary approval: ${filePath}`);
+            continue;
+        }
+        if (fileMatchesAny(filePath, contract.sensitiveGlobs)) {
+            escalate('high', `Added file crosses a sensitive boundary: ${filePath}`);
+            continue;
+        }
+        if (fileMatchesAny(filePath, ownedGlobs)) {
+            escalate('high', `Added file crosses a team-owned boundary: ${filePath}`);
+            continue;
+        }
+        if (intentGlobs.length > 0 && !fileMatchesAny(filePath, intentGlobs)) {
+            escalate('high', `Added file is outside the original intent envelope: ${filePath}`);
+            continue;
+        }
+        escalate('medium', `Plan adds an in-intent implementation file: ${filePath}`);
+    }
+    if (reasons.length === 0 && planMateriallyChanged(existing, proposedPlan)) {
+        reasons.push('Plan refines existing steps without expanding governed target scope.');
+    }
+    const effectiveLevel = level;
+    return {
+        level: effectiveLevel,
+        requiresHumanApproval: effectiveLevel === 'high',
+        reasons,
+        addedFiles,
+        addedGlobs,
+        removedConstraints,
+    };
+}
+function deriveAmendedPlan(existing, input) {
+    const source = input.source || 'manual';
+    const amendedAt = input.amendedAt || new Date().toISOString();
+    const reason = input.reason?.trim() || 'plan updated during session';
+    if (!hasPatchChanges(input)) {
+        throw new Error('No plan changes supplied. Provide --plan, --add-step, --remove-step, --add-file, or --remove-file.');
+    }
+    if (input.planText?.trim()) {
+        const plan = (0, agent_plan_1.extractAgentPlan)({ plan: input.planText }, { now: new Date(amendedAt), source });
+        if (!plan) {
+            throw new Error('Could not parse replacement plan text.');
+        }
+        return {
+            action: 'replace',
+            plan: {
+                ...plan,
+                summary: input.summary?.trim() || plan.summary,
+                capturedAt: amendedAt,
+                source,
+            },
+            amendment: {
+                action: 'replace',
+                reason,
+                source,
+            },
+        };
+    }
+    const base = existing
+        ? { ...existing }
+        : emptyAgentPlan(amendedAt, source);
+    const addSteps = uniqueTrimmed(input.addSteps ?? []);
+    const removeSteps = uniqueTrimmed(input.removeSteps ?? []);
+    const addConstraints = uniqueTrimmed(input.addConstraints ?? []);
+    const removeConstraints = uniqueTrimmed(input.removeConstraints ?? []);
+    const addRisks = uniqueTrimmed(input.addRisks ?? []);
+    const removeRisks = uniqueTrimmed(input.removeRisks ?? []);
+    const inferredAdded = (0, agent_plan_1.extractExpectedTargetsFromText)([
+        input.summary || '',
+        ...addSteps,
+        ...addConstraints,
+    ].join('\n'));
+    const inferredRemoved = (0, agent_plan_1.extractExpectedTargetsFromText)(removeSteps.join('\n'));
+    const filesToAdd = normalizePlanPaths([
+        ...(input.addExpectedFiles ?? []),
+        ...inferredAdded.expectedFiles,
+    ]);
+    const filesToRemove = normalizePlanPaths([
+        ...(input.removeExpectedFiles ?? []),
+        ...inferredRemoved.expectedFiles,
+    ]);
+    const globsToAdd = normalizePlanPaths([
+        ...(input.addExpectedGlobs ?? []),
+        ...inferredAdded.expectedGlobs,
+    ]);
+    const globsToRemove = normalizePlanPaths([
+        ...(input.removeExpectedGlobs ?? []),
+        ...inferredRemoved.expectedGlobs,
+    ]);
+    const plan = {
+        ...base,
+        summary: input.summary?.trim() || base.summary || 'Agent plan',
+        steps: removeTrimmed([...(base.steps ?? []), ...addSteps], removeSteps),
+        expectedFiles: removeTrimmed(normalizePlanPaths([...(base.expectedFiles ?? []), ...filesToAdd]), filesToRemove),
+        expectedGlobs: removeTrimmed(normalizePlanPaths([...(base.expectedGlobs ?? []), ...globsToAdd]), globsToRemove),
+        constraints: removeTrimmed([...(base.constraints ?? []), ...addConstraints], removeConstraints),
+        risks: removeTrimmed([...(base.risks ?? []), ...addRisks], removeRisks),
+        capturedAt: amendedAt,
+        source,
+        confidence: 'low',
+    };
+    plan.confidence = confidenceForPlan(plan);
+    return {
+        action: 'patch',
+        plan,
+        amendment: {
+            action: 'patch',
+            reason,
+            source,
+            added: {
+                steps: addSteps,
+                expectedFiles: filesToAdd,
+                expectedGlobs: globsToAdd,
+                constraints: addConstraints,
+                risks: addRisks,
+            },
+            removed: {
+                steps: removeSteps,
+                expectedFiles: filesToRemove,
+                expectedGlobs: globsToRemove,
+                constraints: removeConstraints,
+                risks: removeRisks,
+            },
+        },
+    };
+}
+function proposalLedger(contract) {
+    return Array.isArray(contract.planAmendmentProposals)
+        ? contract.planAmendmentProposals
+        : [];
+}
+function persistSession(projectRoot, session) {
+    (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+}
+function createPendingPlanProposal(args) {
+    const existingPending = proposalLedger(args.session.contract).find((proposal) => proposal.status === 'pending' &&
+        proposal.previousRevision === currentAgentPlanRevision(args.session.contract) &&
+        !planMateriallyChanged(proposal.proposedPlan, args.proposedPlan));
+    if (existingPending)
+        return existingPending;
+    const proposal = {
+        proposalId: makePlanEventId('replan_proposal'),
+        sessionId: args.session.sessionId,
+        previousRevision: currentAgentPlanRevision(args.session.contract),
+        action: args.action,
+        proposedBy: args.proposedBy,
+        source: args.source,
+        reason: args.reason,
+        proposedPlan: args.proposedPlan,
+        risk: args.risk,
+        status: 'pending',
+        createdAt: args.createdAt,
+    };
+    args.session.contract.planAmendmentProposals = [
+        ...proposalLedger(args.session.contract),
+        proposal,
+    ];
+    args.session.events.push({
+        type: 'plan_amendment_proposed',
+        ts: args.createdAt,
+        message: `Agent plan amendment proposed (${proposal.risk.level} risk, human decision required)`,
+        detail: { planAmendmentProposal: proposal },
+    });
+    persistSession(args.projectRoot, args.session);
+    return proposal;
+}
+function applyOrProposeAgentPlan(args) {
+    const previousRevision = currentAgentPlanRevision(args.session.contract);
+    const risk = classifyAgentPlanAmendment(args.session.contract, args.plan);
+    if (args.proposedBy === 'agent' && risk.requiresHumanApproval) {
+        const proposal = createPendingPlanProposal({
+            projectRoot: args.projectRoot,
+            session: args.session,
+            action: args.action,
+            proposedPlan: args.plan,
+            reason: args.reason,
+            source: args.source,
+            proposedBy: args.proposedBy,
+            risk,
+            createdAt: args.amendedAt,
+        });
+        return {
+            sessionId: args.session.sessionId,
+            previousRevision,
+            revision: null,
+            action: args.action,
+            reason: args.reason,
+            eventId: proposal.proposalId,
+            status: 'pending',
+            risk,
+            activePlan: args.session.contract.agentPlan ?? null,
+            proposal,
+        };
+    }
+    const updated = recordAgentPlanRevision({
+        projectRoot: args.projectRoot,
+        session: args.session,
+        plan: args.plan,
+        kind: 'amended',
+        reason: args.reason,
+        source: args.source,
+        eventType: 'plan_amended',
+        amendment: {
+            ...args.amendment,
+            proposedBy: args.proposedBy,
+            decidedBy: args.decidedBy || (args.proposedBy === 'human' ? 'local-human' : null),
+            risk,
+        },
+    });
+    const revision = currentAgentPlanRevision(updated.contract);
+    const event = updated.events[updated.events.length - 1];
+    return {
+        sessionId: updated.sessionId,
+        previousRevision,
+        revision,
+        action: args.action,
+        reason: args.reason,
+        eventId: String(event.detail?.eventId || ''),
+        status: 'applied',
+        risk,
+        activePlan: updated.contract.agentPlan,
+    };
+}
+/**
+ * Capture an agent-emitted plan from the live hook path. The initial plan is
+ * accepted as revision 1. Later safe refinements apply automatically, while
+ * risky agent-authored expansions remain pending until a human decides.
+ */
+function captureAgentPlan(projectRoot, sessionId, plan) {
+    const session = loadSession(projectRoot, sessionId);
+    if (!session)
+        return null;
+    if (!session.contract.agentPlan) {
+        const updated = attachAgentPlan(projectRoot, sessionId, plan);
+        return updated ? { session: updated, status: 'captured' } : null;
+    }
+    if (!planMateriallyChanged(session.contract.agentPlan, plan)) {
+        return { session, status: 'unchanged' };
+    }
+    const result = applyOrProposeAgentPlan({
+        projectRoot,
+        session,
+        action: 'replace',
+        plan,
+        reason: 'agent published an updated plan',
+        source: plan.source || 'unknown',
+        proposedBy: 'agent',
+        amendedAt: plan.capturedAt || new Date().toISOString(),
+        amendment: {
+            action: 'replace',
+            reason: 'agent published an updated plan',
+            source: plan.source || 'unknown',
+        },
+    });
+    const updated = loadSession(projectRoot, sessionId) || session;
+    return {
+        session: updated,
+        status: result.status,
+        proposal: result.proposal,
+    };
+}
+/**
+ * Amend the active agent plan for a live session. This is the user/agent
+ * re-plan path: it updates `contract.agentPlan` immediately, appends a
+ * source-free revision, and records a `plan_amended` event for replay.
+ */
+function amendAgentPlan(projectRoot, input) {
+    const session = input.sessionId
+        ? loadSession(projectRoot, input.sessionId)
+        : loadActiveSession(projectRoot);
+    if (!session)
+        throw new Error('No active session found. Start a governed task first.');
+    if (session.status !== 'active')
+        throw new Error(`Session ${session.sessionId} is already finished.`);
+    const reason = input.reason?.trim() || 'plan updated during session';
+    const { action, plan, amendment } = deriveAmendedPlan(session.contract.agentPlan, input);
+    const source = input.source || 'manual';
+    const proposedBy = input.proposedBy || 'human';
+    const amendedAt = input.amendedAt || plan.capturedAt || new Date().toISOString();
+    return applyOrProposeAgentPlan({
+        projectRoot,
+        session,
+        action,
+        plan: {
+            ...plan,
+            capturedAt: amendedAt,
+            source,
+        },
+        reason,
+        source,
+        proposedBy,
+        amendedAt,
+        decidedBy: input.decidedBy,
+        amendment: {
+            ...amendment,
+            reason,
+            amendedAt,
+            activePlan: {
+                ...plan,
+                capturedAt: amendedAt,
+                source,
+            },
+        },
+    });
+}
+function decideAgentPlanAmendment(projectRoot, input) {
+    const session = input.sessionId
+        ? loadSession(projectRoot, input.sessionId)
+        : loadActiveSession(projectRoot);
+    if (!session)
+        throw new Error('No active session found. Start a governed task first.');
+    if (session.status !== 'active')
+        throw new Error(`Session ${session.sessionId} is already finished.`);
+    const proposals = proposalLedger(session.contract);
+    const proposal = proposals.find((entry) => entry.proposalId === input.proposalId);
+    if (!proposal)
+        throw new Error(`Plan amendment proposal ${input.proposalId} was not found.`);
+    if (proposal.status !== 'pending') {
+        throw new Error(`Plan amendment proposal ${input.proposalId} is already ${proposal.status}.`);
+    }
+    const decidedAt = input.decidedAt || new Date().toISOString();
+    const decidedBy = input.decidedBy?.trim() || 'human';
+    const reason = input.reason?.trim() || `human ${input.decision}ed plan amendment`;
+    proposal.status = input.decision === 'accept' ? 'accepted' : 'rejected';
+    proposal.decidedAt = decidedAt;
+    proposal.decidedBy = decidedBy;
+    proposal.decisionReason = reason;
+    if (input.decision === 'reject') {
+        session.events.push({
+            type: 'plan_amendment_decision',
+            ts: decidedAt,
+            decision: 'rejected',
+            message: `Plan amendment ${proposal.proposalId} rejected by ${decidedBy}`,
+            detail: { planAmendmentProposal: proposal },
+        });
+        persistSession(projectRoot, session);
+        return {
+            sessionId: session.sessionId,
+            proposalId: proposal.proposalId,
+            decision: input.decision,
+            status: proposal.status,
+            previousRevision: currentAgentPlanRevision(session.contract),
+            revision: null,
+            activePlan: session.contract.agentPlan ?? null,
+        };
+    }
+    const previousRevision = currentAgentPlanRevision(session.contract);
+    const updated = recordAgentPlanRevision({
+        projectRoot,
+        session,
+        plan: {
+            ...proposal.proposedPlan,
+            capturedAt: decidedAt,
+            source: input.source || proposal.source,
+        },
+        kind: 'amended',
+        reason,
+        source: input.source || proposal.source,
+        eventType: 'plan_amended',
+        amendment: {
+            action: proposal.action,
+            proposalId: proposal.proposalId,
+            proposedBy: proposal.proposedBy,
+            decidedBy,
+            decisionReason: reason,
+            risk: proposal.risk,
+        },
+    });
+    const revision = currentAgentPlanRevision(updated.contract);
+    proposal.appliedRevision = revision;
+    updated.events.push({
+        type: 'plan_amendment_decision',
+        ts: decidedAt,
+        decision: 'accepted',
+        message: `Plan amendment ${proposal.proposalId} accepted by ${decidedBy}`,
+        detail: { planAmendmentProposal: proposal, appliedRevision: revision },
+    });
+    persistSession(projectRoot, updated);
+    return {
+        sessionId: updated.sessionId,
+        proposalId: proposal.proposalId,
+        decision: input.decision,
+        status: proposal.status,
+        previousRevision,
+        revision,
+        activePlan: updated.contract.agentPlan ?? null,
+    };
+}
+/**
+ * Plan/edit coherence for a session: does this edit follow the agent's own plan?
+ *
+ * Maps the session's intent-support scope into the deterministic plan-coherence
+ * evaluator. Boundary/approval blocks always override this advisory verdict at
+ * the call site; an `unplanned` verdict must not block on its own in V1.
+ */
+function evaluateSessionPlanCoherence(contract, filePath) {
+    return (0, agent_plan_1.evaluatePlanCoherence)({
+        agentPlan: contract.agentPlan ?? null,
+        filePath,
+        intentSupportGlobs: contract.intentContract?.target.supportPathGlobs ?? [],
+    });
+}
+function evaluatePlanCoherencePolicy(mode, planCoherence) {
+    const effectiveMode = mode ?? profile_1.DEFAULT_PLAN_COHERENCE_MODE;
+    if (effectiveMode === 'off') {
+        return {
+            mode: effectiveMode,
+            action: 'none',
+            reason: 'Plan coherence enforcement is disabled for this session.',
+        };
+    }
+    if (planCoherence.verdict !== 'unplanned') {
+        return {
+            mode: effectiveMode,
+            action: 'none',
+            reason: `Plan coherence verdict is ${planCoherence.verdict}; no policy action required.`,
+        };
+    }
+    return {
+        mode: effectiveMode,
+        action: effectiveMode,
+        reason: planCoherence.reasons[0] || 'Path is not justified by the captured agent plan.',
+    };
+}
+/**
+ * Latest non-reverted agent-plan revision for a contract. `0` means no agent
+ * plan has been captured yet. Public wrapper around the internal resolver so
+ * callers (hooks, evidence, dashboard) can record which plan version was active.
+ */
+function activeAgentPlanRevision(contract) {
+    return currentAgentPlanRevision(contract);
+}
+function timelineKindRank(kind) {
+    switch (kind) {
+        case 'intent':
+            return 0;
+        case 'plan_captured':
+        case 'plan_amended':
+            return 1;
+        case 'amendment_proposed':
+            return 2;
+        case 'amendment_accepted':
+        case 'amendment_rejected':
+            return 3;
+        default:
+            return 4;
+    }
+}
+function activeRevisionAt(ledger, ts) {
+    let active = 0;
+    for (const entry of ledger) {
+        const capturedAt = entry.capturedAt || '';
+        if (capturedAt && capturedAt <= ts && entry.revision > active) {
+            active = entry.revision;
+        }
+    }
+    return active;
+}
+function shortLabel(value, max = 120) {
+    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (text.length <= max)
+        return text;
+    return `${text.slice(0, max - 1)}…`;
+}
+/**
+ * Build a source-free plan timeline from a governance session.
+ *
+ * Derived purely from data already persisted on the session (goal, intent
+ * contract, plan revision ledger, amendment proposals, and boundary-check
+ * events). No source, diffs, or file contents are read or emitted — only the
+ * summaries, paths, and revision numbers that already live in the record.
+ *
+ * The timeline reads: Intent → Plan v1 → Amendment v2 → Block / Warning /
+ * Approval, with every milestone tagged with the plan revision that was active
+ * when it occurred.
+ */
+function buildPlanTimeline(session) {
+    const contract = session.contract;
+    const ledger = planRevisionLedger(contract);
+    const proposals = proposalLedger(contract);
+    const events = Array.isArray(session.events) ? session.events : [];
+    const startEvent = events.find((event) => event.type === 'session_start');
+    const intentTs = startEvent?.ts || contract.intentContract?.createdAt || ledger[0]?.capturedAt || '';
+    const intentSummary = shortLabel(contract.intentContract?.summary || contract.goal || 'No intent captured');
+    const entries = [];
+    // 1. Initial intent record.
+    entries.push({
+        kind: 'intent',
+        ts: intentTs,
+        activePlanRevision: 0,
+        label: intentSummary,
+        source: contract.intentContract ? 'intent' : 'goal',
+    });
+    // 2. Every plan version (never overwritten; older revisions are preserved).
+    for (const entry of ledger) {
+        entries.push({
+            kind: entry.kind === 'amended' ? 'plan_amended' : 'plan_captured',
+            ts: entry.capturedAt || intentTs,
+            activePlanRevision: entry.revision,
+            revision: entry.revision,
+            label: shortLabel(entry.plan?.summary || entry.reason || `plan revision ${entry.revision}`),
+            source: entry.source,
+        });
+    }
+    // 3. Amendment proposals + their human decisions.
+    for (const proposal of proposals) {
+        const proposedAt = proposal.createdAt || intentTs;
+        entries.push({
+            kind: 'amendment_proposed',
+            ts: proposedAt,
+            activePlanRevision: activeRevisionAt(ledger, proposedAt),
+            label: shortLabel(`${proposal.risk?.level || 'unknown'} risk: ${proposal.reason || 'plan amendment proposed'}`),
+            source: proposal.source,
+        });
+        if (proposal.status !== 'pending' && proposal.decidedAt) {
+            entries.push({
+                kind: proposal.status === 'accepted' ? 'amendment_accepted' : 'amendment_rejected',
+                ts: proposal.decidedAt,
+                activePlanRevision: activeRevisionAt(ledger, proposal.decidedAt),
+                revision: proposal.appliedRevision ?? undefined,
+                label: shortLabel(proposal.decisionReason || `amendment ${proposal.status} by ${proposal.decidedBy || 'human'}`),
+                source: proposal.source,
+            });
+        }
+    }
+    // 4. Boundary check outcomes that matter for review: blocks, drift warnings,
+    //    approvals, and obligation waivers — each tagged with the active plan.
+    for (const event of events) {
+        const ts = event.ts || intentTs;
+        const activePlanRevision = activeRevisionAt(ledger, ts);
+        if (event.type === 'check_block') {
+            entries.push({
+                kind: 'boundary_block',
+                ts,
+                activePlanRevision,
+                label: shortLabel(event.message || event.filePath || 'edit blocked'),
+                filePath: event.filePath,
+                verdict: event.verdict,
+            });
+        }
+        else if (event.type === 'check_warn') {
+            entries.push({
+                kind: 'drift_warning',
+                ts,
+                activePlanRevision,
+                label: shortLabel(event.message || event.filePath || 'edit warning'),
+                filePath: event.filePath,
+                verdict: event.verdict,
+            });
+        }
+        else if (event.type === 'approval_decision') {
+            entries.push({
+                kind: 'approval',
+                ts,
+                activePlanRevision,
+                label: shortLabel(event.message || event.filePath || 'approval recorded'),
+                filePath: event.filePath,
+                verdict: event.decision,
+            });
+        }
+        else if (event.type === 'obligation_waiver_decision') {
+            entries.push({
+                kind: 'obligation_waiver',
+                ts,
+                activePlanRevision,
+                label: shortLabel(event.message || 'architecture obligation waived'),
+            });
+        }
+    }
+    entries.sort((a, b) => {
+        if (a.ts !== b.ts)
+            return a.ts < b.ts ? -1 : 1;
+        return timelineKindRank(a.kind) - timelineKindRank(b.kind);
+    });
+    return {
+        sessionId: session.sessionId,
+        intentSummary,
+        activePlanRevision: currentAgentPlanRevision(contract),
+        planVersions: ledger.length,
+        amendmentCount: ledger.filter((entry) => entry.kind === 'amended').length,
+        pendingAmendmentCount: proposals.filter((proposal) => proposal.status === 'pending').length,
+        driftWarningCount: events.filter((event) => event.type === 'check_warn').length,
+        blockedBoundaryCount: events.filter((event) => event.type === 'check_block').length,
+        approvalCount: events.filter((event) => event.type === 'approval_decision').length,
+        entries,
+    };
+}
+function deriveAllowedGlobs(goal, profile) {
+    const lower = goal.toLowerCase();
+    const approvalPrefixes = profile.approvalRequiredPaths.map((g) => g.replace('/**', '').replace('/*', ''));
+    const safeSupportGlobs = [
+        'src/util/**',
+        'src/utils/**',
+        'src/helpers/**',
+        'src/lib/**',
+        'lib/**',
+        'tests/**',
+        'test/**',
+        ...(profile.runtimeConfig?.safeSupportGlobs ?? []),
+    ];
+    const sourceRootPrefixes = deriveSourceRootPrefixes(profile);
+    function expandNestedSourceGlobs(globs) {
+        const expanded = new Set();
+        for (const glob of globs) {
+            expanded.add(glob);
+            if (!glob.startsWith('src/'))
+                continue;
+            for (const prefix of sourceRootPrefixes) {
+                expanded.add(`${prefix}${glob}`);
+            }
+        }
+        return Array.from(expanded);
+    }
+    // Helper: remove any glob that overlaps with an approval-required prefix.
+    // A glob like "src/billing/**" overlaps "src/billing"; "src/**" does NOT start
+    // with "src/billing" so it passes — but "src/**" would contain billing inside it.
+    // We therefore do a two-way check: glob-prefix starts with ap-prefix OR ap-prefix
+    // starts with glob-prefix (the latter catches broad globs that contain sensitive dirs).
+    function excludeApprovalRequired(globs) {
+        return globs.filter((g) => {
+            const gPrefix = g.replace('/**', '').replace('/*', '');
+            return !approvalPrefixes.some((ap) => gPrefix.startsWith(ap) || ap.startsWith(gPrefix + '/'));
+        });
+    }
+    // ── Explicit path tokens in the goal (highest confidence) ───────────────────
+    // Two cases:
+    //   file path  "modify src/tasks/export_task.py"  → allow exactly "src/tasks/export_task.py"
+    //   dir  path  "refactor src/tasks"               → allow "src/tasks/**"
+    //
+    // A token is a file path when the last segment contains a '.' (i.e. has an extension).
+    // We must NOT strip the extension and append /**, which was the bug that turned
+    // "src/tasks/export_task.py" into "src/tasks/export_task/**" and then blocked
+    // the exact file the user named.
+    const pathTokens = extractPathTokens(goal);
+    if (pathTokens.length > 0) {
+        const expanded = pathTokens.map((t) => {
+            const normalised = t.replace(/^\//, '');
+            const lastSeg = normalised.split('/').at(-1) ?? '';
+            const isFile = lastSeg.includes('.');
+            return isFile ? normalised : normalised.replace(/\/$/, '') + '/**';
+        });
+        const globs = excludeApprovalRequired(expandNestedSourceGlobs([...expanded, ...safeSupportGlobs]));
+        if (globs.length > 0)
+            return { allowedGlobs: globs, scopeMode: 'explicit' };
+    }
+    // ── Keyword inference ────────────────────────────────────────────────────────
+    // Match whole words only to avoid "services" matching "service" inside "user_services_old".
+    const wordOf = (kw) => new RegExp(`\\b${kw}\\b`, 'i').test(lower);
+    const DIR_KEYWORDS = [
+        [/\btasks?\b/i, 'src/tasks/**'],
+        [/\bservices?\b/i, 'src/services/**'],
+        [/\bhandlers?\b/i, 'src/handlers/**'],
+        [/\broutes?\b/i, 'src/routes/**'],
+        [/\bcontrollers?\b/i, 'src/controllers/**'],
+        [/\bmodels?\b/i, 'src/models/**'],
+        [/\bschemas?\b/i, 'src/schemas/**'],
+        [/\bcomponents?\b/i, 'src/components/**'],
+        [/\bpages?\b/i, 'src/pages/**'],
+        [/\bworkers?\b/i, 'src/workers/**'],
+        [/\bjobs?\b/i, 'src/jobs/**'],
+        [/\bapi\b/i, 'src/api/**'],
+    ];
+    const matched = new Set();
+    for (const [re, glob] of DIR_KEYWORDS) {
+        if (re.test(lower))
+            matched.add(glob);
+    }
+    if (matched.size > 0) {
+        // Always include non-sensitive support dirs alongside the primary match.
+        // These are genuinely low-risk and blocking them in a task-focused session
+        // is pure noise.
+        for (const support of safeSupportGlobs) {
+            matched.add(support);
+        }
+        const globs = excludeApprovalRequired(expandNestedSourceGlobs(Array.from(matched)));
+        return { allowedGlobs: globs, scopeMode: 'inferred' };
+    }
+    // ── Ambiguous fallback ───────────────────────────────────────────────────────
+    //
+    // We cannot infer a meaningful scope from the goal.
+    // Do NOT use broad globs like src/** — they silently contain approval-required
+    // subdirectories, and the prefix-exclusion filter above cannot catch
+    // "src/**" ⊇ "src/billing/**" because "src/billing".startsWith("src") but
+    // `excludeApprovalRequired` only checks that gPrefix.startsWith(ap), and
+    // "src" does NOT start with "src/billing". The broad glob slips through.
+    //
+    // Instead: return only the safe, non-sensitive leaf directories that
+    // actually exist in the profile (derived from file paths, not hardcoded).
+    // scopeMode='ambiguous' additionally causes the boundary check to treat
+    // any approval-required path as a hard block even if it appears in-scope.
+    const safeDirs = deriveSafeDirs(profile);
+    return { allowedGlobs: safeDirs, scopeMode: 'ambiguous' };
+}
+function deriveSourceRootPrefixes(profile) {
+    const candidates = [
+        ...profile.approvalRequiredPaths,
+        ...profile.sensitiveBoundaries.map((boundary) => boundary.glob),
+        ...profile.ownershipBoundaries.map((boundary) => boundary.glob),
+    ];
+    const prefixes = new Set();
+    for (const raw of candidates) {
+        const glob = raw.replace(/^\//, '').replace(/\\/g, '/');
+        const index = glob.indexOf('src/');
+        if (index <= 0)
+            continue;
+        prefixes.add(glob.slice(0, index));
+    }
+    return Array.from(prefixes).sort();
+}
+/**
+ * Derive a list of top-level source directories that are provably NOT
+ * approval-required, by inspecting the profile's actual file paths.
+ *
+ * This replaces the dangerous src/** fallback.
+ */
+function deriveSafeDirs(profile) {
+    // All approval-required prefixes (without trailing /**)
+    const approvalPrefixes = profile.approvalRequiredPaths.map((g) => g.replace('/**', '').replace('/*', ''));
+    const sensitive = profile.sensitiveBoundaries.map((s) => s.glob.replace('/**', '').replace('/*', ''));
+    const blocked = new Set([...approvalPrefixes, ...sensitive]);
+    // Collect non-sensitive top-level directories from the profile
+    // (We don't have the path list here, so we derive from known-safe patterns
+    //  that are guaranteed not to overlap with approval-required paths.)
+    // Common non-sensitive source directories that are safe to allow by default.
+    // This list is intentionally inclusive for normal source code — the approval
+    // gate in checkFileBoundary provides the second line of defence for any
+    // sensitive subdirectory that might sit inside one of these.
+    const candidates = [
+        'src/tasks',
+        'src/task',
+        'src/jobs',
+        'src/workers',
+        'src/handlers',
+        'src/controllers',
+        'src/routes',
+        'src/api',
+        'src/services',
+        'src/models',
+        'src/schemas',
+        'src/components',
+        'src/pages',
+        'src/util',
+        'src/utils',
+        'src/helpers',
+        'src/lib',
+        'src/common',
+        'src/shared',
+        'lib',
+        'tests',
+        'test',
+    ];
+    return [
+        ...candidates.map((c) => c + '/**'),
+        ...deriveSourceRootPrefixes(profile).flatMap((prefix) => candidates
+            .filter((candidate) => candidate.startsWith('src/'))
+            .map((candidate) => `${prefix}${candidate}/**`)),
+        ...(profile.runtimeConfig?.safeSupportGlobs ?? []),
+    ]
+        .filter((c) => !blocked.has(c) && !approvalPrefixes.some((ap) => c.startsWith(ap + '/')))
+        .filter((glob, index, all) => all.indexOf(glob) === index);
+}
+//# sourceMappingURL=session.js.map
+
+/***/ }),
+
+/***/ 1363:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Runtime Admission — committed delta capture (Action-side).
+ *
+ * Mirrors Phase A's captureCommittedDelta from packages/cli/src/utils/git-coverage.ts.
+ * Produces RawDeltaInput[] for the pure governance-runtime core.
+ *
+ * Source-free: only paths, modes, and content-addressed object ids leave git.
+ * No file bytes, no diff hunks.
+ *
+ * Admission support artifacts (.neurcode/admission/ and .neurcode-admission/) are
+ * excluded — they are provenance records, not governed source effects.
+ *
+ * Fail-closed contract: object-format detection failure or git diff failure are SETUP
+ * ERRORS. captureCommittedDelta() throws rather than returning raw:[] with a silent
+ * empty result that would report spurious no_record admission.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.detectObjectFormat = detectObjectFormat;
+exports.captureCommittedDelta = captureCommittedDelta;
+const child_process_1 = __nccwpck_require__(5317);
+const inventory_1 = __nccwpck_require__(2671);
+/**
+ * Run a git command and return stdout. Throws a descriptive setup error on failure.
+ */
+function gitOrThrow(repoRoot, args, label) {
+    try {
+        return (0, child_process_1.execFileSync)('git', args, {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            maxBuffer: 64 * 1024 * 1024,
+        });
+    }
+    catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`[neurcode] ${label} failed — setup error: ${detail}. ` +
+            'Ensure actions/checkout ran with fetch-depth: 0 and both base and head commits are present.');
+    }
+}
+function splitZ(output) {
+    const parts = output.split('\0');
+    if (parts.length && parts[parts.length - 1] === '')
+        parts.pop();
+    return parts;
+}
+/**
+ * Detect the git object-id format for this repository.
+ * Throws if git is unavailable (repoRoot is not a git repo).
+ */
+function detectObjectFormat(repoRoot) {
+    const value = gitOrThrow(repoRoot, ['rev-parse', '--show-object-format'], 'git rev-parse --show-object-format');
+    return value.trim() === 'sha256' ? 'sha256' : 'sha1';
+}
+function parseRawDiff(tokens) {
+    const records = [];
+    let i = 0;
+    while (i < tokens.length) {
+        const meta = tokens[i];
+        if (!meta.startsWith(':')) {
+            i += 1;
+            continue;
+        }
+        const fields = meta.slice(1).split(' ').filter(Boolean);
+        if (fields.length < 5) {
+            i += 1;
+            continue;
+        }
+        const [oldMode, newMode, oldObjectId, newObjectId, status] = fields;
+        const statusLetter = (status || '').charAt(0).toUpperCase();
+        if (statusLetter === 'R' || statusLetter === 'C') {
+            const oldPath = tokens[i + 1];
+            const path = tokens[i + 2];
+            if (!path) {
+                i += 1;
+                continue;
+            }
+            records.push({ oldMode, newMode, oldObjectId, newObjectId, status, path, oldPath });
+            i += 3;
+        }
+        else {
+            const path = tokens[i + 1];
+            if (!path) {
+                i += 1;
+                continue;
+            }
+            records.push({ oldMode, newMode, oldObjectId, newObjectId, status, path });
+            i += 2;
+        }
+    }
+    return records;
+}
+/**
+ * Capture the committed tree delta between two validated commit SHAs.
+ * Throws a descriptive Error if object-format detection or git diff fails (fail-closed).
+ */
+function captureCommittedDelta(repoRoot, baseSha, headSha) {
+    const objectFormat = detectObjectFormat(repoRoot);
+    const output = gitOrThrow(repoRoot, ['diff', '--no-renames', '--raw', '--abbrev=64', '-z', baseSha, headSha], `git diff --raw ${baseSha.slice(0, 12)}..${headSha.slice(0, 12)}`);
+    const tokens = splitZ(output);
+    const records = parseRawDiff(tokens);
+    const raw = records
+        .filter((rec) => !(0, inventory_1.isAdmissionSupportArtifact)(rec.path))
+        .map((rec) => ({
+        path: rec.path,
+        oldMode: rec.oldMode,
+        oldObjectId: rec.oldObjectId,
+        newMode: rec.newMode,
+        newObjectId: rec.newObjectId,
+        status: rec.status,
+        oldPath: rec.oldPath,
+    }));
+    return { objectFormat, raw, baseSha, headSha };
+}
+
+
+/***/ }),
+
+/***/ 2558:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Runtime Admission — immutable artifact discovery via the Git object store.
+ *
+ * CRITICAL: We do NOT read .neurcode-admission from the mutable checkout worktree.
+ *   - The worktree is attacker-controlled: a PR author can stage arbitrary files in any
+ *     uncommitted state, plant symlinks, or exploit TOCTOU races from filesystem inspection.
+ *   - Instead, we resolve the directory tree from the validated PR headSha using
+ *     `git ls-tree -z <headSha> .neurcode-admission/`, which reads immutable Git objects.
+ *   - Blob content is read by object ID via `git cat-file blob <oid>`, never via the
+ *     filesystem path.
+ *
+ * Hardening:
+ *   - ls-tree entry type must be "blob" (rejects trees/gitlinks/symlinks at the tree level).
+ *   - Mode "120000" (symlink blob) is explicitly rejected even if type is "blob".
+ *   - Only direct children of .neurcode-admission/ are considered (no nested paths).
+ *   - Filename must match SAFE_FILENAME_RE and must not contain traversal components.
+ *   - Blob size checked via `git cat-file -s` before reading.
+ *   - Strict caps: MAX_SCAN_ENTRIES (total ls-tree entries examined), maxArtifacts
+ *     (accepted files), maxAggregateBytes, MAX_DIAGNOSTICS.
+ *   - Uncommitted worktree artifacts are ignored by construction.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.MAX_PER_FILE_BYTES = void 0;
+exports.parseLsTreeBounded = parseLsTreeBounded;
+exports.parseLsTree = parseLsTree;
+exports.discoverArtifactsFromLsTree = discoverArtifactsFromLsTree;
+exports.discoverArtifacts = discoverArtifacts;
+const child_process_1 = __nccwpck_require__(5317);
+/** Phase A per-file byte ceiling (from governance-runtime/src/admission-provenance.ts). */
+exports.MAX_PER_FILE_BYTES = 8 * 1024 * 1024; // 8 MB
+// Hard cap on total ls-tree entries examined (prevents path-explosion DoS).
+const MAX_SCAN_ENTRIES = 1_024;
+const MAX_PARSED_LS_TREE_ENTRIES = MAX_SCAN_ENTRIES + 1;
+// Hard cap on diagnostics (prevents memory exhaustion on large malformed trees).
+const MAX_DIAGNOSTICS = 256;
+const MAX_FILENAME_LENGTH = 200;
+const SAFE_FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
+// Git symlink mode.
+const MODE_SYMLINK = '120000';
+// Git gitlink (submodule) mode.
+const MODE_GITLINK = '160000';
+// ── git helpers ───────────────────────────────────────────────────────────────
+/**
+ * Run a git command and return stdout. Throws on failure.
+ * Used for ls-tree (where failure = invalid ref, not absent dir).
+ */
+function gitOrThrow(repoRoot, args, label) {
+    try {
+        return (0, child_process_1.execFileSync)('git', args, {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            maxBuffer: 64 * 1024 * 1024,
+        });
+    }
+    catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`[neurcode] ${label} failed — setup error: ${detail}.`);
+    }
+}
+/**
+ * Run a git command, returning null on failure (used for per-blob reads where
+ * individual blob failure is a per-entry diagnostic, not a fatal setup error).
+ */
+function gitTryBlob(repoRoot, args) {
+    try {
+        return (0, child_process_1.execFileSync)('git', args, {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            maxBuffer: 64 * 1024 * 1024,
+        });
+    }
+    catch {
+        return null;
+    }
+}
+/** Read blob bytes by OID. Returns null on failure. Does not use the filesystem. */
+function readBlobByOid(repoRoot, oid) {
+    return gitTryBlob(repoRoot, ['cat-file', 'blob', oid]);
+}
+/** Get blob byte size by OID without reading content. Returns -1 on failure. */
+function blobSizeByOid(repoRoot, oid) {
+    const out = gitTryBlob(repoRoot, ['cat-file', '-s', oid]);
+    if (!out)
+        return -1;
+    const n = parseInt(out.trim(), 10);
+    return isNaN(n) ? -1 : n;
+}
+// ── filename safety ───────────────────────────────────────────────────────────
+/** Strip control bytes and return a safe, bounded display string (≤ 200 chars). */
+function sanitizeFilename(raw) {
+    // Remove all ASCII control chars (0x00–0x1F, 0x7F) and null bytes.
+    // eslint-disable-next-line no-control-regex
+    return raw.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200);
+}
+function addDiagnostic(diagnostics, rawFilename, reason) {
+    if (diagnostics.length >= MAX_DIAGNOSTICS)
+        return;
+    diagnostics.push({ filename: sanitizeFilename(rawFilename), reason });
+}
+/**
+ * Parse `git ls-tree -z` NUL-delimited output.
+ * Format per entry: "<mode> <type> <oid>\t<path>\0"
+ * Exported for unit testing.
+ */
+function parseLsTreeBounded(output, maxRecords = MAX_PARSED_LS_TREE_ENTRIES) {
+    const entries = [];
+    let truncated = false;
+    let start = 0;
+    let recordsSeen = 0;
+    while (start < output.length) {
+        if (recordsSeen >= maxRecords) {
+            truncated = true;
+            break;
+        }
+        let end = output.indexOf('\0', start);
+        if (end === -1)
+            end = output.length;
+        if (end === start) {
+            start = end + 1;
+            continue;
+        }
+        const record = output.slice(start, end);
+        recordsSeen++;
+        const tabIdx = record.indexOf('\t');
+        if (tabIdx === -1) {
+            start = end + 1;
+            continue;
+        }
+        const meta = record.slice(0, tabIdx);
+        const path = record.slice(tabIdx + 1);
+        const parts = meta.split(' ');
+        if (parts.length < 3) {
+            start = end + 1;
+            continue;
+        }
+        const [mode, type, oid] = parts;
+        entries.push({ mode, type, oid, path });
+        start = end + 1;
+    }
+    return { entries, truncated };
+}
+function parseLsTree(output) {
+    const { entries } = parseLsTreeBounded(output);
+    return entries;
+}
+// ── core entry processing (exported for unit testing) ─────────────────────────
+/**
+ * Process a pre-parsed list of LsTreeEntry values using real git cat-file calls.
+ * Exported so tests can inject adversarial entries without needing a real git tree.
+ */
+function discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggregateBytes) {
+    const diagnostics = [];
+    if (entries.length === 0) {
+        return { artifacts: [], diagnostics, dirAbsent: true, ceilingHit: false };
+    }
+    const artifacts = [];
+    let aggregateBytes = 0;
+    let ceilingHit = false;
+    let scanned = 0;
+    for (const entry of entries) {
+        if (scanned >= MAX_SCAN_ENTRIES) {
+            ceilingHit = true;
+            addDiagnostic(diagnostics, entry.path, `Scan entry ceiling (${MAX_SCAN_ENTRIES}) reached — skipped.`);
+            break;
+        }
+        scanned++;
+        // ── extract filename from path ───────────────────────────────────────────
+        // path from ls-tree is relative to the repo root: ".neurcode-admission/<name>"
+        const pathStr = entry.path;
+        // Must be a direct child of .neurcode-admission/ (no sub-dirs).
+        const prefix = '.neurcode-admission/';
+        if (!pathStr.startsWith(prefix)) {
+            addDiagnostic(diagnostics, pathStr, 'Entry path does not start with .neurcode-admission/ — rejected.');
+            continue;
+        }
+        const filename = pathStr.slice(prefix.length);
+        // Reject nested paths (filename must not contain '/').
+        if (filename.includes('/') || filename.includes('\\')) {
+            addDiagnostic(diagnostics, pathStr, 'Nested path — rejected.');
+            continue;
+        }
+        // ── entry type and mode checks ───────────────────────────────────────────
+        // Reject symlinks (mode 120000) even if git type is "blob".
+        if (entry.mode === MODE_SYMLINK) {
+            addDiagnostic(diagnostics, filename, 'Symlink entry (mode 120000) — rejected.');
+            continue;
+        }
+        // Reject gitlinks/submodules.
+        if (entry.mode === MODE_GITLINK || entry.type === 'commit') {
+            addDiagnostic(diagnostics, filename, 'Gitlink/submodule entry — rejected.');
+            continue;
+        }
+        // Reject anything that is not a blob.
+        if (entry.type !== 'blob') {
+            addDiagnostic(diagnostics, filename, `Non-blob entry type "${entry.type}" — rejected.`);
+            continue;
+        }
+        // ── filename safety ──────────────────────────────────────────────────────
+        if (filename.includes('..')) {
+            addDiagnostic(diagnostics, filename, 'Traversal component in filename — rejected.');
+            continue;
+        }
+        if (filename.length > MAX_FILENAME_LENGTH) {
+            addDiagnostic(diagnostics, filename.slice(0, 64) + '…', 'Filename too long — rejected.');
+            continue;
+        }
+        if (!SAFE_FILENAME_RE.test(filename)) {
+            addDiagnostic(diagnostics, sanitizeFilename(filename), 'Filename does not match safe pattern — rejected.');
+            continue;
+        }
+        // ── size checks (before reading content) ────────────────────────────────
+        const fileBytes = blobSizeByOid(repoRoot, entry.oid);
+        if (fileBytes < 0) {
+            addDiagnostic(diagnostics, filename, `Cannot determine blob size for OID ${entry.oid.slice(0, 12)} — skipped.`);
+            continue;
+        }
+        if (fileBytes > exports.MAX_PER_FILE_BYTES) {
+            addDiagnostic(diagnostics, filename, `Blob too large (${fileBytes} bytes > ${exports.MAX_PER_FILE_BYTES}) — rejected.`);
+            continue;
+        }
+        // ── aggregate ceilings ───────────────────────────────────────────────────
+        if (artifacts.length >= maxArtifacts) {
+            ceilingHit = true;
+            addDiagnostic(diagnostics, filename, `Artifact count ceiling (${maxArtifacts}) reached — skipped.`);
+            continue;
+        }
+        if (aggregateBytes + fileBytes > maxAggregateBytes) {
+            ceilingHit = true;
+            addDiagnostic(diagnostics, filename, `Aggregate byte ceiling (${maxAggregateBytes}) would be exceeded — skipped.`);
+            continue;
+        }
+        // ── read blob by OID (never via filesystem path) ─────────────────────────
+        const content = readBlobByOid(repoRoot, entry.oid);
+        if (content === null) {
+            addDiagnostic(diagnostics, filename, `Cannot read blob OID ${entry.oid.slice(0, 12)} — skipped.`);
+            continue;
+        }
+        aggregateBytes += fileBytes;
+        artifacts.push({ filename, objectId: entry.oid, content });
+    }
+    return { artifacts, diagnostics, dirAbsent: false, ceilingHit };
+}
+// ── public API ────────────────────────────────────────────────────────────────
+/**
+ * Discover .neurcode-admission artifacts from the immutable PR head Git tree.
+ *
+ * Distinguishes two distinct cases for empty/absent results:
+ *   dirAbsent=true  — ls-tree succeeded but .neurcode-admission/ does not exist in
+ *                     the head tree (normal: no runtime records for this PR).
+ *   throws          — ls-tree failed (headSha unknown, git unavailable, or repo
+ *                     error). This is a SETUP ERROR, not an absent directory.
+ *
+ * Callers must wrap in try/catch and call core.setFailed() on throw.
+ */
+function discoverArtifacts(repoRoot, headSha, maxArtifacts, maxAggregateBytes) {
+    // git ls-tree -z <headSha> .neurcode-admission/
+    //   - Succeeds + empty output  → directory absent in this commit (dirAbsent=true)
+    //   - Succeeds + non-empty     → entries to process
+    //   - Throws                   → headSha unknown or git unavailable (setup error)
+    const lsOut = gitOrThrow(repoRoot, ['ls-tree', '-z', headSha, '.neurcode-admission/'], `git ls-tree ${headSha.slice(0, 12)} .neurcode-admission/`);
+    if (!lsOut || lsOut.trim() === '') {
+        // Successful command, empty output: .neurcode-admission/ does not exist.
+        return { artifacts: [], diagnostics: [], dirAbsent: true, ceilingHit: false };
+    }
+    const parsed = parseLsTreeBounded(lsOut);
+    const entries = parsed.entries;
+    if (entries.length === 0) {
+        if (parsed.truncated) {
+            return {
+                artifacts: [],
+                diagnostics: [{ filename: '.neurcode-admission/', reason: `Scan entry ceiling (${MAX_SCAN_ENTRIES}) reached — skipped.` }],
+                dirAbsent: false,
+                ceilingHit: true,
+            };
+        }
+        return { artifacts: [], diagnostics: [], dirAbsent: true, ceilingHit: false };
+    }
+    const result = discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggregateBytes);
+    if (parsed.truncated) {
+        result.ceilingHit = true;
+        if (result.diagnostics.length < MAX_DIAGNOSTICS) {
+            result.diagnostics.push({
+                filename: '.neurcode-admission/',
+                reason: `Scan entry ceiling (${MAX_SCAN_ENTRIES}) reached — skipped.`,
+            });
+        }
+    }
+    return result;
+}
+
+
+/***/ }),
+
+/***/ 8194:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Runtime Admission — multi-record evaluation and union.
+ *
+ * Multi-record semantics:
+ *   1. Each artifact is bounded-parsed independently (Phase A readSelfAttestedAdmissionRecordFromText).
+ *   2. Each structurally valid record is validated against the ground-truth PR delta
+ *      (Phase A validateSelfAttestedRecordConsistency).
+ *   3. Records yielding self_attested_inconsistent (own hashes mismatch own contents →
+ *      corrupted/tampered) are EXCLUDED from the union. Per-record diagnostics are preserved.
+ *   4. Records yielding self_attested_complete or self_attested_incomplete are USABLE:
+ *      their strict-admissible coverage identities are contributed to the union.
+ *      An incomplete record need not cover the whole PR — it contributes what it covers.
+ *   5. Union of all usable records is compared to the ground-truth to produce the
+ *      final verdict: complete, incomplete, or (if no usable records) inconsistent.
+ *   6. no_record when the directory was absent or all artifacts were malformed/rejected.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.evaluateAdmission = evaluateAdmission;
+const governance_runtime_1 = __nccwpck_require__(7399);
+const contracts_1 = __nccwpck_require__(7239);
+function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) {
+    // Ground-truth delta (normalized, deterministic). Empty governance = all ungoverned.
+    const groundTruthManifest = (0, governance_runtime_1.buildCoverageManifest)({
+        rawDelta: capture.raw,
+        governance: {},
+        objectFormat: capture.objectFormat,
+    });
+    const groundTruthDelta = groundTruthManifest.delta;
+    // All paths in the ground-truth effect set (source-free: paths only).
+    const totalEffectPaths = groundTruthDelta.map((e) => e.path).sort();
+    // no_record: directory absent or zero artifacts discovered.
+    if (dirAbsent || artifacts.length === 0) {
+        return {
+            finalVerdict: 'no_record',
+            coveredPaths: [],
+            uncoveredPaths: totalEffectPaths,
+            totalEffectPaths,
+            perRecord: [],
+            discoveryDiagnostics,
+            usableRecordCount: 0,
+            totalRecordCount: artifacts.length,
+        };
+    }
+    const perRecord = [];
+    const usableCoverageGroups = [];
+    for (const artifact of artifacts) {
+        // Phase A bounded parser — never throws, returns null on any violation.
+        const record = (0, governance_runtime_1.readSelfAttestedAdmissionRecordFromText)(artifact.content);
+        if (!record) {
+            perRecord.push({
+                filename: artifact.filename,
+                verdict: 'self_attested_inconsistent',
+                coveredPaths: [],
+                uncoveredPaths: totalEffectPaths,
+                unexpectedCoverage: [],
+                reasons: ['Artifact failed bounded structural parsing (malformed, oversized, or source-leaking).'],
+                usable: false,
+            });
+            continue;
+        }
+        // Phase A consistency validator — validates record's own hashes + coverage vs ground-truth.
+        const decision = (0, governance_runtime_1.validateSelfAttestedRecordConsistency)(record, groundTruthDelta, capture.objectFormat, { mode: 'strict' });
+        const usable = decision.verdict !== 'self_attested_inconsistent';
+        perRecord.push({
+            filename: artifact.filename,
+            verdict: decision.verdict,
+            coveredPaths: decision.coveredPaths,
+            uncoveredPaths: decision.uncoveredPaths,
+            unexpectedCoverage: decision.unexpectedCoverage,
+            reasons: decision.reasons,
+            usable,
+        });
+        if (usable) {
+            usableCoverageGroups.push(record.manifest.coverage);
+        }
+    }
+    const usableRecordCount = usableCoverageGroups.length;
+    if (usableRecordCount === 0) {
+        // All records were inconsistent/malformed — nothing to union.
+        return {
+            finalVerdict: 'self_attested_inconsistent',
+            coveredPaths: [],
+            uncoveredPaths: totalEffectPaths,
+            totalEffectPaths,
+            perRecord,
+            discoveryDiagnostics,
+            usableRecordCount: 0,
+            totalRecordCount: artifacts.length,
+        };
+    }
+    // Union strict-admissible coverage identities across all usable records.
+    const unionedCoverage = (0, governance_runtime_1.unionCoverageEntries)(usableCoverageGroups);
+    // Build identity key set for the union.
+    const unionedIdentityKeys = new Set();
+    for (const entry of unionedCoverage) {
+        if ((0, contracts_1.isAdmissibleClassification)(entry.classification, { mode: 'strict' })) {
+            unionedIdentityKeys.add((0, contracts_1.coverageEntryIdentityKey)(entry));
+        }
+    }
+    // Build ground-truth identity set for comparison.
+    const groundTruthCoverage = (0, governance_runtime_1.buildCoverageManifest)({
+        rawDelta: capture.raw,
+        governance: {},
+        objectFormat: capture.objectFormat,
+    }).coverage;
+    const coveredPaths = [];
+    const uncoveredPaths = [];
+    for (const gt of groundTruthCoverage) {
+        if (unionedIdentityKeys.has((0, contracts_1.coverageEntryIdentityKey)(gt))) {
+            coveredPaths.push(gt.path);
+        }
+        else {
+            uncoveredPaths.push(gt.path);
+        }
+    }
+    const finalVerdict = uncoveredPaths.length === 0 ? 'self_attested_complete' : 'self_attested_incomplete';
+    return {
+        finalVerdict,
+        coveredPaths: coveredPaths.sort(),
+        uncoveredPaths: uncoveredPaths.sort(),
+        totalEffectPaths,
+        perRecord,
+        discoveryDiagnostics,
+        usableRecordCount,
+        totalRecordCount: artifacts.length,
+    };
+}
+
+
+/***/ }),
+
+/***/ 171:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Admission policy decision.
+ *
+ * advisory (default) — never fails the job. Informational only.
+ * strict_self_attested — experimental; may fail on incomplete/inconsistent.
+ *   Clearly labeled NOT enterprise proof, NOT a trusted branch-protection gate.
+ *
+ * Enterprise proof and trusted branch-protection enforcement remain Phase C.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.decidePolicyOutcome = decidePolicyOutcome;
+function decidePolicyOutcome(verdict, policy, noRecordStrict) {
+    const advisoryLabel = 'advisory · non-blocking';
+    const strictLabel = 'strict_self_attested (EXPERIMENTAL — self-attested claim, not enterprise proof)';
+    if (policy === 'advisory') {
+        return { shouldFail: false, policyLabel: advisoryLabel };
+    }
+    // strict_self_attested
+    const strictWarning = '⚠ strict_self_attested mode is experimental. Self-attested records are claims by the same ' +
+        'principal who authored the diff. This is NOT cryptographic proof that governance ran, and is ' +
+        'NOT a replacement for enterprise-grade signed receipts (Phase C).';
+    let shouldFail = false;
+    if (verdict === 'self_attested_incomplete' || verdict === 'self_attested_inconsistent') {
+        shouldFail = true;
+    }
+    else if (verdict === 'no_record' && noRecordStrict) {
+        shouldFail = true;
+    }
+    return { shouldFail, policyLabel: strictLabel, strictWarning };
+}
+
+
+/***/ }),
+
+/***/ 372:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Fork-safe GitHub event context resolution.
+ *
+ * V1 design constraints:
+ *   - pull_request ONLY. pull_request_target, push, workflow_dispatch, and all other
+ *     events are explicitly rejected with descriptive errors.
+ *   - Base and head SHAs are resolved exclusively from the pull_request payload.
+ *     There are no override inputs (V1). Overrides create a wrong-ref analysis knob.
+ *   - Both SHAs are validated as hex then confirmed as reachable commit objects.
+ *
+ * Testability seam:
+ *   resolveContext(repoRoot, injected?) — when injected is provided, the event-name
+ *   guard uses injected.eventName and the payload is taken from injected.prPayload.
+ *   The guard ALWAYS runs (even with injected context) so event-name enforcement is
+ *   proven through real execution, not source inspection.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.validateSha = validateSha;
+exports.assertCommitReachable = assertCommitReachable;
+exports.resolveContext = resolveContext;
+const github = __importStar(__nccwpck_require__(5251));
+const child_process_1 = __nccwpck_require__(5317);
+const SHA_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/i;
+function validateSha(value, label) {
+    const trimmed = value.trim().toLowerCase();
+    if (!SHA_RE.test(trimmed)) {
+        throw new Error(`Invalid ${label}: "${trimmed.slice(0, 80)}" is not a 40- or 64-char hex SHA. ` +
+            'Ensure actions/checkout ran before this action and the SHA comes from the GitHub event payload.');
+    }
+    return trimmed;
+}
+/**
+ * Verify that a SHA resolves to a commit object in the local git clone.
+ * Throws a descriptive error when not found (e.g. shallow clone, wrong fetch-depth).
+ */
+function assertCommitReachable(repoRoot, sha, label) {
+    try {
+        const type = (0, child_process_1.execFileSync)('git', ['cat-file', '-t', sha], {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+        }).trim();
+        if (type !== 'commit') {
+            throw new Error(`${label} (${sha.slice(0, 12)}) resolves to git object type "${type}", not "commit". ` +
+                'Check that your actions/checkout step uses fetch-depth: 0 or fetches the required SHAs.');
+        }
+    }
+    catch (err) {
+        if (err instanceof Error && err.message.startsWith(label))
+            throw err;
+        throw new Error(`${label} (${sha.slice(0, 12)}) is not reachable in the local clone. ` +
+            'Ensure actions/checkout ran with fetch-depth: 0 and both base and head commits are present. ' +
+            `(git error: ${err instanceof Error ? err.message : String(err)})`);
+    }
+}
+/**
+ * Resolve base and head SHAs from the GitHub event context.
+ *
+ * The event-name guard ALWAYS runs — even when injected is provided. This ensures
+ * that event-name enforcement is proven through execution rather than source inspection.
+ *
+ * @param repoRoot      - local checkout path for commit-reachability validation.
+ * @param injected      - optional test seam; supply eventName + prPayload together.
+ */
+function resolveContext(repoRoot, injected) {
+    const eventName = injected?.eventName ?? github.context.eventName;
+    // pull_request_target: write-permission token + attacker head code = supply-chain risk.
+    if (eventName === 'pull_request_target') {
+        throw new Error('pull_request_target is not supported. Use pull_request. ' +
+            'pull_request_target grants elevated permissions while running PR-head code, ' +
+            'creating a supply-chain risk.');
+    }
+    // V1 supports pull_request only. There are no SHA overrides — they are not needed
+    // in the public workflow and would create a wrong-ref analysis knob.
+    if (eventName !== 'pull_request') {
+        throw new Error(`Unsupported event "${String(eventName)}". ` +
+            'This action supports pull_request events only (V1). ' +
+            'Trigger the workflow on: pull_request.');
+    }
+    const prPayload = injected?.prPayload ??
+        github.context.payload.pull_request;
+    if (!prPayload?.base?.sha) {
+        throw new Error('Cannot resolve base SHA: pull_request payload missing base.sha.');
+    }
+    if (!prPayload?.head?.sha) {
+        throw new Error('Cannot resolve head SHA: pull_request payload missing head.sha.');
+    }
+    const baseSha = validateSha(prPayload.base.sha, 'base_sha');
+    const headSha = validateSha(prPayload.head.sha, 'head_sha');
+    // Validate both SHAs are reachable commit objects. Fail closed: surfaces shallow-clone
+    // and bad-checkout issues early with a clear message instead of a confusing diff error.
+    assertCommitReachable(repoRoot, baseSha, 'base_sha');
+    assertCommitReachable(repoRoot, headSha, 'head_sha');
+    const prNumber = prPayload.number ?? null;
+    const isFork = prPayload.head.repo?.fork === true;
+    // github.context.repo throws when GITHUB_REPOSITORY is not set (outside Actions).
+    // repoOwner/repoName are informational only and not used for security decisions.
+    let repoOwner = '';
+    let repoName = '';
+    try {
+        repoOwner = github.context.repo.owner;
+        repoName = github.context.repo.repo;
+    }
+    catch {
+        // Not running inside GitHub Actions — acceptable in tests and local runs.
+    }
+    return { baseSha, headSha, prNumber, repoOwner, repoName, isFork };
+}
+
+
+/***/ }),
+
+/***/ 5286:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Input parsing and validation for the action.
+ * All inputs are read once at startup; no re-reads after the hostile PR context is established.
+ *
+ * V1 has no base_sha / head_sha overrides. SHAs are always resolved from the PR event payload.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.readInputs = readInputs;
+const core = __importStar(__nccwpck_require__(4442));
+const MAX_ARTIFACTS_CEILING = 1024;
+const MAX_AGGREGATE_BYTES_CEILING = 128 * 1024 * 1024; // 128 MB hard ceiling
+function readInputs() {
+    const policyRaw = core.getInput('policy', { required: false }).trim().toLowerCase();
+    const policy = policyRaw === 'strict_self_attested' ? 'strict_self_attested' : 'advisory';
+    const noRecordStrict = core.getInput('no_record_strict', { required: false }).trim().toLowerCase() === 'true';
+    const maxArtifactsRaw = parseInt(core.getInput('max_artifacts', { required: false }).trim() || '256', 10);
+    const maxArtifacts = Math.max(1, Math.min(isNaN(maxArtifactsRaw) ? 256 : maxArtifactsRaw, MAX_ARTIFACTS_CEILING));
+    const maxAggregateBytesRaw = parseInt(core.getInput('max_aggregate_bytes', { required: false }).trim() || '16777216', 10);
+    const maxAggregateBytes = Math.max(1024, Math.min(isNaN(maxAggregateBytesRaw) ? 16 * 1024 * 1024 : maxAggregateBytesRaw, MAX_AGGREGATE_BYTES_CEILING));
+    return { policy, noRecordStrict, maxArtifacts, maxAggregateBytes };
+}
+
+
+/***/ }),
+
 /***/ 3887:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+/**
+ * Neurcode Runtime Admission Advisory — GitHub Action entrypoint.
+ *
+ * Two-layer advisory action:
+ *
+ *   Layer 1 (standalone, always runs):
+ *     Deterministic PR effect inventory from committed git metadata.
+ *     Works with one workflow file. No account, API key, CLI, or local runtime required.
+ *
+ *   Layer 2 (runtime-aware, activates when .neurcode-admission/*.json is present):
+ *     Discovers artifacts from the validated PR head Git tree (immutable git objects).
+ *     Validates self-attested admission records; unions coverage across multiple records.
+ *     Self-attested provenance is a CLAIM, not cryptographic proof.
+ *
+ * Advisory mode (default): step summary and outputs only, never fails the job.
+ * Strict self-attested mode: experimental — explicitly labeled.
+ * Enterprise signed receipts: Phase C.
+ *
+ * Fail-closed contract: advisory means FINDINGS do not block. It does NOT mean
+ * silently passing when analysis did not run. All setup errors (event mismatch,
+ * invalid SHAs, missing commits, git diff failure, ls-tree failure) call
+ * core.setFailed() and stop before emitting a misleading report.
+ *
+ * Fork-safe: no secrets required, pull_request only, pull_request_target rejected.
+ * Base and head SHAs are always resolved from github.event.pull_request payload.
+ */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -36112,3301 +48355,137 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(4442));
-const exec = __importStar(__nccwpck_require__(7167));
-const github = __importStar(__nccwpck_require__(5251));
-const contracts_1 = __nccwpck_require__(7239);
-const fs_1 = __nccwpck_require__(9896);
-const http = __importStar(__nccwpck_require__(8611));
-const https = __importStar(__nccwpck_require__(5692));
-const path_1 = __nccwpck_require__(6928);
-const verify_mode_1 = __nccwpck_require__(4288);
-const runtime_compat_1 = __nccwpck_require__(5654);
-const formatter_1 = __nccwpck_require__(7459);
-const github_client_1 = __nccwpck_require__(7920);
-const pr_lifecycle_1 = __nccwpck_require__(4638);
-const scope_coherence_1 = __nccwpck_require__(6334);
-const repo_topology_1 = __nccwpck_require__(7383);
-const oss_formatter_1 = __nccwpck_require__(7881);
-const operational_memory_1 = __nccwpck_require__(6481);
-const operational_report_1 = __nccwpck_require__(3664);
-const release_memory_1 = __nccwpck_require__(9006);
-const operational_cartography_1 = __nccwpck_require__(315);
-const operational_delta_1 = __nccwpck_require__(134);
-const operational_dynamics_1 = __nccwpck_require__(7460);
-const operational_synthesis_1 = __nccwpck_require__(5194);
-const operational_pilot_1 = __nccwpck_require__(6794);
-const operational_bootstrap_1 = __nccwpck_require__(4098);
-const structural_coupling_1 = __nccwpck_require__(312);
-const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
-const NON_FAST_FORWARD_PATTERNS = [
-    'non-fast-forward',
-    '[rejected]',
-    'fetch first',
-    'would be overwritten by push',
-];
-const TRANSIENT_NETWORK_PATTERNS = [
-    'fetch failed',
-    'econnreset',
-    'etimedout',
-    'socket hang up',
-    'gateway time-out',
-    'gateway timeout',
-    '502',
-    '503',
-    '504',
-];
-const TIER_LIMITED_VERIFY_PATTERNS = [
-    'pro required for policy verification',
-    'basic file change summary',
-    'tier-limited',
-];
-const GRADE_ORDER = {
-    F: 1,
-    D: 2,
-    C: 3,
-    B: 4,
-    A: 5,
-};
-function stripAnsi(value) {
-    return value.replace(ANSI_PATTERN, '');
-}
-function sleep(ms) {
-    return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
-}
-function parseBoolean(input, fallback) {
-    if (input === undefined || input === null || input.trim() === '') {
-        return fallback;
-    }
-    const normalized = input.trim().toLowerCase();
-    if (['1', 'true', 'yes', 'on'].includes(normalized))
-        return true;
-    if (['0', 'false', 'no', 'off'].includes(normalized))
-        return false;
-    return fallback;
-}
-function parseBooleanOrUndefined(input) {
-    if (input === undefined || input === null || input.trim() === '') {
-        return undefined;
-    }
-    const normalized = input.trim().toLowerCase();
-    if (['1', 'true', 'yes', 'on'].includes(normalized))
-        return true;
-    if (['0', 'false', 'no', 'off'].includes(normalized))
-        return false;
-    return undefined;
-}
-function parsePositiveInt(input, fallback, min, max) {
-    const parsed = Number(input);
-    if (!Number.isFinite(parsed))
-        return fallback;
-    const rounded = Math.round(parsed);
-    if (rounded < min)
-        return min;
-    if (rounded > max)
-        return max;
-    return rounded;
-}
-function normalizeGrade(input) {
-    const normalized = (input || '').trim().toUpperCase();
-    if (normalized in GRADE_ORDER) {
-        return normalized;
-    }
-    return undefined;
-}
-function isGradeBelowThreshold(grade, threshold) {
-    const normalized = normalizeGrade(grade);
-    if (!normalized) {
-        return null;
-    }
-    return GRADE_ORDER[normalized] < GRADE_ORDER[threshold];
-}
-function parseCliInstallSource(input) {
-    const normalized = (input || '').trim().toLowerCase();
-    if (normalized === 'workspace') {
-        return 'workspace';
-    }
-    return 'npm';
-}
-function withCommandTimeout(cmd, args, timeoutMinutes) {
-    if (timeoutMinutes > 0 && process.platform !== 'win32') {
-        return {
-            cmd: 'timeout',
-            args: [`${timeoutMinutes}m`, cmd, ...args],
-            timeoutApplied: true,
-        };
-    }
-    return {
-        cmd,
-        args,
-        timeoutApplied: false,
-    };
-}
-function hasWorkingTreeChanges(output) {
-    return output
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean).length > 0;
-}
-function countWorkingTreeChanges(output) {
-    return output
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean).length;
-}
-function normalizeRepoPath(path) {
-    return path
-        .trim()
-        .replace(/^\.\/+/, '')
-        .replace(/^a\//, '')
-        .replace(/^b\//, '')
-        .replace(/\\/g, '/');
-}
-function parseChangedFiles(output) {
-    const files = output
-        .split('\n')
-        .map((line) => normalizeRepoPath(line))
-        .filter(Boolean);
-    return new Set(files);
-}
-function collectActionableViolations(violations, changedFiles) {
-    if (changedFiles.size === 0) {
-        return [];
-    }
-    const changedList = [...changedFiles];
-    return violations.filter((violation) => {
-        const violationPath = normalizeRepoPath(violation.file || '');
-        if (!violationPath || violationPath === 'unknown') {
-            return false;
-        }
-        if (changedFiles.has(violationPath)) {
-            return true;
-        }
-        return changedList.some((changed) => violationPath.endsWith(changed));
-    });
-}
-function isNonFastForwardPushFailure(output) {
-    const normalized = stripAnsi(output).toLowerCase();
-    return NON_FAST_FORWARD_PATTERNS.some((pattern) => normalized.includes(pattern));
-}
-function isLikelyTransientNetworkFailure(output) {
-    const normalized = stripAnsi(output).toLowerCase();
-    return TRANSIENT_NETWORK_PATTERNS.some((pattern) => normalized.includes(pattern));
-}
-function isTierLimitedInfoVerifyResult(result) {
-    if (!result || result.verdict !== 'INFO') {
-        return false;
-    }
-    const tier = (result.tier || '').trim().toUpperCase();
-    if (tier === 'FREE') {
-        return true;
-    }
-    const message = (result.message || '').toLowerCase();
-    return TIER_LIMITED_VERIFY_PATTERNS.some((pattern) => message.includes(pattern));
-}
-function isRuntimeCompatibilityViolation(violation) {
-    const rule = (violation.rule || '').trim().toLowerCase();
-    const message = (violation.message || '').trim().toLowerCase();
-    if (rule.includes('runtime_compatibility_handshake')) {
-        return true;
-    }
-    return (message.includes('runtime compatibility handshake')
-        || message.includes('compatibility handshake failed')
-        || message.includes('runtimecontractversion mismatch')
-        || message.includes('clijsoncontractversion mismatch'));
-}
-function collectRuntimeCompatibilityIssues(result, rawOutput) {
-    const findings = new Set();
-    if (result) {
-        if (result.mode === 'runtime_compatibility_failed' && result.message?.trim()) {
-            findings.add(result.message.trim());
-        }
-        if (result.message && /runtime compatibility handshake failed/i.test(result.message)) {
-            findings.add(result.message.trim());
-        }
-        for (const violation of result.violations || []) {
-            if (!isRuntimeCompatibilityViolation(violation))
-                continue;
-            if (violation.message?.trim()) {
-                findings.add(violation.message.trim());
-            }
-            else if (violation.rule?.trim()) {
-                findings.add(`Compatibility violation: ${violation.rule.trim()}`);
-            }
-        }
-    }
-    const outputText = stripAnsi(rawOutput || '');
-    if (outputText && findings.size === 0 && /runtime compatibility handshake failed/i.test(outputText)) {
-        const lines = outputText
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean);
-        for (const line of lines) {
-            if (/runtime compatibility handshake failed/i.test(line)
-                || /runtime_compatibility_handshake/i.test(line)
-                || /runtimeContractVersion mismatch/i.test(line)
-                || /cliJsonContractVersion mismatch/i.test(line)) {
-                findings.add(line);
-            }
-        }
-    }
-    return Array.from(findings).slice(0, 8);
-}
-function emitRuntimeCompatibilityAnnotations(issues) {
-    for (const issue of issues.slice(0, 8)) {
-        core.error(issue, { title: 'Neurcode Runtime Compatibility Handshake' });
-    }
-}
-function readJsonFile(path) {
-    if (!(0, fs_1.existsSync)(path))
-        return null;
-    try {
-        const parsed = JSON.parse((0, fs_1.readFileSync)(path, 'utf-8'));
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-            return null;
-        return parsed;
-    }
-    catch {
-        return null;
-    }
-}
-function assertStrictDeterministicArtifacts(input) {
-    if (!input.strictMode)
-        return { advisoryWarnings: [] };
-    // Capability errors are hard failures — the CLI cannot run the required flags at all.
-    const capabilityErrors = [];
-    if (!input.supportsCompiledPolicy) {
-        capabilityErrors.push('Current CLI does not support --compiled-policy, but strict mode requires a compiled policy artifact.');
-    }
-    if (!input.supportsChangeContract) {
-        capabilityErrors.push('Current CLI does not support --change-contract, but strict mode requires a change contract artifact.');
-    }
-    if (input.requireSignedArtifacts && !input.supportsRequireSignedArtifacts) {
-        capabilityErrors.push('Current CLI does not support --require-signed-artifacts, but strict mode requires signed deterministic artifacts.');
-    }
-    if (capabilityErrors.length > 0) {
-        throw new Error(`Strict enterprise mode: CLI capability requirements not met:\n- ${capabilityErrors.join('\n- ')}`);
-    }
-    // Signature errors are hard failures — tampered or unsigned artifacts are a security violation.
-    const signatureErrors = [];
-    // Artifact presence/validity issues are advisory — fall back to runtime compilation.
-    const advisoryWarnings = [];
-    const compiledPath = input.compiledPolicyPath?.trim();
-    if (!compiledPath) {
-        advisoryWarnings.push('Missing compiled policy artifact path (compiled_policy_path) — falling back to runtime compilation.');
-    }
-    else {
-        const absoluteCompiledPath = (0, path_1.resolve)(input.cwd, compiledPath);
-        const compiled = readJsonFile(absoluteCompiledPath);
-        if (!compiled) {
-            advisoryWarnings.push(`Compiled policy artifact not found or invalid JSON: ${compiledPath} — falling back to runtime compilation.`);
-        }
-        else {
-            const hasFingerprint = typeof compiled.fingerprint === 'string' && compiled.fingerprint.trim().length > 0;
-            const hasRules = Array.isArray(compiled.rules) || Array.isArray(compiled.statements);
-            if (!hasFingerprint && !hasRules) {
-                advisoryWarnings.push(`Compiled policy artifact appears invalid (missing fingerprint/rules): ${compiledPath} — falling back to runtime compilation.`);
-            }
-            if (input.requireSignedArtifacts
-                && (!compiled.signature
-                    || typeof compiled.signature !== 'object'
-                    || typeof compiled.signature.value !== 'string')) {
-                signatureErrors.push(`Compiled policy artifact is missing a cryptographic signature: ${compiledPath}`);
-            }
-        }
-    }
-    const contractPath = input.changeContractPath?.trim();
-    if (!contractPath) {
-        advisoryWarnings.push('Missing change contract artifact path (change_contract_path) — falling back to runtime compilation.');
-    }
-    else {
-        const absoluteContractPath = (0, path_1.resolve)(input.cwd, contractPath);
-        const contract = readJsonFile(absoluteContractPath);
-        if (!contract) {
-            advisoryWarnings.push(`Change contract artifact not found or invalid JSON: ${contractPath} — falling back to runtime compilation.`);
-        }
-        else {
-            const hasContractId = typeof contract.contractId === 'string' && contract.contractId.trim().length > 0;
-            const hasPlanId = typeof contract.planId === 'string' && contract.planId.trim().length > 0;
-            if (!hasContractId || !hasPlanId) {
-                advisoryWarnings.push(`Change contract artifact appears invalid (missing contractId/planId): ${contractPath} — falling back to runtime compilation.`);
-            }
-            if (input.requireSignedArtifacts
-                && (!contract.signature
-                    || typeof contract.signature !== 'object'
-                    || typeof contract.signature.value !== 'string')) {
-                signatureErrors.push(`Change contract artifact is missing a cryptographic signature: ${contractPath}`);
-            }
-        }
-    }
-    if (signatureErrors.length > 0) {
-        throw new Error(`Strict enterprise mode: artifact signature validation failed:\n- ${signatureErrors.join('\n- ')}`);
-    }
-    return { advisoryWarnings };
-}
-function assertRuntimeGuardRequirement(input) {
-    if (!input.requireRuntimeGuard)
-        return;
-    if (!input.supportsRequireRuntimeGuard) {
-        throw new Error('Current CLI does not support --require-runtime-guard, but this workflow requires runtime guard enforcement.');
-    }
-    const runtimeGuardPath = (input.runtimeGuardPath || '').trim();
-    if (!runtimeGuardPath) {
-        throw new Error('Missing runtime guard artifact path when runtime guard enforcement is enabled.');
-    }
-    const absolutePath = (0, path_1.resolve)(input.cwd, runtimeGuardPath);
-    if (!(0, fs_1.existsSync)(absolutePath)) {
-        throw new Error(`Runtime guard artifact is required but missing: ${runtimeGuardPath}`);
-    }
-}
-function detectProjectOrgId(cwd) {
-    const statePath = (0, path_1.join)(cwd, '.neurcode', 'config.json');
-    const state = readJsonFile(statePath);
-    const value = state?.orgId;
-    if (typeof value === 'string' && value.trim()) {
-        return value.trim();
-    }
-    return undefined;
-}
-function seedCiAuthFile(cwd, apiKey, preferredOrgId) {
-    const home = process.env.HOME || process.env.USERPROFILE;
-    if (!home) {
-        core.warning('Unable to seed ~/.neurcoderc (home directory not found).');
-        return;
-    }
-    const authPath = (0, path_1.join)(home, '.neurcoderc');
-    const existing = readJsonFile(authPath) || {};
-    const next = {
-        ...existing,
-        version: 2,
-        apiKey,
-    };
-    const orgId = preferredOrgId || detectProjectOrgId(cwd);
-    const apiKeysByOrgRaw = existing.apiKeysByOrg;
-    const apiKeysByOrg = apiKeysByOrgRaw && typeof apiKeysByOrgRaw === 'object' && !Array.isArray(apiKeysByOrgRaw)
-        ? { ...apiKeysByOrgRaw }
-        : {};
-    if (orgId) {
-        apiKeysByOrg[orgId] = apiKey;
-        next.defaultOrgId = orgId;
-    }
-    next.apiKeysByOrg = apiKeysByOrg;
-    const apiUrl = process.env.NEURCODE_API_URL;
-    if (apiUrl && typeof apiUrl === 'string' && apiUrl.trim()) {
-        next.apiUrl = apiUrl.trim();
-    }
-    (0, fs_1.writeFileSync)(authPath, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf-8', mode: 0o600 });
-    core.info(orgId
-        ? `Seeded CI auth key for org ${orgId}`
-        : 'Seeded CI auth key for default scope');
-}
-function canPushToPullRequestBranch(pr) {
-    if (!pr)
-        return false;
-    const repoFullName = `${github.context.repo.owner}/${github.context.repo.repo}`;
-    const prHeadFullName = pr?.head?.repo?.full_name;
-    if (!prHeadFullName || prHeadFullName !== repoFullName) {
-        return false;
-    }
-    return typeof pr?.head?.ref === 'string' && pr.head.ref.length > 0;
-}
-function extractLastJsonObject(output) {
-    const clean = stripAnsi(output).trim();
-    const end = clean.lastIndexOf('}');
-    if (end < 0)
-        return null;
-    let start = clean.lastIndexOf('{', end);
-    while (start >= 0) {
-        const candidate = clean.slice(start, end + 1).trim();
-        try {
-            return JSON.parse(candidate);
-        }
-        catch {
-            start = clean.lastIndexOf('{', start - 1);
-        }
-    }
-    return null;
-}
-function resolveActionPackageVersion() {
-    const fromEnv = process.env.NEURCODE_ACTION_VERSION || process.env.npm_package_version;
-    if (fromEnv && fromEnv.trim()) {
-        return fromEnv.trim();
-    }
-    const candidates = [
-        (0, path_1.resolve)(__dirname, '../package.json'),
-        (0, path_1.resolve)(process.cwd(), 'package.json'),
-    ];
-    for (const candidate of candidates) {
-        try {
-            if (!(0, fs_1.existsSync)(candidate))
-                continue;
-            const parsed = JSON.parse((0, fs_1.readFileSync)(candidate, 'utf-8'));
-            const version = parsed?.version;
-            if (typeof version === 'string' && version.trim()) {
-                return version.trim();
-            }
-        }
-        catch {
-            // Ignore and continue to next candidate.
-        }
-    }
-    return '0.0.0';
-}
-function normalizeApiBaseUrl(value) {
-    return value.trim().replace(/\/+$/, '');
-}
-function requestJson(url, timeoutMs) {
-    return new Promise((resolvePromise, rejectPromise) => {
-        let target;
-        try {
-            target = new URL(url);
-        }
-        catch (error) {
-            rejectPromise(new Error(`Invalid API URL: ${url} (${error instanceof Error ? error.message : String(error)})`));
-            return;
-        }
-        const transport = target.protocol === 'http:' ? http : https;
-        const request = transport.request({
-            protocol: target.protocol,
-            hostname: target.hostname,
-            port: target.port || undefined,
-            path: `${target.pathname}${target.search}`,
-            method: 'GET',
-            headers: {
-                Accept: 'application/json',
-                'User-Agent': 'neurcode-action/runtime-compat',
-            },
-        }, (response) => {
-            let body = '';
-            response.setEncoding('utf8');
-            response.on('data', (chunk) => {
-                body += chunk;
-            });
-            response.on('end', () => {
-                let payload = null;
-                try {
-                    payload = body ? JSON.parse(body) : null;
-                }
-                catch {
-                    payload = null;
-                }
-                resolvePromise({
-                    statusCode: response.statusCode || 0,
-                    body,
-                    payload,
-                    url,
-                });
-            });
-        });
-        request.on('error', (error) => {
-            rejectPromise(new Error(`Request failed for ${url}: ${error.message}`));
-        });
-        request.setTimeout(timeoutMs, () => {
-            request.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
-        });
-        request.end();
-    });
-}
-async function resolveApiHealthPayload(apiBaseUrl, timeoutMs) {
-    const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
-    const candidates = [`${baseUrl}/api/v1/health`, `${baseUrl}/health`];
-    const failures = [];
-    for (const url of candidates) {
-        try {
-            const response = await requestJson(url, timeoutMs);
-            const payload = response.payload;
-            const statusValue = payload && typeof payload === 'object' && !Array.isArray(payload)
-                ? payload.status
-                : null;
-            if (response.statusCode >= 200 && response.statusCode < 300 && statusValue === 'ok') {
-                return payload;
-            }
-            failures.push(`${url} returned ${response.statusCode}`);
-        }
-        catch (error) {
-            failures.push(error instanceof Error ? error.message : String(error));
-        }
-    }
-    throw new Error(`API compatibility probe failed (${failures.join(' | ')}).`);
-}
-async function runCompatibilityHandshake(input) {
-    const actionVersion = resolveActionPackageVersion();
-    const compatCommand = withCliCommandTimeout(input.cli, ['compat', '--json'], input.timeoutMinutes);
-    const compatResult = await runCommand(compatCommand.cmd, compatCommand.args, { cwd: input.cwd });
-    if (compatResult.exitCode !== 0) {
-        throw new Error(`Compatibility handshake failed: unable to run "neurcode compat --json". ` +
-            `Output: ${stripAnsi(compatResult.output).trim() || 'no output'}`);
-    }
-    const cliCompatPayload = extractLastJsonObject(compatResult.output);
-    if (!cliCompatPayload) {
-        throw new Error('Compatibility handshake failed: CLI compat output did not contain JSON.');
-    }
-    const cliCompatibility = (0, runtime_compat_1.parseCliCompatibilityPayload)(cliCompatPayload);
-    let apiCompatibility = null;
-    let apiVersion;
-    if (input.apiUrl) {
-        const apiHealthPayload = await resolveApiHealthPayload(input.apiUrl, 10000);
-        apiCompatibility = (0, runtime_compat_1.parseApiHealthCompatibilityPayload)(apiHealthPayload);
-        if (!apiCompatibility && input.requireApiCompatibility) {
-            throw new Error('Compatibility handshake failed: API health payload does not include compatibility metadata.');
-        }
-        if (apiCompatibility?.componentVersion) {
-            apiVersion = apiCompatibility.componentVersion;
-        }
-        else if (apiHealthPayload
-            && typeof apiHealthPayload === 'object'
-            && !Array.isArray(apiHealthPayload)
-            && typeof apiHealthPayload.version === 'string') {
-            apiVersion = apiHealthPayload.version;
-        }
-    }
-    const errors = (0, runtime_compat_1.validateActionHandshake)({
-        actionVersion,
-        cliCompatibility,
-        apiCompatibility,
-        requireApiCompatibility: input.requireApiCompatibility && Boolean(input.apiUrl),
-    });
-    if (errors.length > 0) {
-        throw new Error(`Compatibility handshake failed:\n- ${errors.join('\n- ')}`);
-    }
-    return {
-        actionVersion,
-        cliVersion: cliCompatibility.componentVersion,
-        apiVersion,
-        manifestVersion: cliCompatibility.manifestVersion
-            || (apiCompatibility ? apiCompatibility.manifestVersion : undefined),
-    };
-}
-function parseVerifyOutputFromCommandOutput(output) {
-    const parsed = extractLastJsonObject(output);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return null;
-    }
-    try {
-        return (0, contracts_1.parseVerifyOutput)(parsed, 'action-verify-result');
-    }
-    catch {
-        return null;
-    }
-}
-function scoreFromVerifyVerdict(verdict) {
-    if (verdict === 'PASS')
-        return 100;
-    if (verdict === 'WARN')
-        return 60;
-    return 0;
-}
-function gradeFromVerifyVerdict(verdict) {
-    if (verdict === 'PASS')
-        return 'A';
-    if (verdict === 'WARN')
-        return 'C';
-    return 'F';
-}
-function parseVerifyResult(output) {
-    const parsed = parseVerifyOutputFromCommandOutput(output);
-    if (!parsed)
-        return null;
-    const violations = [
-        ...parsed.violations.map((item) => ({
-            file: item.file,
-            rule: item.policy,
-            severity: item.severity,
-            message: item.message,
-        })),
-        ...parsed.warnings.map((item) => ({
-            file: item.file,
-            rule: item.policy,
-            severity: 'warn',
-            message: item.message,
-        })),
-        ...parsed.scopeIssues.map((item) => ({
-            file: item.file,
-            rule: 'scope_guard',
-            severity: 'block',
-            message: item.message,
-        })),
-    ];
-    const message = `${parsed.summary.totalViolations} violations, ` +
-        `${parsed.summary.totalWarnings} warnings, ` +
-        `${parsed.summary.totalScopeIssues} scope issues`;
-    return {
-        grade: gradeFromVerifyVerdict(parsed.verdict),
-        score: scoreFromVerifyVerdict(parsed.verdict),
-        verdict: parsed.verdict,
-        mode: 'plan_enforced',
-        violations,
-        message,
-        scopeGuardPassed: parsed.summary.totalScopeIssues === 0,
-        bloatCount: parsed.summary.totalScopeIssues,
-        blastRadius: {
-            filesChanged: parsed.summary.totalFilesChanged,
-        },
-    };
-}
-function parseShipSummary(output) {
-    const parsed = extractLastJsonObject(output);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-        return null;
-    const value = parsed;
-    if (typeof value.status !== 'string' || typeof value.finalPlanId !== 'string') {
-        return null;
-    }
-    const verificationRaw = value.verification;
-    const testsRaw = value.tests;
-    if (!verificationRaw || typeof verificationRaw !== 'object' || Array.isArray(verificationRaw)) {
-        return null;
-    }
-    if (!testsRaw || typeof testsRaw !== 'object' || Array.isArray(testsRaw)) {
-        return null;
-    }
-    const verification = verificationRaw;
-    const tests = testsRaw;
-    const artifactsRaw = value.artifacts;
-    const artifacts = artifactsRaw && typeof artifactsRaw === 'object' && !Array.isArray(artifactsRaw)
-        ? {
-            jsonPath: typeof artifactsRaw.jsonPath === 'string'
-                ? artifactsRaw.jsonPath
-                : undefined,
-            markdownPath: typeof artifactsRaw.markdownPath === 'string'
-                ? artifactsRaw.markdownPath
-                : undefined,
-        }
-        : undefined;
-    const shareCardRaw = value.shareCard;
-    const shareCard = shareCardRaw && typeof shareCardRaw === 'object' && !Array.isArray(shareCardRaw)
-        ? {
-            id: String(shareCardRaw.id || ''),
-            shareToken: String(shareCardRaw.shareToken || ''),
-            shareUrl: String(shareCardRaw.shareUrl || ''),
-            createdAt: String(shareCardRaw.createdAt || ''),
-        }
-        : null;
-    return {
-        status: value.status,
-        finalPlanId: value.finalPlanId,
-        mergeConfidence: typeof value.mergeConfidence === 'number' ? value.mergeConfidence : 0,
-        riskScore: typeof value.riskScore === 'number' ? value.riskScore : 0,
-        verification: {
-            verdict: typeof verification.verdict === 'string' ? verification.verdict : 'UNKNOWN',
-            grade: typeof verification.grade === 'string' ? verification.grade : 'N/A',
-            score: typeof verification.score === 'number' ? verification.score : 0,
-            violations: typeof verification.violations === 'number' ? verification.violations : 0,
-        },
-        tests: {
-            skipped: tests.skipped === true,
-            passed: tests.passed === true,
-        },
-        artifacts,
-        shareCard,
-    };
-}
-async function runCommand(cmd, args, options) {
-    let output = '';
-    const safeEnv = {};
-    for (const [key, value] of Object.entries(process.env)) {
-        if (typeof value === 'string') {
-            safeEnv[key] = value;
-        }
-    }
-    if (options.env) {
-        Object.assign(safeEnv, options.env);
-    }
-    const execOptions = {
-        cwd: options.cwd,
-        ignoreReturnCode: true,
-        env: safeEnv,
-        listeners: {
-            stdout: (data) => {
-                output += data.toString();
-            },
-            stderr: (data) => {
-                output += data.toString();
-            },
-        },
-    };
-    try {
-        const exitCode = await exec.exec(cmd, args, execOptions);
-        return { exitCode, output };
-    }
-    catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-            exitCode: 127,
-            output: `${output}${message ? `${message}\n` : ''}`,
-        };
-    }
-}
-async function maybeCommitAndPushRemediation(input) {
-    if (!input.enabled) {
-        return { committed: false, pushed: false, message: 'Remediation commit disabled' };
-    }
-    if (!canPushToPullRequestBranch(input.pr)) {
-        return {
-            committed: false,
-            pushed: false,
-            message: 'Skipped remediation commit (not a same-repo pull request branch)',
-        };
-    }
-    const statusBefore = await runCommand('git', ['status', '--porcelain'], { cwd: input.cwd });
-    if (statusBefore.exitCode !== 0) {
-        return {
-            committed: false,
-            pushed: false,
-            message: 'Skipped remediation commit (failed to inspect git status)',
-        };
-    }
-    if (!hasWorkingTreeChanges(statusBefore.output)) {
-        return {
-            committed: false,
-            pushed: false,
-            message: 'No remediation changes to commit',
-        };
-    }
-    if (input.baselineDirty) {
-        return {
-            committed: false,
-            pushed: false,
-            message: `Skipped remediation commit because working tree was already dirty before remediation ` +
-                `(${countWorkingTreeChanges(statusBefore.output)} path(s) currently changed).`,
-        };
-    }
-    await runCommand('git', ['config', 'user.name', input.gitUserName], { cwd: input.cwd });
-    await runCommand('git', ['config', 'user.email', input.gitUserEmail], { cwd: input.cwd });
-    const addResult = await runCommand('git', ['add', '-A'], { cwd: input.cwd });
-    if (addResult.exitCode !== 0) {
-        return {
-            committed: false,
-            pushed: false,
-            message: 'Failed to stage remediation changes',
-        };
-    }
-    const commitResult = await runCommand('git', ['commit', '-m', input.commitMessage], { cwd: input.cwd });
-    if (commitResult.exitCode !== 0) {
-        const statusAfter = await runCommand('git', ['status', '--porcelain'], { cwd: input.cwd });
-        if (!hasWorkingTreeChanges(statusAfter.output)) {
-            return {
-                committed: false,
-                pushed: false,
-                message: 'No commit created (nothing new to commit)',
-            };
-        }
-        return {
-            committed: false,
-            pushed: false,
-            message: 'Failed to create remediation commit',
-        };
-    }
-    const shaResult = await runCommand('git', ['rev-parse', 'HEAD'], { cwd: input.cwd });
-    const commitSha = shaResult.exitCode === 0 ? stripAnsi(shaResult.output).trim() : undefined;
-    if (!input.pushEnabled) {
-        return {
-            committed: true,
-            pushed: false,
-            commitSha,
-            message: 'Remediation commit created locally (push disabled)',
-        };
-    }
-    const targetRef = input.pr.head.ref;
-    const maxAttempts = Math.max(1, input.pushRetries + 1);
-    let pushOutput = '';
-    let rebaseFailed = false;
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        const pushResult = await runCommand('git', ['push', 'origin', `HEAD:${targetRef}`], { cwd: input.cwd });
-        pushOutput = pushResult.output;
-        if (pushResult.exitCode === 0) {
-            return {
-                committed: true,
-                pushed: true,
-                commitSha,
-                message: `Remediation commit pushed to ${targetRef}`,
-            };
-        }
-        const canRetry = isNonFastForwardPushFailure(pushResult.output) && attempt < maxAttempts;
-        if (!canRetry) {
-            break;
-        }
-        core.warning(`Remediation push hit non-fast-forward (attempt ${attempt}/${maxAttempts}). Rebasing onto origin/${targetRef} and retrying...`);
-        const fetchResult = await runCommand('git', ['fetch', 'origin', targetRef], { cwd: input.cwd });
-        if (fetchResult.exitCode !== 0) {
-            pushOutput += `\n${fetchResult.output}`;
-            break;
-        }
-        const rebaseResult = await runCommand('git', ['rebase', `origin/${targetRef}`], { cwd: input.cwd });
-        if (rebaseResult.exitCode !== 0) {
-            rebaseFailed = true;
-            pushOutput += `\n${rebaseResult.output}`;
-            await runCommand('git', ['rebase', '--abort'], { cwd: input.cwd });
-            break;
-        }
-        if (input.pushRetryDelaySeconds > 0) {
-            await sleep(input.pushRetryDelaySeconds * 1000);
-        }
-    }
-    const reason = rebaseFailed
-        ? 'rebase conflict while retrying non-fast-forward push'
-        : isNonFastForwardPushFailure(pushOutput)
-            ? `non-fast-forward after ${maxAttempts} attempt(s)`
-            : 'push failed';
-    const detail = stripAnsi(pushOutput).trim().split('\n').slice(-3).join(' | ');
-    return {
-        committed: true,
-        pushed: false,
-        commitSha,
-        message: detail
-            ? `Remediation commit created, but ${reason}: ${detail}`
-            : `Remediation commit created, but ${reason}`,
-    };
-}
-async function ensureCliInstalled(input) {
-    const existing = await resolveCliInvocation(input.cwd);
-    if (existing) {
-        core.info(`Using existing neurcode CLI (${existing.description})`);
-        return existing;
-    }
-    let install;
-    if (input.source === 'workspace') {
-        const workspaceCliPath = (0, path_1.resolve)(process.cwd(), input.workspacePath || 'packages/cli');
-        if (!(0, fs_1.existsSync)((0, path_1.join)(workspaceCliPath, 'package.json'))) {
-            throw new Error(`Workspace CLI source selected, but package.json not found at: ${workspaceCliPath}`);
-        }
-        core.info(`Installing workspace CLI from ${workspaceCliPath}...`);
-        install = await runCommand('npm', ['install', '-g', workspaceCliPath], { cwd: input.cwd });
-    }
-    else {
-        core.info(`Installing @neurcode-ai/cli@${input.version}...`);
-        install = await runCommand('npm', ['install', '-g', `@neurcode-ai/cli@${input.version}`], { cwd: input.cwd });
-    }
-    if (install.exitCode !== 0) {
-        throw new Error(input.source === 'workspace'
-            ? 'Failed to install workspace Neurcode CLI'
-            : `Failed to install @neurcode-ai/cli@${input.version}`);
-    }
-    let installed = await resolveCliInvocation(input.cwd);
-    if (installed) {
-        core.info(`Installed neurcode CLI (${installed.description})`);
-        return installed;
-    }
-    if (input.source === 'workspace') {
-        core.warning('Workspace CLI install succeeded but executable was not discoverable. Falling back to npm registry install.');
-        const fallbackInstall = await runCommand('npm', ['install', '-g', `@neurcode-ai/cli@${input.version}`], {
-            cwd: input.cwd,
-        });
-        if (fallbackInstall.exitCode !== 0) {
-            throw new Error(`Failed to install fallback @neurcode-ai/cli@${input.version}: ${stripAnsi(fallbackInstall.output).trim()}`);
-        }
-        installed = await resolveCliInvocation(input.cwd);
-        if (installed) {
-            core.info(`Installed fallback neurcode CLI (${installed.description})`);
-            return installed;
-        }
-    }
-    const sourceLabel = input.source === 'workspace' ? 'workspace + npm fallback' : 'npm';
-    throw new Error(`Neurcode CLI is not available after install flow (${sourceLabel}).`);
-}
-function withCliCommandTimeout(cli, args, timeoutMinutes) {
-    return withCommandTimeout(cli.cmd, [...cli.argsPrefix, ...args], timeoutMinutes);
-}
-async function resolveVerifyCapabilities(cli, cwd) {
-    const helpCommand = withCliCommandTimeout(cli, ['verify', '--help'], 2);
-    const helpResult = await runCommand(helpCommand.cmd, helpCommand.args, { cwd });
-    if (helpResult.exitCode !== 0) {
-        core.warning('Unable to detect verify flag capabilities; defaulting to full verify flag set.');
-        return {
-            supportsCompiledPolicy: true,
-            supportsChangeContract: true,
-            supportsEnforceChangeContract: true,
-            supportsRequirePlan: true,
-            supportsRequireSignedArtifacts: true,
-            supportsRequireRuntimeGuard: true,
-            supportsRequireIntentRuntime: true,
-        };
-    }
-    const helpText = stripAnsi(helpResult.output).toLowerCase();
-    return {
-        supportsCompiledPolicy: helpText.includes('--compiled-policy'),
-        supportsChangeContract: helpText.includes('--change-contract'),
-        supportsEnforceChangeContract: helpText.includes('--enforce-change-contract'),
-        supportsRequirePlan: helpText.includes('--require-plan'),
-        supportsRequireSignedArtifacts: helpText.includes('--require-signed-artifacts'),
-        supportsRequireRuntimeGuard: helpText.includes('--require-runtime-guard'),
-        supportsRequireIntentRuntime: helpText.includes('--require-intent-runtime'),
-    };
-}
-async function resolveCliInvocation(cwd) {
-    const direct = await runCommand('neurcode', ['--version'], { cwd });
-    if (direct.exitCode === 0) {
-        return {
-            cmd: 'neurcode',
-            argsPrefix: [],
-            description: `neurcode (${stripAnsi(direct.output).trim()})`,
-        };
-    }
-    const prefixResult = await runCommand('npm', ['config', 'get', 'prefix'], { cwd });
-    if (prefixResult.exitCode === 0) {
-        const npmPrefix = stripAnsi(prefixResult.output).trim();
-        if (npmPrefix) {
-            const binDir = process.platform === 'win32' ? npmPrefix : (0, path_1.resolve)(npmPrefix, 'bin');
-            core.addPath(binDir);
-            const fromPath = await runCommand('neurcode', ['--version'], { cwd });
-            if (fromPath.exitCode === 0) {
-                return {
-                    cmd: 'neurcode',
-                    argsPrefix: [],
-                    description: `neurcode via PATH (${stripAnsi(fromPath.output).trim()})`,
-                };
-            }
-            const binCandidates = process.platform === 'win32'
-                ? [(0, path_1.join)(npmPrefix, 'neurcode.cmd'), (0, path_1.join)(npmPrefix, 'neurcode')]
-                : [(0, path_1.join)(npmPrefix, 'bin', 'neurcode')];
-            for (const binPath of binCandidates) {
-                if (!(0, fs_1.existsSync)(binPath))
-                    continue;
-                const absoluteProbe = await runCommand(binPath, ['--version'], { cwd });
-                if (absoluteProbe.exitCode === 0) {
-                    return {
-                        cmd: binPath,
-                        argsPrefix: [],
-                        description: `${binPath} (${stripAnsi(absoluteProbe.output).trim()})`,
-                    };
-                }
-            }
-        }
-    }
-    const globalRoot = await runCommand('npm', ['root', '-g'], { cwd });
-    if (globalRoot.exitCode === 0) {
-        const rootPath = stripAnsi(globalRoot.output).trim();
-        const distEntry = (0, path_1.join)(rootPath, '@neurcode-ai', 'cli', 'dist', 'index.js');
-        if ((0, fs_1.existsSync)(distEntry)) {
-            const nodeProbe = await runCommand('node', [distEntry, '--version'], { cwd });
-            if (nodeProbe.exitCode === 0) {
-                return {
-                    cmd: 'node',
-                    argsPrefix: [distEntry],
-                    description: `node ${distEntry} (${stripAnsi(nodeProbe.output).trim()})`,
-                };
-            }
-        }
-    }
-    return null;
-}
-function buildRemediationGoal(explicitGoal, verifyResult, prTitle) {
-    if (explicitGoal.trim()) {
-        return explicitGoal.trim();
-    }
-    const violations = verifyResult?.violations || [];
-    const topViolations = violations.slice(0, 5)
-        .map((v) => `${v.file} [${v.severity}] ${v.rule}${v.message ? `: ${v.message}` : ''}`)
-        .join('; ');
-    const titlePart = prTitle ? ` for PR: ${prTitle}` : '';
-    if (topViolations) {
-        return `Apply minimal safe fixes${titlePart} so neurcode verify passes. Focus on: ${topViolations}`;
-    }
-    return `Apply minimal safe fixes${titlePart} so neurcode verify passes and merge confidence is READY_TO_MERGE.`;
-}
-function buildShipArgs(input) {
-    const args = [
-        'ship',
-        input.goal,
-        '--json',
-        '--max-fix-attempts',
-        String(input.maxAttempts),
-    ];
-    if (input.projectId)
-        args.push('--project-id', input.projectId);
-    if (input.skipTests)
-        args.push('--skip-tests');
-    if (input.allowDirty)
-        args.push('--allow-dirty');
-    if (input.shipTestCommand && input.shipTestCommand.trim()) {
-        args.push('--test-command', input.shipTestCommand.trim());
-    }
-    if (!input.record)
-        args.push('--no-record');
-    if (!input.publishMergeCard)
-        args.push('--no-publish-card');
-    return args;
-}
-function sanitizeGovernanceFailureReason(reason) {
-    const trimmed = reason.trim();
-    if (!trimmed) {
-        return 'Unknown error';
-    }
-    const firstLine = trimmed.split('\n')[0]?.trim();
-    return firstLine && firstLine.length > 0 ? firstLine : 'Unknown error';
-}
-function formatGovernanceFailureComment(reason) {
-    return [
-        formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER,
-        '## Neurcode Governance Report',
-        '',
-        'Neurcode failed to analyze this PR.',
-        `Reason: ${sanitizeGovernanceFailureReason(reason)}`,
-    ].join('\n');
-}
-function formatGovernanceFallbackComment() {
-    return [
-        formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER,
-        '## Neurcode Governance Report',
-        '',
-        'Neurcode could not generate a governance report for this PR.',
-    ].join('\n');
-}
-/**
- * Project the verify envelope down to the compact advisory finding shape the
- * OSS comment renders. Prefers canonical structural findings; falls back to
- * raw structural-rule violations. The OSS formatter dedupes, so the policy
- * engine's mirror rows are harmless here.
- */
-function extractStructuralFindings(report) {
-    const out = [];
-    const findings = Array.isArray(report.governanceFindings) ? report.governanceFindings : [];
-    for (const f of findings) {
-        if (f.sourceSystem !== 'structural-rules')
-            continue;
-        const ruleId = f.structuralMetadata?.ruleId || f.title.match(/^([A-Z]{2,3}\d{3})/)?.[1] || 'STRUCT';
-        const title = f.structuralMetadata?.ruleName
-            || f.title.replace(/^[A-Z]{2,3}\d{3}\s*·?\s*/, '').trim()
-            || f.title;
-        out.push({
-            file: f.evidence?.filePath || 'unknown',
-            line: typeof f.evidence?.line === 'number' ? f.evidence.line : undefined,
-            ruleId,
-            title,
-            severity: f.severity === 'BLOCKING' ? 'blocking' : 'advisory',
-        });
-    }
-    if (out.length === 0) {
-        for (const v of report.violations) {
-            const code = v.policy || '';
-            if (!/^(PY|SR|DS|TS|JS)\d/.test(code))
-                continue;
-            const sev = (v.severity || '').toLowerCase();
-            out.push({
-                file: v.file,
-                ruleId: code,
-                title: (v.message || '').replace(/^[A-Z]{2,3}\d{3}\s*·?\s*/, '').split(':')[0].trim() || 'reliability finding',
-                severity: sev === 'critical' || sev === 'high' || sev === 'block' ? 'blocking' : 'advisory',
-            });
-        }
-    }
-    return out;
-}
-/** Derive the repo topology + static dependency edges from the checkout. */
-async function buildTopologyFromCheckout(cwd) {
-    const tree = await runCommand('git', ['ls-files'], { cwd });
-    if (tree.exitCode !== 0)
-        return { staticEdges: [] };
-    const paths = tree.output.split('\n').map((s) => s.trim()).filter(Boolean);
-    if (paths.length === 0)
-        return { staticEdges: [] };
-    const topo = (0, repo_topology_1.deriveTopology)(paths);
-    const manifests = [];
-    for (const mp of (0, repo_topology_1.findManifestPaths)(paths).slice(0, 1000)) {
-        try {
-            const content = (0, fs_1.readFileSync)((0, path_1.resolve)(cwd, mp), 'utf8');
-            if (content.length <= 200_000)
-                manifests.push({ path: mp, content });
-        }
-        catch { /* skip */ }
-    }
-    const staticEdges = (0, repo_topology_1.deriveManifestEdges)(manifests, topo.moduleRoots);
-    return { topology: (0, repo_topology_1.withCentrality)(topo, staticEdges), staticEdges };
-}
-function loadOssConfig(cwd) {
-    const f = (0, path_1.resolve)(cwd, '.neurcode/oss.json');
-    if (!(0, fs_1.existsSync)(f))
-        return {};
-    try {
-        const j = JSON.parse((0, fs_1.readFileSync)(f, 'utf8'));
-        return {
-            commentOn: ['always', 'flagged', 'never'].includes(j.commentOn) ? j.commentOn : undefined,
-            failOnIncoherent: typeof j.failOnIncoherent === 'boolean' ? j.failOnIncoherent : undefined,
-            ignorePaths: Array.isArray(j.ignorePaths) ? j.ignorePaths.filter((x) => typeof x === 'string') : undefined,
-        };
-    }
-    catch {
-        return {};
-    }
-}
-/** Read CODEOWNERS from its conventional locations, or []. */
-function loadCodeowners(cwd) {
-    for (const rel of ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']) {
-        const f = (0, path_1.resolve)(cwd, rel);
-        if ((0, fs_1.existsSync)(f)) {
-            try {
-                return (0, structural_coupling_1.parseCodeowners)((0, fs_1.readFileSync)(f, 'utf8'));
-            }
-            catch {
-                return [];
-            }
-        }
-    }
-    return [];
-}
-/** Day-zero bootstrap: reconstruct records by replaying recent merged-PR history. */
-async function bootstrapViaApi(token, cwd, limit) {
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
-    const { topology } = await buildTopologyFromCheckout(cwd);
-    const pulls = await octokit.paginate(octokit.rest.pulls.list, { owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100 });
-    const merged = pulls.filter((p) => p.merged_at).slice(0, limit);
-    const prs = [];
-    for (const p of merged) {
-        let files = [];
-        try {
-            files = await octokit.paginate(octokit.rest.pulls.listFiles, { owner, repo, pull_number: p.number, per_page: 100 }, (r) => r.data.map((f) => f.filename));
-        }
-        catch {
-            files = [];
-        }
-        const labels = (p.labels ?? []).map((l) => (typeof l === 'string' ? l : (l.name ?? ''))).filter(Boolean);
-        prs.push({ number: p.number, title: p.title ?? '', body: p.body ?? '', labels, files, author: p.user?.login ?? '', mergedAt: p.merged_at ?? undefined });
-    }
-    return (0, operational_bootstrap_1.bootstrapRecords)(prs, topology);
-}
-/**
- * Records for a report mode: the accumulated ledger when it has enough history,
- * otherwise a day-zero bootstrap replayed from PR history (so every mode works
- * on first adoption). The bootstrap is byte-identical to a months-old ledger.
- */
-async function resolveRecords(cwd, ledgerPath, token, minRecords, bootstrapLimit = 150) {
-    const ledgerFile = (0, path_1.resolve)(cwd, ledgerPath);
-    const ledger = (0, fs_1.existsSync)(ledgerFile) ? (0, operational_memory_1.parseLedger)((0, fs_1.readFileSync)(ledgerFile, 'utf8')) : [];
-    if (ledger.length >= minRecords)
-        return { records: ledger, source: 'ledger' };
-    if (token) {
-        const boot = await bootstrapViaApi(token, cwd, bootstrapLimit);
-        if (boot.length >= ledger.length) {
-            core.info(`Day-zero bootstrap: reconstructed ${boot.length} operational records from PR history (ledger had ${ledger.length}).`);
-            return { records: boot, source: boot.length > 0 ? 'bootstrap' : 'none' };
-        }
-    }
-    return { records: ledger, source: ledger.length > 0 ? 'ledger' : 'none' };
-}
-/**
- * Operational Evolution Report mode (mode: report). Reads the ledger (or
- * day-zero bootstraps from PR history), splits it into a current vs prior
- * window, and writes a deterministic, archived report. No PR context required.
- */
-async function runOperationalReport() {
-    const workingDirectory = core.getInput('working_directory') || '.';
-    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-    const windowSize = parsePositiveInt(core.getInput('report_window'), 60, 4, 1000);
-    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
-    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
-    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
-    if (records.length < 4) {
-        core.info(`Only ${records.length} operational records available (ledger + bootstrap) — too little for a report.`);
-        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
-        return;
-    }
-    core.setOutput('report_source', source);
-    const current = records.slice(-windowSize);
-    const prior = records.length > current.length
-        ? records.slice(Math.max(0, records.length - 2 * windowSize), records.length - current.length)
-        : undefined;
-    const report = (0, operational_report_1.synthesizeDriftReport)({
-        current,
-        prior: prior && prior.length > 0 ? prior : undefined,
-        periodLabel: `last ${current.length} PRs${prior && prior.length ? ` vs prior ${prior.length}` : ''}`,
-    });
-    const markdown = (0, operational_report_1.renderReportMarkdown)(report, { recordCount: records.length });
-    const outDir = (0, path_1.resolve)(cwd, outputDir);
-    (0, fs_1.mkdirSync)(outDir, { recursive: true });
-    // Archival: content-addressed by reportHash + a stable latest.md pointer.
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `${report.reportHash}.md`), `${markdown}\n`);
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'latest.md'), `${markdown}\n`);
-    try {
-        await core.summary.addRaw(markdown).write();
-    }
-    catch { /* summary best-effort */ }
-    core.setOutput('report_status', 'generated');
-    core.setOutput('report_hash', report.reportHash);
-    core.setOutput('report_path', (0, path_1.join)(outputDir, `${report.reportHash}.md`));
-    core.info(`Operational report ${report.reportHash} written (${records.length} records, window ${current.length}).`);
-}
-/**
- * Release-aware report mode (mode: release-report). Groups the ledger by release
- * tag (fetched via the API) and writes a deterministic Release Operational
- * History — topology by release + architectural transitions + migration epochs.
- */
-async function runReleaseReport() {
-    const workingDirectory = core.getInput('working_directory') || '.';
-    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
-    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
-    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-    if (!token) {
-        core.warning('release-report needs github_token to list releases.');
-        core.setOutput('report_status', 'no_token');
-        return;
-    }
-    const resolved = await resolveRecords(cwd, ledgerPath, token, 8);
-    const records = resolved.records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
-    if (records.length < 8) {
-        core.info(`Only ${records.length} dated record(s) available (ledger + bootstrap) — too little for a release report.`);
-        core.setOutput('report_status', 'insufficient_history');
-        return;
-    }
-    core.setOutput('report_source', resolved.source);
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
-    const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
-    const releases = rels
-        .map((r) => ({ tag: r.tag_name, date: r.published_at || r.created_at || '' }))
-        .filter((r) => r.tag && r.date);
-    if (releases.length === 0) {
-        core.info('No releases found — nothing to group by.');
-        core.setOutput('report_status', 'no_releases');
-        return;
-    }
-    const report = (0, release_memory_1.synthesizeReleaseReport)({ records, releases, repo: `${owner}/${repo}` });
-    const outDir = (0, path_1.resolve)(cwd, outputDir);
-    (0, fs_1.mkdirSync)(outDir, { recursive: true });
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `release-${report.reportHash}.md`), `${report.markdown}\n`);
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'release-latest.md'), `${report.markdown}\n`);
-    try {
-        await core.summary.addRaw(report.markdown).write();
-    }
-    catch { /* best-effort */ }
-    core.setOutput('report_status', 'generated');
-    core.setOutput('report_hash', report.reportHash);
-    core.setOutput('report_path', (0, path_1.join)(outputDir, `release-${report.reportHash}.md`));
-    core.info(`Release report ${report.reportHash} written (${report.buckets} release windows, ${report.transitions.length} transitions).`);
-}
-/**
- * Operational-memory mode (mode: memory). The accumulating, PULL-FIRST surface —
- * "git log for repository operational structure". Builds CUMULATIVE geography
- * snapshots at each release boundary, diffs consecutive snapshots, and writes a
- * delta-only operational history to a repo-native artifact + step summary. It
- * never posts a PR comment and never restates standing state. Replay-safe:
- * re-derivable from the record history.
- */
-async function runOperationalMemory() {
-    const workingDirectory = core.getInput('working_directory') || '.';
-    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
-    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
-    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-    const minWindow = Number(core.getInput('memory_min_window')) || 40;
-    if (!token) {
-        core.warning('memory needs github_token to list releases.');
-        core.setOutput('report_status', 'no_token');
-        return;
-    }
-    const resolved = await resolveRecords(cwd, ledgerPath, token, 8);
-    const records = resolved.records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
-    if (records.length < 8) {
-        core.info(`Only ${records.length} dated record(s) available — too little for operational memory.`);
-        core.setOutput('report_status', 'insufficient_history');
-        return;
-    }
-    core.setOutput('report_source', resolved.source);
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
-    const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
-    const releases = rels
-        .map((r) => ({ tag: r.tag_name, date: (r.published_at || r.created_at || ''), pre: r.prerelease === true || (0, release_memory_1.isPreRelease)(r.tag_name) }))
-        .filter((r) => r.tag && r.date && !r.pre)
-        .sort((a, b) => a.date.localeCompare(b.date));
-    if (releases.length < 2) {
-        core.info('Fewer than 2 release boundaries — no operational evolution to diff yet.');
-        core.setOutput('report_status', 'insufficient_releases');
-        return;
-    }
-    const { staticEdges } = await buildTopologyFromCheckout(cwd);
-    const snapshots = releases
-        .map((rel) => {
-        const upTo = records.filter((r) => r.mergedAt <= rel.date);
-        return upTo.length > 0 ? (0, operational_delta_1.snapshotFromGeography)(rel.tag, (0, operational_cartography_1.deriveGeography)(upTo, staticEdges)) : null;
-    })
-        .filter((s) => s !== null);
-    const memory = (0, operational_delta_1.deriveMemory)(snapshots, { minWindow });
-    const markdown = (0, operational_delta_1.renderOperationalMemory)(memory, { repo: `${owner}/${repo}`, path: (0, path_1.join)(outputDir, 'operational-memory.md') });
-    const outDir = (0, path_1.resolve)(cwd, outputDir);
-    (0, fs_1.mkdirSync)(outDir, { recursive: true });
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'operational-memory.md'), `${markdown}\n`);
-    // Append-only, re-derivable machine artifact (the ledger of operational events).
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'operational-memory.jsonl'), `${(0, operational_delta_1.serializeMemoryJsonl)(memory)}\n`);
-    try {
-        await core.summary.addRaw(markdown).write();
-    }
-    catch { /* best-effort */ }
-    core.setOutput('report_status', memory.events.length === 0 ? 'no_evolution' : 'generated');
-    core.setOutput('operational_events', String(memory.events.length));
-    core.setOutput('report_path', (0, path_1.join)(outputDir, 'operational-memory.md'));
-    core.info(`Operational memory: ${memory.events.length} event(s) across ${snapshots.length} release boundaries.`);
-}
-/**
- * Cartography mode (mode: cartography). Derives the repository's operational
- * geography (pressure zones, regions, corridors, boundaries) from the ledger.
- */
-async function runCartographyReport() {
-    const workingDirectory = core.getInput('working_directory') || '.';
-    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
-    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
-    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
-    if (records.length < 8) {
-        core.info(`Only ${records.length} record(s) available (ledger + bootstrap) — too little for a geography map.`);
-        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
-        return;
-    }
-    core.setOutput('report_source', source);
-    const { owner, repo } = github.context.repo;
-    const { staticEdges } = await buildTopologyFromCheckout(cwd);
-    const map = (0, operational_cartography_1.deriveGeography)(records, staticEdges);
-    const crossings = (0, structural_coupling_1.ownershipCrossings)(map, loadCodeowners(cwd));
-    const markdown = (0, operational_cartography_1.renderGeographyReport)(map, { repo: `${owner}/${repo}`, ownershipCrossings: crossings });
-    const outDir = (0, path_1.resolve)(cwd, outputDir);
-    (0, fs_1.mkdirSync)(outDir, { recursive: true });
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `geography-${map.mapHash}.md`), `${markdown}\n`);
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'geography-latest.md'), `${markdown}\n`);
-    try {
-        await core.summary.addRaw(markdown).write();
-    }
-    catch { /* best-effort */ }
-    core.setOutput('report_status', 'generated');
-    core.setOutput('report_hash', map.mapHash);
-    core.setOutput('report_path', (0, path_1.join)(outputDir, `geography-${map.mapHash}.md`));
-    core.info(`Geography map ${map.mapHash} written (${map.regions.length} regions, ${map.corridors.length} corridors).`);
-}
-/**
- * Dynamics mode (mode: dynamics). Groups the ledger into release eras and
- * derives operational momentum — intensifying / cooling / stabilized /
- * dissipated / persistent — across ≥3 eras. Movement analysis, not forecasting.
- */
-async function runDynamicsReport() {
-    const workingDirectory = core.getInput('working_directory') || '.';
-    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
-    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
-    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-    if (!token) {
-        core.warning('dynamics needs github_token to list releases.');
-        core.setOutput('report_status', 'no_token');
-        return;
-    }
-    const resolved = await resolveRecords(cwd, ledgerPath, token, 15);
-    const records = resolved.records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
-    if (records.length < 15) {
-        core.info(`Only ${records.length} dated record(s) (ledger + bootstrap) — too little for momentum.`);
-        core.setOutput('report_status', 'insufficient_history');
-        return;
-    }
-    core.setOutput('report_source', resolved.source);
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
-    const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
-    const releases = rels
-        .map((r) => ({ tag: r.tag_name, date: r.published_at || r.created_at || '' }))
-        .filter((r) => r.tag && r.date && !(0, release_memory_1.isPreRelease)(r.tag));
-    const buckets = (0, release_memory_1.groupByReleases)(records, releases).filter((b) => b.tag !== 'unreleased' && b.records.length >= 5);
-    if (buckets.length < 3) {
-        core.info(`Only ${buckets.length} stable release era(s) — need ≥3 for momentum.`);
-        core.setOutput('report_status', 'insufficient_eras');
-        return;
-    }
-    const eras = buckets.map((b) => (0, operational_dynamics_1.eraFromRecords)(b.tag, b.records));
-    const report = (0, operational_dynamics_1.synthesizeDynamicsReport)({ eras, repo: `${owner}/${repo}` });
-    const outDir = (0, path_1.resolve)(cwd, outputDir);
-    (0, fs_1.mkdirSync)(outDir, { recursive: true });
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `dynamics-${report.momentumHash}.md`), `${report.markdown}\n`);
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'dynamics-latest.md'), `${report.markdown}\n`);
-    try {
-        await core.summary.addRaw(report.markdown).write();
-    }
-    catch { /* best-effort */ }
-    core.setOutput('report_status', 'generated');
-    core.setOutput('report_hash', report.momentumHash);
-    core.setOutput('report_path', (0, path_1.join)(outputDir, `dynamics-${report.momentumHash}.md`));
-    core.info(`Dynamics report ${report.momentumHash} written (${eras.length} eras, ${report.findings.length} momentum findings).`);
-}
-/**
- * Digest mode (mode: digest). The convergence artifact — fuses drift, geography,
- * and release-era momentum from the ledger into ONE coherent operational digest.
- */
-async function runDigest() {
-    const workingDirectory = core.getInput('working_directory') || '.';
-    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
-    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
-    const windowSize = parsePositiveInt(core.getInput('report_window'), 60, 4, 1000);
-    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
-    if (records.length < 8) {
-        core.info(`Only ${records.length} record(s) available (ledger + bootstrap) — too little for a digest.`);
-        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
-        return;
-    }
-    core.setOutput('report_source', source);
-    const current = records.slice(-windowSize);
-    const prior = records.length > current.length
-        ? records.slice(Math.max(0, records.length - 2 * windowSize), records.length - current.length)
-        : undefined;
-    // Release eras (for momentum) when dated records + releases are available.
-    let eras;
-    const dated = records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
-    if (token && dated.length >= 15) {
-        const octokit = github.getOctokit(token);
-        const { owner, repo } = github.context.repo;
-        const rels = await octokit.paginate(octokit.rest.repos.listReleases, { owner, repo, per_page: 100 });
-        const releases = rels.map((r) => ({ tag: r.tag_name, date: r.published_at || r.created_at || '' })).filter((r) => r.tag && r.date && !(0, release_memory_1.isPreRelease)(r.tag));
-        const buckets = (0, release_memory_1.groupByReleases)(dated, releases).filter((b) => b.tag !== 'unreleased' && b.records.length >= 5);
-        if (buckets.length >= 3)
-            eras = buckets.map((b) => (0, operational_dynamics_1.eraFromRecords)(b.tag, b.records));
-    }
-    const { owner, repo } = github.context.repo;
-    const { staticEdges } = await buildTopologyFromCheckout(cwd);
-    const digest = (0, operational_synthesis_1.synthesizeOperationalDigest)({ current, prior: prior && prior.length > 0 ? prior : undefined, eras, staticEdges, repo: `${owner}/${repo}` });
-    const outDir = (0, path_1.resolve)(cwd, outputDir);
-    (0, fs_1.mkdirSync)(outDir, { recursive: true });
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `digest-${digest.digestHash}.md`), `${digest.markdown}\n`);
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'digest-latest.md'), `${digest.markdown}\n`);
-    try {
-        await core.summary.addRaw(digest.markdown).write();
-    }
-    catch { /* best-effort */ }
-    core.setOutput('report_status', 'generated');
-    core.setOutput('report_hash', digest.digestHash);
-    core.setOutput('report_path', (0, path_1.join)(outputDir, `digest-${digest.digestHash}.md`));
-    core.info(`Operational digest ${digest.digestHash} written (${digest.statements.length} fused statements, ${digest.eras} eras).`);
-}
-/**
- * Pilot mode (mode: pilot). Derives a deterministic Trust & Survivability profile
- * from the ledger — silent-rate, flag-rate, FAIL-rarity, override-rate, and
- * trust-decay trend. Answers "do maintainers keep trusting this over time?".
- */
-async function runPilotReport() {
-    const workingDirectory = core.getInput('working_directory') || '.';
-    const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-    const ledgerPath = (core.getInput('report_ledger_path') || '.neurcode/operational-ledger.jsonl').trim();
-    const outputDir = (core.getInput('report_output_dir') || '.neurcode/reports').trim();
-    const windowSize = parsePositiveInt(core.getInput('report_window'), 120, 8, 2000);
-    const token = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-    const { records, source } = await resolveRecords(cwd, ledgerPath, token, 8);
-    if (records.length < 8) {
-        core.info(`Only ${records.length} record(s) available (ledger + bootstrap) — too little for a trust profile.`);
-        core.setOutput('report_status', records.length === 0 ? 'no_ledger' : 'insufficient_history');
-        return;
-    }
-    core.setOutput('report_source', source);
-    const { owner, repo } = github.context.repo;
-    const report = (0, operational_pilot_1.synthesizePilotReport)({ records, repo: `${owner}/${repo}`, windowSize });
-    const outDir = (0, path_1.resolve)(cwd, outputDir);
-    (0, fs_1.mkdirSync)(outDir, { recursive: true });
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, `pilot-${report.pilotHash}.md`), `${report.markdown}\n`);
-    (0, fs_1.writeFileSync)((0, path_1.join)(outDir, 'pilot-latest.md'), `${report.markdown}\n`);
-    try {
-        await core.summary.addRaw(report.markdown).write();
-    }
-    catch { /* best-effort */ }
-    core.setOutput('report_status', 'generated');
-    core.setOutput('report_hash', report.pilotHash);
-    core.setOutput('report_path', (0, path_1.join)(outputDir, `pilot-${report.pilotHash}.md`));
-    core.setOutput('survivability', report.metrics.survivability);
-    core.setOutput('silent_rate', String(Math.round(report.metrics.silentRate * 100)));
-    core.info(`Pilot report ${report.pilotHash}: trust profile ${report.metrics.survivability}, silence ${Math.round(report.metrics.silentRate * 100)}%.`);
-}
+const inputs_1 = __nccwpck_require__(5286);
+const context_1 = __nccwpck_require__(372);
+const inventory_1 = __nccwpck_require__(2671);
+const subsystems_1 = __nccwpck_require__(8223);
+const codeowners_1 = __nccwpck_require__(3842);
+const sensitive_1 = __nccwpck_require__(3503);
+const capture_1 = __nccwpck_require__(1363);
+const discover_1 = __nccwpck_require__(2558);
+const evaluate_1 = __nccwpck_require__(8194);
+const policy_1 = __nccwpck_require__(171);
+const outputs_1 = __nccwpck_require__(5734);
+const summary_1 = __nccwpck_require__(9660);
+const sanitize_1 = __nccwpck_require__(1117);
 async function run() {
-    const mode = (core.getInput('mode') || 'gate').trim().toLowerCase();
-    if (mode === 'report') {
-        await runOperationalReport();
-        return;
-    }
-    if (mode === 'release-report') {
-        await runReleaseReport();
-        return;
-    }
-    if (mode === 'memory') {
-        await runOperationalMemory();
-        return;
-    }
-    if (mode === 'cartography') {
-        await runCartographyReport();
-        return;
-    }
-    if (mode === 'dynamics') {
-        await runDynamicsReport();
-        return;
-    }
-    if (mode === 'digest') {
-        await runDigest();
-        return;
-    }
-    if (mode === 'pilot') {
-        await runPilotReport();
-        return;
-    }
-    const pr = github.context.payload.pull_request;
-    let githubToken = '';
-    let governanceCommentBody = null;
-    let governanceCommentPosted = false;
-    let governanceFailureReason = null;
+    const repoRoot = process.env.GITHUB_WORKSPACE ?? process.cwd();
+    // ── 1. Read inputs ─────────────────────────────────────────────────────────
+    const inputs = (0, inputs_1.readInputs)();
+    core.info(`[neurcode] policy=${inputs.policy} no_record_strict=${inputs.noRecordStrict}`);
+    // ── 2. Resolve event context — fail closed on any error ───────────────────
+    // Resolves base/head from github.event.pull_request payload only.
+    // Rejects pull_request_target and all non-pull_request events.
+    // Validates both SHAs are reachable commit objects in the local clone.
+    let ctx;
     try {
-        core.info('Neurcode Action started');
-        githubToken = core.getInput('github_token') || process.env.GITHUB_TOKEN || '';
-        if (!githubToken) {
-            core.warning('GitHub token is missing (github_token input and GITHUB_TOKEN env var are both unset). PR governance report commenting will be skipped.');
-        }
-        const thresholdInput = core.getInput('threshold');
-        const parsedThreshold = normalizeGrade(thresholdInput);
-        const threshold = parsedThreshold || 'C';
-        if (thresholdInput && !parsedThreshold) {
-            core.warning(`Invalid threshold "${thresholdInput}" provided; defaulting to "C".`);
-        }
-        // OSS mode: a lightweight, deterministic PR scope-coherence gate. It forces
-        // the local structural path (no cloud, no plan, no enterprise enforcement),
-        // renders the compact scope-coherence comment, and is advisory by default.
-        const ossMode = parseBoolean(core.getInput('oss_mode'), false);
-        const scopeCoherenceFail = parseBoolean(core.getInput('scope_coherence_fail'), false);
-        // Repo-derived operational topology (default on in OSS mode). Generalizes the
-        // gate beyond the hardcoded web-backend ontology to the repo's own modules.
-        const useTopology = parseBoolean(core.getInput('topology'), true);
-        if (ossMode) {
-            core.info('Neurcode OSS mode active: deterministic PR scope-coherence gate (advisory by default).');
-        }
-        const apiKey = core.getInput('api_key') || core.getInput('api-key') || process.env.NEURCODE_API_KEY;
-        const failOnViolation = parseBoolean(core.getInput('fail_on_violation'), true);
-        const planId = core.getInput('plan_id') || core.getInput('plan-id');
-        const projectId = core.getInput('project_id') || core.getInput('project-id');
-        const orgId = core.getInput('org_id') || core.getInput('org-id') || process.env.NEURCODE_ORG_ID || '';
-        const baseRefInput = core.getInput('base_ref') || '';
-        const workingDirectory = core.getInput('working_directory') || '.';
-        const record = ossMode ? false : parseBoolean(core.getInput('record'), true);
-        const cliVersion = core.getInput('neurcode_cli_version') || 'latest';
-        const cliInstallSource = parseCliInstallSource(core.getInput('neurcode_cli_source'));
-        const cliWorkspacePath = core.getInput('neurcode_cli_workspace_path') || 'packages/cli';
-        const verifyTimeoutMinutes = parsePositiveInt(core.getInput('verify_timeout_minutes'), 8, 1, 120);
-        const enforceCompatibilityHandshake = parseBoolean(core.getInput('enforce_compatibility_handshake'), true);
-        const requireApiCompatibilityHandshake = parseBoolean(core.getInput('require_api_compatibility_handshake'), true);
-        const compatibilityProbeTimeoutMinutes = parsePositiveInt(core.getInput('compatibility_probe_timeout_minutes'), 2, 1, 15);
-        const configuredApiUrl = (process.env.NEURCODE_API_URL || '').trim();
-        const verifyPolicyOnly = ossMode ? true : parseBoolean(core.getInput('verify_policy_only'), false);
-        const enterpriseMode = ossMode ? false : parseBoolean(core.getInput('enterprise_mode'), true);
-        const compiledPolicyPath = (core.getInput('compiled_policy_path') || 'neurcode.policy.compiled.json').trim();
-        const changeContractPath = (core.getInput('change_contract_path') || '.neurcode/change-contract.json').trim();
-        const runtimeGuardPath = (core.getInput('runtime_guard_path') || '.neurcode/runtime-guard.json').trim();
-        const requireRuntimeGuardOverride = parseBooleanOrUndefined(core.getInput('require_runtime_guard'));
-        const requireIntentRuntime = ossMode ? false : parseBoolean(core.getInput('require_intent_runtime'), false);
-        const enforceChangeContractOverride = parseBooleanOrUndefined(core.getInput('enforce_change_contract'));
-        const collectEvidence = parseBoolean(core.getInput('collect_evidence'), false);
-        const changedFilesOnly = ossMode ? true : parseBoolean(core.getInput('changed_files_only'), false);
-        const autoRemediate = ossMode ? false : parseBoolean(core.getInput('auto_remediate'), false);
-        const remediationGoalInput = core.getInput('remediation_goal') || '';
-        const remediationMaxAttempts = parsePositiveInt(core.getInput('remediation_max_attempts'), 2, 1, 5);
-        const remediationSkipTests = parseBoolean(core.getInput('remediation_skip_tests'), true);
-        const remediationAllowDirty = parseBoolean(core.getInput('remediation_allow_dirty'), true);
-        const publishMergeCard = parseBoolean(core.getInput('publish_merge_card'), true);
-        const shipTestCommand = core.getInput('ship_test_command') || '';
-        const shipTimeoutMinutes = parsePositiveInt(core.getInput('ship_timeout_minutes'), 20, 1, 180);
-        const shipNetworkRetries = parsePositiveInt(core.getInput('ship_network_retries'), 1, 0, 3);
-        const shipNetworkRetryDelaySeconds = parsePositiveInt(core.getInput('ship_network_retry_delay_seconds'), 5, 0, 30);
-        const remediationCommit = parseBoolean(core.getInput('remediation_commit'), false);
-        const remediationPush = parseBoolean(core.getInput('remediation_push'), false);
-        const enforceStrictVerificationOverride = parseBooleanOrUndefined(core.getInput('enforce_strict_verification'));
-        const requireSignedArtifactsOverride = parseBooleanOrUndefined(core.getInput('require_signed_artifacts'));
-        const allowManualApprovalPending = parseBoolean(core.getInput('allow_manual_approval_pending'), false);
-        const enforcePolicyExceptionWorkflowOverride = parseBooleanOrUndefined(core.getInput('enforce_policy_exception_workflow'));
-        const enterpriseEnforcement = (0, verify_mode_1.resolveEnterpriseEnforcement)({
-            enterpriseMode,
-            verifyPolicyOnly,
-            enforceChangeContract: enforceChangeContractOverride,
-            enforceStrictVerification: enforceStrictVerificationOverride,
-            enforcePolicyExceptionWorkflow: enforcePolicyExceptionWorkflowOverride,
-        });
-        let enforceChangeContract = enterpriseEnforcement.enforceChangeContract;
-        const enforceStrictVerification = enterpriseEnforcement.enforceStrictVerification;
-        const hasGovernanceSigningMaterial = Boolean((process.env.NEURCODE_GOVERNANCE_SIGNING_KEY || '').trim())
-            || Boolean((process.env.NEURCODE_GOVERNANCE_SIGNING_KEYS || '').trim())
-            || Boolean((process.env.NEURCODE_AI_LOG_SIGNING_KEY || '').trim());
-        const requireSignedArtifacts = typeof requireSignedArtifactsOverride === 'boolean'
-            ? requireSignedArtifactsOverride
-            : (enforceStrictVerification && hasGovernanceSigningMaterial);
-        const enforcePolicyExceptionWorkflow = enterpriseEnforcement.enforcePolicyExceptionWorkflow;
-        const verifyAfterRemediation = parseBoolean(core.getInput('verify_after_remediation'), true);
-        const verifyAfterRemediationTimeoutMinutes = parsePositiveInt(core.getInput('verify_after_remediation_timeout_minutes'), verifyTimeoutMinutes, 1, 120);
-        const requireRemediationPushSuccess = parseBoolean(core.getInput('require_remediation_push_success'), false);
-        const remediationPushRetries = parsePositiveInt(core.getInput('remediation_push_retries'), 2, 0, 5);
-        const remediationPushRetryDelaySeconds = parsePositiveInt(core.getInput('remediation_push_retry_delay_seconds'), 2, 0, 30);
-        const remediationCommitMessage = core.getInput('remediation_commit_message') || 'chore(neurcode): auto-remediate verify failures';
-        const remediationGitUserName = core.getInput('remediation_git_user_name') || 'neurcode-bot';
-        const remediationGitUserEmail = core.getInput('remediation_git_user_email') || 'neurcode-bot@users.noreply.github.com';
-        const cwd = (0, path_1.resolve)(process.cwd(), workingDirectory);
-        const runtimeGuardArtifactExists = (0, fs_1.existsSync)((0, path_1.resolve)(cwd, runtimeGuardPath));
-        const requireRuntimeGuard = typeof requireRuntimeGuardOverride === 'boolean'
-            ? requireRuntimeGuardOverride
-            : (enterpriseMode && !verifyPolicyOnly && runtimeGuardArtifactExists);
-        if (remediationPush && !remediationCommit) {
-            throw new Error('Invalid action configuration: remediation_push=true requires remediation_commit=true.');
-        }
-        if (requireRemediationPushSuccess && !remediationPush) {
-            throw new Error('Invalid action configuration: require_remediation_push_success=true requires remediation_push=true.');
-        }
-        if (!apiKey) {
-            core.warning('No Neurcode API key provided. Neurcode may fail if auth is required.');
-        }
-        else {
-            seedCiAuthFile(cwd, apiKey, orgId || undefined);
-        }
-        const cliInvocation = await ensureCliInstalled({
-            version: cliVersion,
-            cwd,
-            source: cliInstallSource,
-            workspacePath: cliWorkspacePath,
-        });
-        if (enforceCompatibilityHandshake) {
-            try {
-                const handshake = await runCompatibilityHandshake({
-                    cli: cliInvocation,
-                    cwd,
-                    timeoutMinutes: compatibilityProbeTimeoutMinutes,
-                    apiUrl: configuredApiUrl || undefined,
-                    requireApiCompatibility: requireApiCompatibilityHandshake,
-                });
-                core.info(`Compatibility handshake passed (action=${handshake.actionVersion}, cli=${handshake.cliVersion}${handshake.apiVersion ? `, api=${handshake.apiVersion}` : ''}).`);
-                core.setOutput('compatibility_handshake', 'passed');
-                core.setOutput('compatibility_contract_version', contracts_1.RUNTIME_COMPATIBILITY_CONTRACT_VERSION);
-                core.setOutput('compatibility_action_version', handshake.actionVersion);
-                core.setOutput('compatibility_cli_version', handshake.cliVersion);
-                if (handshake.apiVersion) {
-                    core.setOutput('compatibility_api_version', handshake.apiVersion);
-                }
-                if (handshake.manifestVersion) {
-                    core.setOutput('compatibility_manifest_version', handshake.manifestVersion);
-                }
-            }
-            catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                const details = message
-                    .split('\n')
-                    .map((line) => line.replace(/^-+\s*/, '').trim())
-                    .filter(Boolean);
-                emitRuntimeCompatibilityAnnotations(details.length > 0 ? details : [message]);
-                throw error;
-            }
-        }
-        else {
-            core.warning('Compatibility handshake is disabled via enforce_compatibility_handshake=false.');
-            core.setOutput('compatibility_handshake', 'skipped');
-        }
-        const verifyCapabilities = await resolveVerifyCapabilities(cliInvocation, cwd);
-        const effectiveCompiledPolicyPath = verifyCapabilities.supportsCompiledPolicy
-            ? (compiledPolicyPath || undefined)
-            : undefined;
-        const effectiveChangeContractPath = verifyCapabilities.supportsChangeContract
-            ? (changeContractPath || undefined)
-            : undefined;
-        if (!verifyCapabilities.supportsCompiledPolicy && compiledPolicyPath) {
-            core.warning('CLI does not support --compiled-policy; compiled policy artifact input will be ignored.');
-        }
-        if (!verifyCapabilities.supportsChangeContract && changeContractPath) {
-            core.warning('CLI does not support --change-contract; contract path input will be ignored.');
-        }
-        if (enforceChangeContract && !verifyCapabilities.supportsEnforceChangeContract) {
-            core.warning('CLI does not support --enforce-change-contract; contract hard-fail mode will be disabled.');
-            enforceChangeContract = false;
-        }
-        const fallbackToPolicyOnlyAllowed = !enforceStrictVerification;
-        const requirePlanContext = enforceStrictVerification;
-        if (requirePlanContext && !verifyCapabilities.supportsRequirePlan) {
-            throw new Error('Current CLI does not support --require-plan, but strict enterprise verification requires deterministic plan-context enforcement.');
-        }
-        if (requireSignedArtifacts && !verifyCapabilities.supportsRequireSignedArtifacts) {
-            throw new Error('Current CLI does not support --require-signed-artifacts, but enterprise strict verification requires signed deterministic artifacts.');
-        }
-        if (requireRuntimeGuard && !verifyCapabilities.supportsRequireRuntimeGuard) {
-            throw new Error('Current CLI does not support --require-runtime-guard, but this workflow requires runtime guard enforcement.');
-        }
-        const artifactPreflight = assertStrictDeterministicArtifacts({
-            cwd,
-            strictMode: enforceStrictVerification,
-            compiledPolicyPath: effectiveCompiledPolicyPath,
-            changeContractPath: effectiveChangeContractPath,
-            supportsCompiledPolicy: verifyCapabilities.supportsCompiledPolicy,
-            supportsChangeContract: verifyCapabilities.supportsChangeContract,
-            supportsRequireSignedArtifacts: verifyCapabilities.supportsRequireSignedArtifacts,
-            requireSignedArtifacts,
-        });
-        for (const w of artifactPreflight.advisoryWarnings) {
-            core.warning(`[artifact advisory] ${w}`);
-        }
-        assertRuntimeGuardRequirement({
-            cwd,
-            requireRuntimeGuard,
-            runtimeGuardPath,
-            supportsRequireRuntimeGuard: verifyCapabilities.supportsRequireRuntimeGuard,
-        });
-        const defaultBaseRef = pr ? `origin/${pr.base.ref}` : 'HEAD~1';
-        const baseRef = baseRefInput.trim() || defaultBaseRef;
-        core.info(pr
-            ? `Running verify in PR context against ${baseRef}`
-            : `Running verify in push context against ${baseRef}`);
-        core.info(`Verification mode: ${verifyPolicyOnly ? 'policy-only' : 'plan-aware'}`);
-        core.info(`Enterprise mode: ${enterpriseMode ? 'enabled' : 'disabled'}`);
-        core.info(`Verify capabilities => compiled_policy=${verifyCapabilities.supportsCompiledPolicy}, change_contract=${verifyCapabilities.supportsChangeContract}, enforce_change_contract=${verifyCapabilities.supportsEnforceChangeContract}, require_plan=${verifyCapabilities.supportsRequirePlan}, require_signed_artifacts=${verifyCapabilities.supportsRequireSignedArtifacts}, require_runtime_guard=${verifyCapabilities.supportsRequireRuntimeGuard}`);
-        core.info(`Enterprise enforcement => enforce_change_contract=${enforceChangeContract}, enforce_strict_verification=${enforceStrictVerification}, require_signed_artifacts=${requireSignedArtifacts}, require_runtime_guard=${requireRuntimeGuard}`);
-        core.info(`Policy exception workflow enforcement => ${enforcePolicyExceptionWorkflow ? 'enabled' : 'disabled'}`);
-        if (!fallbackToPolicyOnlyAllowed) {
-            core.info('Strict enterprise mode: policy-only fallback is disabled; missing plan context will hard-fail.');
-        }
-        let changedFiles = new Set();
-        if (changedFilesOnly) {
-            const changedFilesRun = await runCommand('git', ['diff', '--name-only', `${baseRef}...HEAD`], { cwd });
-            if (changedFilesRun.exitCode === 0) {
-                changedFiles = parseChangedFiles(changedFilesRun.output);
-                core.info(`Changed-files-only mode: detected ${changedFiles.size} changed file(s).`);
-            }
-            else {
-                core.warning('Changed-files-only mode enabled, but changed files could not be resolved. Falling back to full set.');
-            }
-        }
-        let effectiveVerifyPolicyOnly = verifyPolicyOnly;
-        let effectiveEnforceChangeContract = enforceChangeContract;
-        const hasExplicitPlanId = Boolean(planId && planId.trim());
-        let policyOnlyFallbackUsed = false;
-        let fallbackFailureHint = null;
-        let verifyArgs = (0, verify_mode_1.buildVerifyArgs)({
-            baseRef,
-            planId: planId || undefined,
-            projectId: projectId || undefined,
-            policyOnly: effectiveVerifyPolicyOnly,
-            record,
-            evidence: collectEvidence,
-            compiledPolicyPath: effectiveCompiledPolicyPath,
-            changeContractPath: effectiveChangeContractPath,
-            enforceChangeContract: effectiveEnforceChangeContract,
-            strictArtifacts: enforceStrictVerification,
-            requireSignedArtifacts,
-            requirePlan: requirePlanContext && !effectiveVerifyPolicyOnly,
-            requireRuntimeGuard: requireRuntimeGuard && !effectiveVerifyPolicyOnly,
-            runtimeGuardPath: requireRuntimeGuard ? runtimeGuardPath : undefined,
-            requireIntentRuntime: requireIntentRuntime && verifyCapabilities.supportsRequireIntentRuntime,
-        });
-        if (requireIntentRuntime && !verifyCapabilities.supportsRequireIntentRuntime) {
-            core.warning('Workflow asked for require_intent_runtime=true but the installed CLI does not understand --require-intent-runtime. Upgrade @neurcode-ai/cli to a build that includes the intent-runtime activation.');
-        }
-        core.info('Running neurcode verify');
-        let verifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyTimeoutMinutes);
-        let verifyRun = await runCommand(verifyCommand.cmd, verifyCommand.args, {
-            cwd,
-            env: apiKey ? { NEURCODE_API_KEY: apiKey } : undefined,
-        });
-        if (verifyCommand.timeoutApplied && verifyRun.exitCode === 124) {
-            throw new Error(`Neurcode verify timed out after ${verifyTimeoutMinutes} minute(s).`);
-        }
-        const fallbackDecision = (0, verify_mode_1.getVerifyFallbackDecision)({
-            verifyExitCode: verifyRun.exitCode,
-            policyOnlyRequested: effectiveVerifyPolicyOnly,
-            hasExplicitPlanId,
-            verifyOutput: verifyRun.output,
-            allowFallbackPolicyOnly: fallbackToPolicyOnlyAllowed,
-        });
-        // Safety fallback: if plan-aware verify fails only because plan context is missing,
-        // rerun in policy-only mode to match expected enterprise fallback behavior.
-        if (fallbackDecision.shouldRetryPolicyOnly) {
-            core.warning('Plan-aware verification failed due to missing plan context. Retrying with --policy-only fallback.');
-            policyOnlyFallbackUsed = true;
-            effectiveVerifyPolicyOnly = true;
-            effectiveEnforceChangeContract =
-                (typeof enforceChangeContractOverride === 'boolean' ? enforceChangeContractOverride : false)
-                    && verifyCapabilities.supportsEnforceChangeContract;
-            if (typeof enforceChangeContractOverride !== 'boolean' && enforceChangeContract) {
-                core.info('Policy-only fallback detected; auto-disabling change-contract hard-fail for fallback run.');
-            }
-            verifyArgs = (0, verify_mode_1.buildVerifyArgs)({
-                baseRef,
-                projectId: projectId || undefined,
-                planId: undefined,
-                policyOnly: true,
-                record,
-                evidence: collectEvidence,
-                compiledPolicyPath: effectiveCompiledPolicyPath,
-                changeContractPath: effectiveChangeContractPath,
-                enforceChangeContract: effectiveEnforceChangeContract,
-                strictArtifacts: enforceStrictVerification,
-                requireSignedArtifacts,
-                requirePlan: false,
-                requireRuntimeGuard: false,
-                runtimeGuardPath: undefined,
-                requireIntentRuntime: requireIntentRuntime && verifyCapabilities.supportsRequireIntentRuntime,
-            });
-            verifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyTimeoutMinutes);
-            verifyRun = await runCommand(verifyCommand.cmd, verifyCommand.args, {
-                cwd,
-                env: apiKey ? { NEURCODE_API_KEY: apiKey } : undefined,
-            });
-            if (verifyCommand.timeoutApplied && verifyRun.exitCode === 124) {
-                throw new Error(`Neurcode verify timed out after ${verifyTimeoutMinutes} minute(s).`);
-            }
-            if (verifyRun.exitCode !== 0) {
-                fallbackFailureHint =
-                    'Plan context was unavailable, and policy-only fallback verification also failed. Review policy violations in the action logs.';
-            }
-        }
-        else if (verifyRun.exitCode !== 0 &&
-            fallbackDecision.reason === 'explicit_plan_id' &&
-            (0, verify_mode_1.isMissingPlanVerificationFailure)(verifyRun.output)) {
-            fallbackFailureHint =
-                'Plan-aware verification failed because the provided plan_id could not be validated for this repository scope.';
-        }
-        else if (verifyRun.exitCode !== 0 &&
-            fallbackDecision.reason === 'strict_mode_no_fallback' &&
-            (0, verify_mode_1.isMissingPlanVerificationFailure)(verifyRun.output)) {
-            fallbackFailureHint =
-                'Strict enterprise mode blocked policy-only fallback because plan context is required. Run "neurcode plan" first or pass a valid --plan-id.';
-        }
-        core.info('Verify completed');
-        let remediation = null;
-        let remediationCommitResult = null;
-        let baselineDirty = false;
-        let finalExitCode = verifyRun.exitCode;
-        let failureReason = fallbackFailureHint;
-        let actionableViolations = [];
-        let actionableBlockViolations = [];
-        let finalVerifyOutput = verifyRun.output;
-        // Tracks whether we explicitly chose to ignore baseline-only violations so the
-        // governance report verdict does not re-block what was already deemed non-blocking.
-        let baselineOnlyIgnored = false;
-        let verifyResult = parseVerifyResult(verifyRun.output);
-        if (!verifyResult) {
-            core.warning('Unable to parse JSON result from neurcode verify output.');
-        }
-        if (changedFilesOnly && verifyResult && changedFiles.size > 0) {
-            actionableViolations = collectActionableViolations(verifyResult.violations, changedFiles);
-            actionableBlockViolations = actionableViolations.filter((violation) => {
-                // CLI maps severity 'block' -> 'critical' in JSON output (toVerifySeverity).
-                // Treat 'critical' and 'high' as block-level in addition to the raw 'block' label.
-                const sev = violation.severity.toLowerCase();
-                return sev === 'block' || sev === 'critical' || sev === 'high';
-            });
-            core.info(`Actionable violations in changed files: ${actionableViolations.length} total, ` +
-                `${actionableBlockViolations.length} block.`);
-            if (finalExitCode !== 0 && actionableBlockViolations.length === 0) {
-                core.info('No BLOCK violations found in changed files; treating baseline-only violations as non-blocking.');
-                finalExitCode = 0;
-                failureReason = null;
-                baselineOnlyIgnored = true;
-            }
-        }
-        if (enforceStrictVerification && isTierLimitedInfoVerifyResult(verifyResult)) {
-            core.warning('Strict verification is enabled: tier-limited INFO verify result is treated as failure.');
-            finalExitCode = verifyRun.exitCode === 0 ? 2 : verifyRun.exitCode;
-            failureReason = 'Strict verification requires full governance evaluation; received tier-limited INFO result.';
-        }
-        if (finalExitCode !== 0 && autoRemediate) {
-            const baselineStatus = await runCommand('git', ['status', '--porcelain'], { cwd });
-            if (baselineStatus.exitCode === 0) {
-                baselineDirty = hasWorkingTreeChanges(baselineStatus.output);
-                if (baselineDirty) {
-                    core.warning(`Working tree has ${countWorkingTreeChanges(baselineStatus.output)} pre-existing change(s) before remediation; ` +
-                        'remediation commit push will be skipped for safety.');
-                }
-            }
-            else {
-                core.warning('Unable to inspect baseline git status before remediation.');
-            }
-            const remediationGoal = buildRemediationGoal(remediationGoalInput, verifyResult, pr?.title);
-            core.info(`Auto-remediation enabled. Running neurcode ship with goal: ${remediationGoal}`);
-            const shipArgs = buildShipArgs({
-                goal: remediationGoal,
-                projectId: projectId || undefined,
-                maxAttempts: remediationMaxAttempts,
-                skipTests: remediationSkipTests,
-                allowDirty: remediationAllowDirty,
-                shipTestCommand,
-                record,
-                publishMergeCard,
-            });
-            const shipCommand = withCliCommandTimeout(cliInvocation, shipArgs, shipTimeoutMinutes);
-            const maxShipAttempts = Math.max(1, shipNetworkRetries + 1);
-            let shipRun = { exitCode: 1, output: '' };
-            for (let attempt = 1; attempt <= maxShipAttempts; attempt += 1) {
-                shipRun = await runCommand(shipCommand.cmd, shipCommand.args, {
-                    cwd,
-                    env: apiKey ? { NEURCODE_API_KEY: apiKey } : undefined,
-                });
-                if (shipCommand.timeoutApplied && shipRun.exitCode === 124) {
-                    core.warning(`Auto-remediation timed out after ${shipTimeoutMinutes} minute(s).`);
-                }
-                if (shipRun.exitCode === 0) {
-                    break;
-                }
-                const canRetry = attempt < maxShipAttempts &&
-                    shipRun.exitCode !== 124 &&
-                    isLikelyTransientNetworkFailure(shipRun.output);
-                if (!canRetry) {
-                    break;
-                }
-                core.warning(`Auto-remediation failed with a transient network error (attempt ${attempt}/${maxShipAttempts}); retrying...`);
-                if (shipNetworkRetryDelaySeconds > 0) {
-                    await sleep(shipNetworkRetryDelaySeconds * 1000);
-                }
-            }
-            remediation = parseShipSummary(shipRun.output);
-            if (!remediation) {
-                core.warning('Auto-remediation finished but ship JSON output could not be parsed.');
-            }
-            else {
-                core.info(`Auto-remediation result: ${remediation.status} (confidence=${remediation.mergeConfidence})`);
-            }
-            if (remediation?.status === 'READY_TO_MERGE') {
-                finalExitCode = 0;
-            }
-            else {
-                finalExitCode = shipRun.exitCode;
-            }
-            if (remediation?.status === 'READY_TO_MERGE') {
-                if (verifyAfterRemediation) {
-                    const postVerifyCommand = withCliCommandTimeout(cliInvocation, verifyArgs, verifyAfterRemediationTimeoutMinutes);
-                    const postVerifyRun = await runCommand(postVerifyCommand.cmd, postVerifyCommand.args, {
-                        cwd,
-                        env: apiKey ? { NEURCODE_API_KEY: apiKey } : undefined,
-                    });
-                    if (postVerifyCommand.timeoutApplied && postVerifyRun.exitCode === 124) {
-                        core.warning(`Post-remediation verify timed out after ${verifyAfterRemediationTimeoutMinutes} minute(s).`);
-                        finalExitCode = 124;
-                    }
-                    else {
-                        finalExitCode = postVerifyRun.exitCode;
-                    }
-                    finalVerifyOutput = postVerifyRun.output;
-                    const postVerifyResult = parseVerifyResult(postVerifyRun.output);
-                    if (!postVerifyResult) {
-                        core.warning('Post-remediation verify JSON output could not be parsed.');
-                        if (enforceStrictVerification) {
-                            finalExitCode = finalExitCode === 0 ? 2 : finalExitCode;
-                            failureReason = 'Post-remediation verify output was not parseable under strict verification mode.';
-                        }
-                    }
-                    else {
-                        verifyResult = postVerifyResult;
-                    }
-                    if (enforceStrictVerification && isTierLimitedInfoVerifyResult(verifyResult)) {
-                        core.warning('Strict verification is enabled: post-remediation verify is tier-limited INFO and is treated as failure.');
-                        finalExitCode = finalExitCode === 0 ? 2 : finalExitCode;
-                        failureReason =
-                            'Strict verification requires full governance evaluation; post-remediation verify is tier-limited INFO.';
-                    }
-                }
-                const remediationVerificationPassed = finalExitCode === 0;
-                if (remediationCommit && remediationVerificationPassed) {
-                    remediationCommitResult = await maybeCommitAndPushRemediation({
-                        cwd,
-                        pr,
-                        baselineDirty,
-                        enabled: remediationCommit,
-                        pushEnabled: remediationPush,
-                        pushRetries: remediationPushRetries,
-                        pushRetryDelaySeconds: remediationPushRetryDelaySeconds,
-                        commitMessage: remediationCommitMessage,
-                        gitUserName: remediationGitUserName,
-                        gitUserEmail: remediationGitUserEmail,
-                    });
-                    core.info(remediationCommitResult.message);
-                    if (requireRemediationPushSuccess && remediationPush && !remediationCommitResult.pushed) {
-                        core.warning('remediation_push is required to succeed, but remediation commit push did not complete.');
-                        finalExitCode = finalExitCode === 0 ? 3 : finalExitCode;
-                        failureReason = 'Auto-remediation produced changes but failed to push remediation commit to PR branch.';
-                    }
-                }
-                else if (remediationCommit && !remediationVerificationPassed) {
-                    remediationCommitResult = {
-                        committed: false,
-                        pushed: false,
-                        message: 'Skipped remediation commit because post-remediation verification did not pass.',
-                    };
-                    core.info(remediationCommitResult.message);
-                }
-            }
-            else if (remediationCommit) {
-                remediationCommitResult = {
-                    committed: false,
-                    pushed: false,
-                    message: 'Skipped remediation commit because remediation did not reach READY_TO_MERGE',
-                };
-            }
-        }
-        const manualApprovalRequired = verifyResult?.governanceDecision?.decision === 'manual_approval'
-            || verifyResult?.orgGovernance?.requireManualApproval === true;
-        if (enterpriseMode && manualApprovalRequired && !allowManualApprovalPending) {
-            const requiredApprovals = typeof verifyResult?.orgGovernance?.minimumManualApprovals === 'number'
-                ? verifyResult.orgGovernance.minimumManualApprovals
-                : 1;
-            core.warning(`Manual governance approval is required (${requiredApprovals} distinct approver${requiredApprovals === 1 ? '' : 's'}). ` +
-                'Governance requires explicit manual approval before merge/deploy.');
-            finalExitCode = finalExitCode === 0 ? 2 : finalExitCode;
-            failureReason = failureReason || `Manual governance approval is required (${requiredApprovals} approver minimum).`;
-        }
-        const blockedPolicyExceptions = typeof verifyResult?.policyExceptions?.blocked === 'number'
-            ? Math.max(0, Math.floor(verifyResult.policyExceptions.blocked))
-            : 0;
-        if (enforcePolicyExceptionWorkflow && blockedPolicyExceptions > 0) {
-            const sampleMessages = (verifyResult?.policyExceptions?.blockedViolations || [])
-                .map((item) => item?.message || item?.rule || item?.file || '')
-                .filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
-                .slice(0, 3);
-            const details = sampleMessages.length > 0 ? ` Sample: ${sampleMessages.join(' | ')}` : '';
-            core.warning(`Policy exception workflow is blocking this run (${blockedPolicyExceptions} blocked exception violation(s)).${details}`);
-            finalExitCode = finalExitCode === 0 ? 2 : finalExitCode;
-            if (!failureReason) {
-                failureReason = `Policy exception approvals are pending (${blockedPolicyExceptions} blocked exception violation(s)).`;
-            }
-        }
-        const governanceParsed = parseVerifyOutputFromCommandOutput(finalVerifyOutput);
-        if (!governanceParsed) {
-            core.warning('Governance report: verify output could not be parsed — PR comment will use fallback content. ' +
-                `Exit code: ${finalExitCode}. Output length: ${finalVerifyOutput?.length ?? 0} chars.`);
-        }
-        const governanceReport = governanceParsed || {
-            verdict: finalExitCode === 0 ? 'PASS' : 'FAIL',
-            summary: {
-                totalFilesChanged: 0,
-                totalViolations: 0,
-                totalWarnings: 1,
-                totalScopeIssues: 0,
-            },
-            violations: [],
-            warnings: [
-                {
-                    file: 'unknown',
-                    policy: 'verify_output',
-                    message: 'Verify output was not parseable by governance report contract',
-                },
-            ],
-            scopeIssues: [],
-        };
-        // When changed_files_only mode explicitly ignored baseline-only violations, the
-        // governance comment must use the same filtered signal as the CI gate decision.
-        // Baseline files (e.g. neurcode.policy.lock.json) must not drive the PR verdict.
-        if (baselineOnlyIgnored && changedFiles.size > 0) {
-            const changedList = [...changedFiles];
-            const isInChangedFiles = (file) => {
-                const f = normalizeRepoPath(file || '');
-                return changedFiles.has(f) || changedList.some((c) => f.endsWith(c));
-            };
-            const filteredViolations = governanceReport.violations.filter((v) => isInChangedFiles(v.file));
-            const filteredWarnings = governanceReport.warnings.filter((w) => {
-                // Always keep artifact advisory warnings — they are toolchain-level, not file-level.
-                const policy = (w.policy || '').toLowerCase();
-                if (policy.includes('artifact') || policy === 'signed_artifacts_required' || policy === 'deterministic_artifacts_required') {
-                    return true;
-                }
-                return isInChangedFiles(w.file);
-            });
-            const filteredScopeIssues = governanceReport.scopeIssues.filter((s) => isInChangedFiles(s.file));
-            governanceReport.violations = filteredViolations;
-            governanceReport.warnings = filteredWarnings;
-            governanceReport.scopeIssues = filteredScopeIssues;
-            governanceReport.summary = {
-                ...governanceReport.summary,
-                totalViolations: filteredViolations.length,
-                totalWarnings: filteredWarnings.length,
-                totalScopeIssues: filteredScopeIssues.length,
-            };
-        }
-        const governanceReportVerdict = (0, formatter_1.resolveGovernanceVerdict)(governanceReport);
-        core.setOutput('governance_report_verdict', governanceReportVerdict);
-        if (ossMode) {
-            // ── OSS scope-coherence branch ─────────────────────────────────────────
-            // Deterministic, advisory-by-default. The only OSS gate signal is whether
-            // the declared scope of the PR matches its actual operational blast radius.
-            const ossConfig = loadOssConfig(cwd);
-            let ossChangedFiles = [...changedFiles];
-            if (ossChangedFiles.length === 0) {
-                const cf = await runCommand('git', ['diff', '--name-only', `${baseRef}...HEAD`], { cwd });
-                if (cf.exitCode === 0)
-                    ossChangedFiles = [...parseChangedFiles(cf.output)];
-            }
-            // Repo-native ignorePaths (vendored/generated dirs maintainers don't want gated).
-            const ignorePaths = ossConfig.ignorePaths ?? [];
-            const isIgnored = (f) => ignorePaths.some((ip) => {
-                const p = ip.replace(/^\.?\//, '').replace(/\/$/, '');
-                return f === p || f.startsWith(`${p}/`);
-            });
-            if (ignorePaths.length > 0) {
-                const before = ossChangedFiles.length;
-                ossChangedFiles = ossChangedFiles.filter((f) => !isIgnored(f));
-                if (ossChangedFiles.length !== before)
-                    core.info(`oss config: ignorePaths filtered ${before - ossChangedFiles.length} file(s).`);
-            }
-            let diffText = '';
-            const diffRun = await runCommand('git', ['diff', '--unified=0', `${baseRef}...HEAD`], { cwd });
-            if (diffRun.exitCode === 0)
-                diffText = diffRun.output.slice(0, 2_000_000);
-            // Per-file +/- counts — sharpen mechanical (formatting/codemod) detection.
-            let fileStats;
-            const numstatRun = await runCommand('git', ['diff', '--numstat', `${baseRef}...HEAD`], { cwd });
-            if (numstatRun.exitCode === 0) {
-                fileStats = numstatRun.output.split('\n').reduce((acc, line) => {
-                    const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
-                    if (m && !isIgnored(normalizeRepoPath(m[3]))) {
-                        acc.push({
-                            path: normalizeRepoPath(m[3]),
-                            additions: m[1] === '-' ? 0 : Number(m[1]),
-                            deletions: m[2] === '-' ? 0 : Number(m[2]),
-                        });
-                    }
-                    return acc;
-                }, []);
-            }
-            // Derive the repo's operational topology from its own file tree (paths
-            // only — fast even on large monorepos, fully deterministic). This is what
-            // lets the gate reason about Rust/Dart/Go/monorepo structure rather than a
-            // hardcoded web-backend ontology. Disable with topology=false.
-            let topology;
-            if (useTopology) {
-                const tree = await runCommand('git', ['ls-files'], { cwd });
-                if (tree.exitCode === 0) {
-                    const paths = tree.output.split('\n').map((s) => s.trim()).filter(Boolean);
-                    if (paths.length > 0) {
-                        topology = (0, repo_topology_1.deriveTopology)(paths);
-                        // Lightweight centrality: read only the (few) package manifests and
-                        // derive inter-module dependency edges → fan-in. No full import scan.
-                        const manifestPaths = (0, repo_topology_1.findManifestPaths)(paths).slice(0, 1000);
-                        const manifests = [];
-                        for (const mp of manifestPaths) {
-                            try {
-                                const content = (0, fs_1.readFileSync)((0, path_1.resolve)(cwd, mp), 'utf8');
-                                if (content.length <= 200_000)
-                                    manifests.push({ path: mp, content });
-                            }
-                            catch { /* unreadable manifest — skip */ }
-                        }
-                        const edges = (0, repo_topology_1.deriveManifestEdges)(manifests, topology.moduleRoots);
-                        topology = (0, repo_topology_1.withCentrality)(topology, edges);
-                        core.info(`Topology: ${topology.moduleRoots.length} module(s), ${edges.length} manifest dep-edge(s), ` +
-                            `${topology.centralModules.length} central (profile ${topology.profileHash}).`);
-                    }
-                }
-            }
-            const rawLabels = pr?.labels ?? [];
-            const prLabels = Array.isArray(rawLabels)
-                ? rawLabels.map((l) => (l && typeof l.name === 'string' ? l.name : '')).filter(Boolean)
-                : [];
-            const coherence = (0, scope_coherence_1.evaluateScopeCoherence)({
-                title: typeof pr?.title === 'string' ? pr.title : '',
-                body: typeof pr?.body === 'string' ? pr.body : '',
-                labels: prLabels,
-                changedFiles: ossChangedFiles,
-                diffText,
-                fileStats,
-                topology,
-            });
-            if (coherence.mechanical?.isMechanical) {
-                core.info(`Recognised as ${coherence.mechanical.mechanicalClass} (mechanical) — wide-diff signals suppressed.`);
-            }
-            if (topology)
-                core.setOutput('scope_topology_profile', topology.profileHash);
-            core.setOutput('mechanical_class', coherence.mechanical?.mechanicalClass ?? '');
-            core.setOutput('narrative_summary', coherence.narrative?.summary ?? '');
-            // Append-to-ledger projection: a deterministic per-PR operational record.
-            // A downstream job can collect these into .neurcode/operational-ledger.jsonl
-            // to build longitudinal operational memory (re-derivable, replay-safe).
-            const prAuthor = (pr?.user?.login) ?? '';
-            const recordMergedAt = (core.getInput('record_merged_at') || pr?.merged_at || '').trim();
-            core.setOutput('operational_record', (0, operational_memory_1.serializeRecord)((0, operational_memory_1.recordFromResult)(coherence, { pr: pr?.number ?? 0, author: prAuthor, mergedAt: recordMergedAt || undefined }, topology)));
-            core.setOutput('scope_coherence_verdict', coherence.level);
-            core.setOutput('declared_change_kind', coherence.declared.changeKind);
-            core.setOutput('blast_radius_subsystems', coherence.blastRadius.subsystems.map((s) => s.subsystem).join(','));
-            core.setOutput('scope_incoherent', String(coherence.level === 'incoherent'));
-            core.setOutput('scope_hash', coherence.scopeHash);
-            // Per-push lifecycle: read the prior lifecycle embedded in the existing PR
-            // comment, append this push's operational state, and derive the convergence
-            // story. The comment IS the replay-safe per-PR store — no telemetry pipeline.
-            let lifecycle;
-            if (githubToken && pr) {
-                const priorBody = await (0, github_client_1.getExistingGovernanceCommentBody)(githubToken, pr.number);
-                const codes = (coherence.narrative?.statements ?? []).map((s) => s.code);
-                lifecycle = (0, pr_lifecycle_1.appendPush)((0, pr_lifecycle_1.parseLifecycle)(priorBody), { verdict: coherence.level, codes, hash: coherence.scopeHash });
-                const lifecycleAnalysis = (0, pr_lifecycle_1.analyzeLifecycle)(lifecycle);
-                core.setOutput('convergence', lifecycleAnalysis.convergence);
-                if (lifecycleAnalysis.narrative)
-                    core.info(`Lifecycle: ${lifecycleAnalysis.narrative}`);
-            }
-            governanceCommentBody = (0, oss_formatter_1.formatOssScopeComment)({
-                result: coherence,
-                structural: extractStructuralFindings(governanceReport),
-                lifecycle,
-            });
-            // Repo-native config overrides action inputs (maintainer review/override flow).
-            const effectiveFailOnIncoherent = ossConfig.failOnIncoherent ?? scopeCoherenceFail;
-            const ossExit = (0, oss_formatter_1.resolveOssExit)({ level: coherence.level, failOnIncoherent: effectiveFailOnIncoherent });
-            finalExitCode = ossExit.shouldFail ? 2 : 0;
-            if (ossExit.shouldFail) {
-                failureReason = failureReason || ossExit.warning || 'Neurcode: PR scope mismatch.';
-                core.error(failureReason);
-            }
-            else if (ossExit.warning) {
-                core.warning(ossExit.warning);
-            }
-            else {
-                core.info('Neurcode: PR scope coherent.');
-            }
-            try {
-                await core.summary.addRaw((0, oss_formatter_1.formatOssStepSummary)(coherence)).write();
-            }
-            catch (error) {
-                core.warning(`Failed to write GitHub step summary: ${error instanceof Error ? error.message : String(error)}`);
-            }
-            // ── Silent success: HIGH SIGNAL, LOW PRESENCE ─────────────────────────
-            // Comment only when there is something operationally real (flagged), so a
-            // healthy repo feels almost no Neurcode presence. When a PR was flagged
-            // and is now coherent, update the existing comment to the resolved state;
-            // never create a comment on a coherent PR. Step Summary + outputs always.
-            const rawCommentOn = ossConfig.commentOn ?? (core.getInput('comment_on') || 'flagged');
-            const effectiveCommentOn = rawCommentOn === 'always' || rawCommentOn === 'never' ? rawCommentOn : 'flagged';
-            const willComment = (0, oss_formatter_1.shouldComment)(coherence.level, effectiveCommentOn);
-            core.setOutput('commented', String(willComment));
-            if (githubToken && pr) {
-                if (willComment) {
-                    core.info(`Posting PR scope-coherence report (${coherence.level}).`);
-                    await (0, github_client_1.upsertGovernanceReportComment)({ token: githubToken, body: governanceCommentBody, prNumber: pr.number, runId: github.context.runId });
-                }
-                else {
-                    // Update a prior flag comment to the resolved/coherent state, but never create one.
-                    await (0, github_client_1.upsertGovernanceReportComment)({ token: githubToken, body: governanceCommentBody, prNumber: pr.number, runId: github.context.runId, onlyIfExists: true });
-                    core.info('Neurcode: scope coherent — staying quiet (no PR comment).');
-                }
-                governanceCommentPosted = true; // suppress the fallback comment in finally
-            }
-        }
-        else {
-            if (governanceReportVerdict === 'blocked' && finalExitCode === 0 && !baselineOnlyIgnored) {
-                // Only re-block when we have not already made an explicit decision to treat
-                // baseline-only violations as non-blocking (changed_files_only mode). Otherwise
-                // the log would say "non-blocking" but the PR comment would say Blocked.
-                finalExitCode = 2;
-                if (!failureReason) {
-                    failureReason = 'Neurcode governance report detected critical policy violations.';
-                }
-            }
-            else if (governanceReportVerdict === 'needs_attention' && finalExitCode === 0) {
-                core.warning('Neurcode governance report: needs attention before merge.');
-            }
-            else if (governanceReportVerdict === 'ready' && finalExitCode === 0) {
-                core.info('Neurcode governance report: ready to merge.');
-            }
-            governanceCommentBody = (0, formatter_1.formatGovernanceComment)(governanceReport);
-            try {
-                await core.summary
-                    .addRaw((0, formatter_1.formatGovernanceStepSummary)(governanceReport))
-                    .write();
-            }
-            catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                core.warning(`Failed to write GitHub step summary: ${message}`);
-            }
-            if (githubToken && pr) {
-                core.info('Posting PR governance report');
-                await (0, github_client_1.upsertGovernanceReportComment)({
-                    token: githubToken,
-                    body: governanceCommentBody,
-                    prNumber: pr.number,
-                    runId: github.context.runId,
-                });
-                governanceCommentPosted = true;
-            }
-        }
-        if (verifyResult) {
-            core.setOutput('verdict', verifyResult.verdict);
-            core.setOutput('grade', verifyResult.grade);
-            core.setOutput('score', verifyResult.score);
-            core.setOutput('violations', (verifyResult.violations ?? []).length);
-            if (verifyResult.verificationSource) {
-                core.setOutput('verification_source', verifyResult.verificationSource);
-            }
-            if (verifyResult.tier) {
-                core.setOutput('verification_tier', verifyResult.tier);
-            }
-            core.setOutput('tier_limited', isTierLimitedInfoVerifyResult(verifyResult) ? 'true' : 'false');
-            if (verifyResult.blastRadius?.riskScore) {
-                core.setOutput('risk_level', verifyResult.blastRadius.riskScore);
-            }
-            if (verifyResult.suspiciousChange) {
-                core.setOutput('suspicious_change_flagged', verifyResult.suspiciousChange.flagged ? 'true' : 'false');
-                core.setOutput('suspicious_change_confidence', verifyResult.suspiciousChange.confidence || 'unknown');
-            }
-            if (verifyResult.governanceDecision?.decision) {
-                core.setOutput('governance_decision', verifyResult.governanceDecision.decision);
-            }
-            if (typeof verifyResult.governanceDecision?.averageRelevanceScore === 'number') {
-                core.setOutput('average_relevance_score', verifyResult.governanceDecision.averageRelevanceScore.toString());
-            }
-            if (verifyResult.aiChangeLog?.integrity) {
-                core.setOutput('ai_change_log_integrity_valid', verifyResult.aiChangeLog.integrity.valid === true ? 'true' : 'false');
-                core.setOutput('ai_change_log_signed', verifyResult.aiChangeLog.integrity.signed === true ? 'true' : 'false');
-            }
-            if (verifyResult.orgGovernance) {
-                core.setOutput('org_manual_approval_required', verifyResult.orgGovernance.requireManualApproval === true ? 'true' : 'false');
-                if (typeof verifyResult.orgGovernance.minimumManualApprovals === 'number') {
-                    core.setOutput('org_minimum_manual_approvals', verifyResult.orgGovernance.minimumManualApprovals.toString());
-                }
-            }
-            if (enterpriseMode && manualApprovalRequired && !allowManualApprovalPending) {
-                core.setOutput('manual_approval_gate_blocked', 'true');
-            }
-            else {
-                core.setOutput('manual_approval_gate_blocked', 'false');
-            }
-            if (verifyResult.policyExceptions) {
-                if (typeof verifyResult.policyExceptions.blocked === 'number') {
-                    core.setOutput('policy_exceptions_blocked', String(verifyResult.policyExceptions.blocked));
-                }
-                if (typeof verifyResult.policyExceptions.suppressed === 'number') {
-                    core.setOutput('policy_exceptions_suppressed', String(verifyResult.policyExceptions.suppressed));
-                }
-                if (typeof verifyResult.policyExceptions.matched === 'number') {
-                    core.setOutput('policy_exceptions_matched', String(verifyResult.policyExceptions.matched));
-                }
-                if (typeof verifyResult.policyExceptions.sourceMode === 'string' && verifyResult.policyExceptions.sourceMode) {
-                    core.setOutput('policy_exceptions_source_mode', verifyResult.policyExceptions.sourceMode);
-                }
-            }
-            core.setOutput('policy_exception_workflow_blocked', enforcePolicyExceptionWorkflow && blockedPolicyExceptions > 0 ? 'true' : 'false');
-            if (verifyResult.policyCompilation?.fingerprint) {
-                core.setOutput('policy_compilation_fingerprint', verifyResult.policyCompilation.fingerprint);
-            }
-            if (typeof verifyResult.policyCompilation?.deterministicRuleCount === 'number') {
-                core.setOutput('policy_compilation_rule_count', verifyResult.policyCompilation.deterministicRuleCount.toString());
-            }
-            if (verifyResult.changeContract?.exists !== undefined) {
-                core.setOutput('change_contract_exists', verifyResult.changeContract.exists === true ? 'true' : 'false');
-            }
-            if (verifyResult.changeContract?.valid !== undefined && verifyResult.changeContract.valid !== null) {
-                core.setOutput('change_contract_valid', verifyResult.changeContract.valid === true ? 'true' : 'false');
-            }
-            if (verifyResult.changeContract?.enforced !== undefined) {
-                core.setOutput('change_contract_enforced', verifyResult.changeContract.enforced === true ? 'true' : 'false');
-            }
-            if (verifyResult.changeContract?.contractId) {
-                core.setOutput('change_contract_id', verifyResult.changeContract.contractId);
-            }
-            if (verifyResult.runtimeGuard?.required !== undefined) {
-                core.setOutput('runtime_guard_required', verifyResult.runtimeGuard.required === true ? 'true' : 'false');
-            }
-            if (verifyResult.runtimeGuard?.pass !== undefined) {
-                core.setOutput('runtime_guard_passed', verifyResult.runtimeGuard.pass === true ? 'true' : 'false');
-            }
-            if (typeof verifyResult.runtimeGuard?.path === 'string' && verifyResult.runtimeGuard.path.trim()) {
-                core.setOutput('runtime_guard_path', verifyResult.runtimeGuard.path.trim());
-            }
-            if (typeof verifyResult.aiDebt?.score === 'number') {
-                core.setOutput('ai_debt_score', verifyResult.aiDebt.score.toString());
-            }
-            if (typeof verifyResult.aiDebt?.pass === 'boolean') {
-                core.setOutput('ai_debt_passed', verifyResult.aiDebt.pass ? 'true' : 'false');
-            }
-            if (typeof verifyResult.aiDebt?.mode === 'string' && verifyResult.aiDebt.mode.trim()) {
-                core.setOutput('ai_debt_mode', verifyResult.aiDebt.mode.trim());
-            }
-            if (Array.isArray(verifyResult.aiDebt?.violations)) {
-                core.setOutput('ai_debt_violations', String(verifyResult.aiDebt.violations.length));
-            }
-            const thresholdCheck = isGradeBelowThreshold(verifyResult.grade, threshold);
-            core.setOutput('threshold', threshold);
-            core.setOutput('threshold_passed', thresholdCheck === null ? 'unknown' : (thresholdCheck ? 'false' : 'true'));
-            if (changedFilesOnly) {
-                core.setOutput('changed_files_only', 'true');
-                core.setOutput('changed_files_count', String(changedFiles.size));
-                core.setOutput('actionable_violations', String(actionableViolations.length));
-                core.setOutput('actionable_block_violations', String(actionableBlockViolations.length));
-            }
-        }
-        if (!verifyResult) {
-            core.setOutput('manual_approval_gate_blocked', 'false');
-            core.setOutput('policy_exception_workflow_blocked', 'false');
-        }
-        const runtimeCompatibilityIssues = collectRuntimeCompatibilityIssues(verifyResult, finalVerifyOutput);
-        if (runtimeCompatibilityIssues.length > 0) {
-            emitRuntimeCompatibilityAnnotations(runtimeCompatibilityIssues);
-            if (!failureReason && finalExitCode !== 0) {
-                failureReason = runtimeCompatibilityIssues[0];
-            }
-        }
-        core.setOutput('runtime_compatibility_issues', String(runtimeCompatibilityIssues.length));
-        const verifyModeOutput = effectiveVerifyPolicyOnly
-            ? policyOnlyFallbackUsed
-                ? 'policy_only_fallback'
-                : 'policy_only'
-            : hasExplicitPlanId
-                ? 'plan_enforced_explicit'
-                : 'plan_aware';
-        core.setOutput('verify_mode', verifyModeOutput);
-        core.setOutput('policy_only_fallback_used', policyOnlyFallbackUsed ? 'true' : 'false');
-        core.setOutput('enterprise_mode_active', enterpriseMode ? 'true' : 'false');
-        core.setOutput('enterprise_enforced_change_contract', effectiveEnforceChangeContract ? 'true' : 'false');
-        core.setOutput('enterprise_enforced_strict_verification', enforceStrictVerification ? 'true' : 'false');
-        core.setOutput('enterprise_enforced_signed_artifacts', requireSignedArtifacts ? 'true' : 'false');
-        core.setOutput('enterprise_enforced_runtime_guard', requireRuntimeGuard ? 'true' : 'false');
-        core.setOutput('enterprise_enforced_policy_exception_workflow', enforcePolicyExceptionWorkflow ? 'true' : 'false');
-        if (remediation) {
-            core.setOutput('remediation_status', remediation.status);
-            core.setOutput('merge_confidence', remediation.mergeConfidence);
-            if (remediation.shareCard?.shareUrl) {
-                core.setOutput('share_card_url', remediation.shareCard.shareUrl);
-            }
-        }
-        if (remediationCommitResult) {
-            core.setOutput('remediation_commit_created', remediationCommitResult.committed ? 'true' : 'false');
-            core.setOutput('remediation_commit_pushed', remediationCommitResult.pushed ? 'true' : 'false');
-            if (remediationCommitResult.commitSha) {
-                core.setOutput('remediation_commit_sha', remediationCommitResult.commitSha);
-            }
-        }
-        if (verifyResult && failOnViolation && !changedFilesOnly) {
-            const thresholdCheck = isGradeBelowThreshold(verifyResult.grade, threshold);
-            if (thresholdCheck === true) {
-                finalExitCode = finalExitCode === 0 ? 4 : finalExitCode;
-                failureReason = failureReason || `Verification grade ${verifyResult.grade} is below threshold ${threshold}.`;
-            }
-            else if (thresholdCheck === null) {
-                core.warning(`Verification grade "${verifyResult.grade}" is not comparable to threshold ${threshold}; ` +
-                    'threshold check skipped.');
-            }
-        }
-        // In OSS mode the gate is governed solely by scope coherence (set above);
-        // structural findings are advisory and must not hard-fail the build.
-        const mustFailBlockedGovernance = !ossMode && governanceReportVerdict === 'blocked';
-        if (finalExitCode !== 0 && (failOnViolation || mustFailBlockedGovernance)) {
-            if (failureReason) {
-                core.setFailed(failureReason);
-            }
-            else {
-                const verdict = verifyResult?.verdict || 'FAIL';
-                core.setFailed(`Neurcode verification failed with verdict: ${verdict}`);
-            }
-        }
+        ctx = (0, context_1.resolveContext)(repoRoot);
     }
-    catch (error) {
-        if (error instanceof Error) {
-            governanceFailureReason = sanitizeGovernanceFailureReason(error.message);
-            core.error(error.stack || error.message);
-            core.setFailed(error.message);
-        }
-        else {
-            governanceFailureReason = sanitizeGovernanceFailureReason(String(error));
-            core.error(String(error));
-            core.setFailed('Unknown Neurcode Action failure');
-        }
+    catch (err) {
+        core.setFailed(err instanceof Error ? err.message : String(err));
+        return;
     }
-    finally {
-        if (!pr) {
-            return;
-        }
-        if (!githubToken) {
-            const missingTokenMessage = 'Unable to post PR governance report because no GitHub token was provided.';
-            core.error(missingTokenMessage);
-            core.setFailed(missingTokenMessage);
-            return;
-        }
-        if (governanceCommentPosted) {
-            return;
-        }
-        const fallbackComment = governanceCommentBody
-            || (governanceFailureReason
-                ? formatGovernanceFailureComment(governanceFailureReason)
-                : formatGovernanceFallbackComment());
-        try {
-            core.info('Posting PR governance report');
-            await (0, github_client_1.upsertGovernanceReportComment)({
-                token: githubToken,
-                body: fallbackComment,
-                prNumber: pr.number,
-                runId: github.context.runId,
-            });
-            governanceCommentPosted = true;
-        }
-        catch (commentError) {
-            if (commentError instanceof Error) {
-                core.error(commentError.stack || commentError.message);
-                core.setFailed(`Failed to post PR governance report: ${commentError.message}`);
-            }
-            else {
-                const commentFailure = String(commentError);
-                core.error(commentFailure);
-                core.setFailed(`Failed to post PR governance report: ${commentFailure}`);
-            }
-        }
+    core.info(`[neurcode] base=${ctx.baseSha.slice(0, 12)} head=${ctx.headSha.slice(0, 12)} fork=${ctx.isFork}`);
+    // ── 3. Layer 1: committed PR delta inventory (throws on git failure) ───────
+    let inventory;
+    try {
+        inventory = (0, inventory_1.captureInventory)(repoRoot, ctx.baseSha, ctx.headSha);
+    }
+    catch (err) {
+        core.setFailed(err instanceof Error ? err.message : String(err));
+        return;
+    }
+    core.info(`[neurcode] Layer 1: ${inventory.effects.length} effects`);
+    const subsystems = (0, subsystems_1.deriveSubsystems)(inventory.effects);
+    // CODEOWNERS from BASE commit only — never from the PR head.
+    const codeowners = (0, codeowners_1.analyzeCodeowners)(repoRoot, ctx.baseSha, inventory.effects);
+    const sensitiveHits = (0, sensitive_1.detectSensitiveSurfaces)(inventory.effects);
+    if (sensitiveHits.length > 0) {
+        core.info(`[neurcode] Sensitive surfaces: ${(0, sanitize_1.logSafe)(sensitiveHits.map((h) => h.category).join(', '))}`);
+    }
+    // ── 4. Layer 2: runtime-aware admission ───────────────────────────────────
+    // discoverArtifacts reads from the immutable head Git tree (ls-tree + cat-file).
+    // It throws on ls-tree failure (setup error) and returns dirAbsent=true when
+    // .neurcode-admission/ is genuinely absent from the commit.
+    let discovery;
+    try {
+        discovery = (0, discover_1.discoverArtifacts)(repoRoot, ctx.headSha, inputs.maxArtifacts, inputs.maxAggregateBytes);
+    }
+    catch (err) {
+        core.setFailed(err instanceof Error ? err.message : String(err));
+        return;
+    }
+    for (const d of discovery.diagnostics) {
+        core.warning(`[neurcode] artifact: ${(0, sanitize_1.logSafe)(d.filename)}: ${(0, sanitize_1.logSafe)(d.reason)}`);
+    }
+    if (discovery.ceilingHit) {
+        core.warning('[neurcode] Artifact count or aggregate byte ceiling hit; some entries skipped.');
+    }
+    // captureCommittedDelta throws on object-format or git diff failure (fail-closed).
+    let admissionCapture;
+    try {
+        admissionCapture = (0, capture_1.captureCommittedDelta)(repoRoot, ctx.baseSha, ctx.headSha);
+    }
+    catch (err) {
+        core.setFailed(err instanceof Error ? err.message : String(err));
+        return;
+    }
+    const admission = (0, evaluate_1.evaluateAdmission)(admissionCapture, discovery.artifacts, discovery.diagnostics, discovery.dirAbsent);
+    core.info(`[neurcode] Layer 2: verdict=${admission.finalVerdict} ` +
+        `covered=${admission.coveredPaths.length} uncovered=${admission.uncoveredPaths.length}`);
+    // ── 5. Policy decision ─────────────────────────────────────────────────────
+    const policyDecision = (0, policy_1.decidePolicyOutcome)(admission.finalVerdict, inputs.policy, inputs.noRecordStrict);
+    // ── 6. Emit outputs ────────────────────────────────────────────────────────
+    (0, outputs_1.emitOutputs)({
+        effectCount: inventory.effects.length,
+        subsystems,
+        sensitiveHits,
+        codeowners,
+        codeownersChanged: inventory.codeownersChanged,
+        admission,
+        actionBlocked: policyDecision.shouldFail,
+    });
+    // ── 7. Step summary ────────────────────────────────────────────────────────
+    const summaryText = (0, summary_1.renderStepSummary)({
+        effects: inventory.effects,
+        subsystems,
+        sensitiveHits,
+        codeowners,
+        codeownersChanged: inventory.codeownersChanged,
+        admission,
+        policyDecision,
+    });
+    try {
+        await (0, summary_1.writeSummary)(summaryText);
+    }
+    catch {
+        core.info('[neurcode] Step summary unavailable in this runner environment.');
+        core.info(summaryText);
+    }
+    // ── 8. Fail if policy requires it ─────────────────────────────────────────
+    if (policyDecision.shouldFail) {
+        core.setFailed(`[neurcode] Admission policy (${inputs.policy}) failed: verdict=${admission.finalVerdict}. ` +
+            'Self-attested claim, not enterprise proof. See step summary.');
     }
 }
-run();
+run().catch((err) => {
+    core.setFailed(err instanceof Error ? err.message : String(err));
+});
 
 
 /***/ }),
 
-/***/ 2574:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.calculateDriftScore = calculateDriftScore;
-function clampScore(value) {
-    if (!Number.isFinite(value))
-        return 0;
-    if (value < 0)
-        return 0;
-    if (value > 100)
-        return 100;
-    return value;
-}
-function calculateDriftScore(data) {
-    const scopeScore = Math.min(data.scopeIssues.length * 10, 100);
-    const violationScore = Math.min(data.violations.length * 15, 100);
-    const warningScore = Math.min(data.warnings.length * 5, 100);
-    const weighted = (0.4 * scopeScore) + (0.4 * violationScore) + (0.2 * warningScore);
-    const hasCriticalOrHighViolation = data.violations.some((violation) => {
-        const severity = (violation.severity || '').trim().toLowerCase();
-        return severity === 'critical' || severity === 'high';
-    });
-    const baseScore = Math.round(clampScore(weighted));
-    return hasCriticalOrHighViolation ? Math.max(baseScore, 60) : baseScore;
-}
-
-
-/***/ }),
-
-/***/ 7459:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.NEURCODE_RUN_ID_PLACEHOLDER = exports.NEURCODE_GOVERNANCE_REPORT_MARKER = void 0;
-exports.resolveGovernanceVerdict = resolveGovernanceVerdict;
-exports.formatGovernanceComment = formatGovernanceComment;
-exports.formatGovernanceStepSummary = formatGovernanceStepSummary;
-const drift_1 = __nccwpck_require__(2574);
-exports.NEURCODE_GOVERNANCE_REPORT_MARKER = '<!-- neurcode-governance-report -->';
-exports.NEURCODE_RUN_ID_PLACEHOLDER = '{{NEURCODE_RUN_ID}}';
-/** Keeps PR comments scannable when many advisory rows exist — full list remains in verify JSON artifact. */
-const MAX_ADVISORY_ROWS_IN_COMMENT = 15;
-const MAX_GOVERNANCE_FINDINGS_IN_COMMENT = 6;
-function escapeMarkdownInline(value) {
-    return value.replace(/\|/g, '\\|').replace(/`/g, '\\`');
-}
-function asRecord(value) {
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
-}
-function asString(value) {
-    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-function asNumber(value) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-function asStringArray(value) {
-    return Array.isArray(value)
-        ? value.filter((item) => typeof item === 'string' && item.trim().length > 0)
-        : [];
-}
-function getGovernanceEnvelope(data) {
-    return asRecord(data.governanceVerification);
-}
-function getIntentGovernance(data) {
-    const envelope = getGovernanceEnvelope(data);
-    return asRecord(envelope?.intentGovernance);
-}
-function getGovernancePosture(data) {
-    const intent = getIntentGovernance(data);
-    return asRecord(intent?.governancePosture) || asRecord(data.governancePosture);
-}
-function getGovernanceDecisions(data) {
-    const intent = getIntentGovernance(data);
-    return asRecord(intent?.governanceDecisions) || asRecord(data.governanceDecisions);
-}
-function getPriorityCounts(data) {
-    const posture = getGovernancePosture(data);
-    const counts = asRecord(posture?.priorityCounts);
-    if (counts)
-        return counts;
-    const risk = asRecord(getIntentGovernance(data)?.riskSynthesis);
-    return asRecord(risk?.priorityCounts);
-}
-function formatUnknown(value, fallback = 'not reported') {
-    const str = asString(value);
-    return str ? escapeMarkdownInline(str) : fallback;
-}
-function formatCount(value) {
-    const num = asNumber(value);
-    return num === null ? '0' : String(Math.max(0, Math.floor(num)));
-}
-function formatConfidence(value) {
-    return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
-}
-function findingEvidenceLocation(finding) {
-    const file = finding.evidence?.filePath || finding.evidence?.excerpt || 'unknown';
-    const line = typeof finding.evidence?.line === 'number' ? `:${finding.evidence.line}` : '';
-    return `${file}${line}`;
-}
-function truncateText(value, max = 220) {
-    const compact = value.replace(/\s+/g, ' ').trim();
-    if (compact.length <= max)
-        return compact;
-    return `${compact.slice(0, max - 1)}…`;
-}
-function isArtifactCheckViolation(violation) {
-    const policy = (violation.policy || '').toLowerCase();
-    return policy === 'deterministic_artifacts_required' || policy === 'signed_artifacts_required';
-}
-function hasCriticalViolations(data) {
-    return data.violations.some((violation) => {
-        // Artifact presence/signature checks are advisory and must never drive the blocked verdict.
-        if (isArtifactCheckViolation(violation))
-            return false;
-        const severity = (violation.severity || '').trim().toLowerCase();
-        return severity === 'critical' || severity === 'high';
-    });
-}
-function countBlockingGovernanceFindings(data) {
-    return getGovernanceFindings(data).filter((finding) => finding.severity === 'BLOCKING').length;
-}
-function countAdvisoryGovernanceFindings(data) {
-    return getGovernanceFindings(data).filter((finding) => finding.severity === 'ADVISORY').length;
-}
-function isSystemStatusWarning(warning) {
-    // 'verify_result' is a CLI-emitted status indicator ("✅ Policy check passed"),
-    // not a real advisory finding. Exclude it from the needs_attention verdict.
-    const policy = (warning.policy || '').toLowerCase();
-    return policy === 'verify_result';
-}
-function resolveGovernanceVerdict(data) {
-    data = safeData(data);
-    if (hasCriticalViolations(data) || data.scopeIssues.length > 0 || countBlockingGovernanceFindings(data) > 0) {
-        return 'blocked';
-    }
-    const realViolations = data.violations.filter((v) => !isArtifactCheckViolation(v));
-    const realWarnings = data.warnings.filter((w) => !isSystemStatusWarning(w));
-    if (realViolations.length > 0 || realWarnings.length > 0) {
-        return 'needs_attention';
-    }
-    return 'ready';
-}
-function renderVerdictLine(verdict) {
-    if (verdict === 'blocked') {
-        return '**Verdict:** ❌ Blocked';
-    }
-    if (verdict === 'needs_attention') {
-        return '**Verdict:** ⚠️ Needs Attention';
-    }
-    return '**Verdict:** ✅ Ready to Merge';
-}
-function countBlockingPolicyViolations(data) {
-    return data.violations.filter((violation) => {
-        if (isArtifactCheckViolation(violation))
-            return false;
-        const severity = (violation.severity || '').trim().toLowerCase();
-        return severity === 'critical' || severity === 'high';
-    }).length;
-}
-function countBlockingViolations(data) {
-    return countBlockingPolicyViolations(data) + countBlockingGovernanceFindings(data);
-}
-function renderMergeSafety(verdict) {
-    if (verdict === 'blocked') {
-        return [
-            '**Merge safety:** Not sufficient for merge under default Neurcode governance rules. Resolve blockers or record an explicit, replay-visible governance decision.',
-        ];
-    }
-    if (verdict === 'needs_attention') {
-        return [
-            '**Merge safety:** Review required. Advisory or review-class findings are present; merge only if your rollout policy permits them.',
-        ];
-    }
-    return [
-        '**Merge safety:** No blocking governance findings in this verify snapshot; still subject to your organization’s other checks.',
-    ];
-}
-function renderVerdictReason(verdict, data) {
-    if (verdict !== 'blocked') {
-        return null;
-    }
-    const policyBlockingCount = countBlockingPolicyViolations(data);
-    const governanceBlockingCount = countBlockingGovernanceFindings(data);
-    const scopeCount = data.scopeIssues.length;
-    const parts = [];
-    if (policyBlockingCount > 0)
-        parts.push(`${policyBlockingCount} critical policy violation(s)`);
-    if (governanceBlockingCount > 0)
-        parts.push(`${governanceBlockingCount} blocking governance finding(s)`);
-    if (scopeCount > 0)
-        parts.push(`${scopeCount} scope/architectural issue(s)`);
-    return `Reason: ${parts.length > 0 ? parts.join(', ') : 'blocking governance issues'} detected`;
-}
-function renderViolationLine(violation) {
-    return (`- \`${escapeMarkdownInline(violation.file)}\` — ${escapeMarkdownInline(violation.message)} ` +
-        `(policy: \`${escapeMarkdownInline(violation.policy)}\`, severity: \`${escapeMarkdownInline(violation.severity)}\`)`);
-}
-function renderBlockingViolations(data) {
-    const blocking = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev === 'critical' || sev === 'high';
-    });
-    const lines = ['### Blocking Violations', ''];
-    if (blocking.length === 0) {
-        lines.push('- No blocking policy violations detected.');
-        return lines;
-    }
-    for (const v of blocking)
-        lines.push(renderViolationLine(v));
-    return lines;
-}
-function renderAdvisoryViolations(data) {
-    const advisory = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev !== 'critical' && sev !== 'high';
-    });
-    const realWarnings = data.warnings.filter((w) => !isSystemStatusWarning(w));
-    const lines = ['### Advisory Violations', ''];
-    if (advisory.length === 0 && realWarnings.length === 0) {
-        lines.push('- No advisory issues detected.');
-        return lines;
-    }
-    const rowStrings = [];
-    for (const v of advisory)
-        rowStrings.push(renderViolationLine(v));
-    for (const w of realWarnings) {
-        rowStrings.push(`- \`${escapeMarkdownInline(w.file)}\` — ${escapeMarkdownInline(w.message)} ` +
-            `(policy: \`${escapeMarkdownInline(w.policy)}\`)`);
-    }
-    const omitted = Math.max(0, rowStrings.length - MAX_ADVISORY_ROWS_IN_COMMENT);
-    const shown = omitted > 0 ? rowStrings.slice(0, MAX_ADVISORY_ROWS_IN_COMMENT) : rowStrings;
-    for (const row of shown)
-        lines.push(row);
-    if (omitted > 0) {
-        lines.push('');
-        lines.push(`> *${omitted} additional advisory row(s) omitted in this comment — open the full verify JSON artifact or CI log for the complete list.*`);
-    }
-    return lines;
-}
-function renderArtifactChecks(data) {
-    const artifactIssues = data.violations.filter(isArtifactCheckViolation);
-    if (artifactIssues.length === 0)
-        return null;
-    const lines = ['### Artifact Checks (Advisory)', ''];
-    for (const v of artifactIssues) {
-        lines.push(`- \`${escapeMarkdownInline(v.file)}\` — ${escapeMarkdownInline(v.message)} ` +
-            `(policy: \`${escapeMarkdownInline(v.policy)}\`)`);
-    }
-    lines.push('');
-    lines.push('> Artifact checks are advisory and do not block merge.');
-    return lines;
-}
-function renderScopeIssueBadge(policy, boundaryType) {
-    const parts = [];
-    if (policy) {
-        const label = policy === 'forbidden' ? '⛔ forbidden'
-            : policy === 'review-required' ? '⚠ review-required'
-                : policy === 'generated-code' ? '🤖 generated-code'
-                    : policy === 'out-of-scope' ? '🚫 out-of-scope'
-                        : policy;
-        parts.push(`\`${label}\``);
-    }
-    if (boundaryType && boundaryType !== 'unspecified') {
-        parts.push(`\`${boundaryType}\``);
-    }
-    return parts.length > 0 ? ` ${parts.join(' ')}` : '';
-}
-function renderScopeIssues(data) {
-    const lines = ['### Scope / Architectural Issues', ''];
-    if (data.scopeIssues.length === 0) {
-        lines.push('- No scope issues detected.');
-        return lines;
-    }
-    for (const issue of data.scopeIssues) {
-        // Optional structured governance classification surviving canonicalisation —
-        // see packages/contracts/src/index.ts VerifyOutputScopeIssue. Stay
-        // defensive: legacy payloads may not carry these fields.
-        const meta = issue;
-        const badge = renderScopeIssueBadge(meta.policy, meta.boundaryType);
-        lines.push(`- \`${escapeMarkdownInline(issue.file)}\`${badge} — ${escapeMarkdownInline(issue.message)}`);
-    }
-    return lines;
-}
-function asRuntimeCapabilities(data) {
-    const rc = data.runtimeCapabilities;
-    if (!rc || typeof rc !== 'object' || Array.isArray(rc))
-        return null;
-    return rc;
-}
-function renderRuntimeCapabilities(data) {
-    const rc = asRuntimeCapabilities(data);
-    if (!rc)
-        return [];
-    const lines = ['### Runtime Capabilities', ''];
-    const row = (label, value) => {
-        if (value === undefined || value === null || value === '')
-            return;
-        const rendered = Array.isArray(value)
-            ? (value.length > 0 ? value.map((v) => `\`${String(v)}\``).join(', ') : '_(none)_')
-            : `\`${String(value)}\``;
-        lines.push(`- **${label}:** ${rendered}`);
-    };
-    row('Execution path', rc.executionPath);
-    row('Intent runtime', rc.intentRuntime);
-    row('Intent contract source', rc.intentContractSource);
-    if (rc.intentRuntimeRequired !== undefined) {
-        row('Intent runtime required', rc.intentRuntimeRequired);
-        if (rc.intentRuntimeRequirementSatisfied === false) {
-            lines.push('  - ⛔ **Requirement NOT satisfied** — runtime fell back to structural-only despite `require_intent_runtime=true`.');
-        }
-    }
-    row('Scope guard', rc.scopeGuard);
-    row('Forbidden-boundary enforcement', rc.forbiddenBoundaryEnforcement);
-    row('Drift intelligence', rc.driftIntelligence);
-    row('Generated-code governance', rc.generatedCodeGovernance);
-    row('Structural rules', rc.structuralRules);
-    row('Replay determinism', rc.replayDeterminism);
-    row('API contract status', rc.apiContractStatus);
-    if (Array.isArray(rc.observedScopeCategories) && rc.observedScopeCategories.length > 0) {
-        row('Observed scope categories', rc.observedScopeCategories);
-    }
-    if (Array.isArray(rc.observedBoundaryTypes) && rc.observedBoundaryTypes.length > 0) {
-        row('Observed boundary types', rc.observedBoundaryTypes);
-    }
-    return lines;
-}
-function renderSummary(data) {
-    return [
-        '### Change Summary',
-        '',
-        `- ${data.summary.totalFilesChanged} files changed`,
-        `- ${data.summary.totalViolations} policy violations detected`,
-    ];
-}
-function resolveDriftScore(data) {
-    if (typeof data.driftScore === 'number' && Number.isFinite(data.driftScore)) {
-        const bounded = Math.max(0, Math.min(100, data.driftScore));
-        return Math.round(bounded);
-    }
-    return (0, drift_1.calculateDriftScore)(data);
-}
-function resolveDriftStatus(score) {
-    if (score <= 30)
-        return 'Low';
-    if (score <= 70)
-        return 'Moderate';
-    return 'High';
-}
-function renderDriftScore(data) {
-    const score = resolveDriftScore(data);
-    const status = resolveDriftStatus(score);
-    return [
-        '### Drift Score',
-        '',
-        `- Drift score: **${score} / 100** (${status})`,
-        '- Indicates deviation from intended architecture',
-    ];
-}
-function renderHighlights(data) {
-    const blocking = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev === 'critical' || sev === 'high';
-    });
-    const scope = data.scopeIssues;
-    const advisory = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev !== 'critical' && sev !== 'high';
-    });
-    const realWarnings = data.warnings.filter((w) => !isSystemStatusWarning(w));
-    const top = [
-        ...blocking,
-        ...scope.map((s) => ({ file: s.file, message: s.message, policy: 'scope_guard', severity: 'high' })),
-        ...advisory,
-        ...realWarnings.map((w) => ({ file: w.file, message: w.message, policy: w.policy, severity: 'warning' })),
-    ].slice(0, 3);
-    if (top.length === 0)
-        return [];
-    return [
-        '**Highlights:**',
-        '',
-        ...top.map((item) => `- ${escapeMarkdownInline(item.message)} in \`${escapeMarkdownInline(item.file)}\``),
-    ];
-}
-function getGovernanceFindings(data) {
-    if (Array.isArray(data.governanceFindings))
-        return data.governanceFindings;
-    const envelope = data.governanceVerification;
-    if (envelope && Array.isArray(envelope.findings))
-        return envelope.findings;
-    return [];
-}
-function resolveRolloutTrust(data, verdict) {
-    const posture = getGovernancePosture(data);
-    const intent = getIntentGovernance(data);
-    return asString(posture?.rolloutTrust)
-        || asString(intent?.rolloutTrust)
-        || (verdict === 'blocked' ? 'boundary-violating' : verdict === 'needs_attention' ? 'review-required' : 'rollout-safe');
-}
-function resolveGovernanceGate(data, verdict) {
-    const posture = getGovernancePosture(data);
-    const intent = getIntentGovernance(data);
-    return asString(posture?.governanceGate)
-        || asString(intent?.governanceGate)
-        || (verdict === 'blocked' ? 'review-blocker' : 'advisory');
-}
-function renderGovernancePosture(data, verdict) {
-    const posture = getGovernancePosture(data);
-    const intent = getIntentGovernance(data);
-    const decisions = getGovernanceDecisions(data);
-    const counts = getPriorityCounts(data);
-    const rolloutTrust = resolveRolloutTrust(data, verdict);
-    const governanceGate = resolveGovernanceGate(data, verdict);
-    const riskSummary = asString(intent?.riskSummary) || asString(posture?.summary);
-    const postureReasons = asStringArray(posture?.reasons).slice(0, 3);
-    const lines = [
-        '### Governance Posture',
-        '',
-        '| Dimension | Result |',
-        '| --- | --- |',
-        `| Governance posture | ${escapeMarkdownInline(verdict.replace('_', ' '))} |`,
-        `| Rollout trust | \`${escapeMarkdownInline(rolloutTrust)}\` |`,
-        `| Governance gate | \`${escapeMarkdownInline(governanceGate)}\` |`,
-        `| Rollout blockers | ${formatCount(counts?.p0RolloutBlockers)} |`,
-        `| Architecture blockers | ${formatCount(counts?.p1ArchitectureBlockers)} |`,
-        `| Review-required findings | ${formatCount(counts?.p2ReviewRequired)} |`,
-        `| Advisories | ${formatCount(counts?.p3Advisory)} |`,
-        `| Governance decisions applied | ${formatCount(decisions?.decisionsApplied)} |`,
-        '',
-    ];
-    if (riskSummary) {
-        lines.push(`**Why:** ${escapeMarkdownInline(truncateText(riskSummary, 280))}`);
-    }
-    else if (postureReasons.length > 0) {
-        lines.push(`**Why:** ${postureReasons.map((item) => escapeMarkdownInline(item)).join('; ')}`);
-    }
-    else {
-        lines.push('**Why:** No direct governance escalation reason was attached to this verify artifact.');
-    }
-    if (postureReasons.length > 0) {
-        lines.push('');
-        for (const reason of postureReasons) {
-            lines.push(`- ${escapeMarkdownInline(truncateText(reason, 180))}`);
-        }
-    }
-    return lines;
-}
-function renderGovernanceDecisions(data) {
-    const decisions = getGovernanceDecisions(data);
-    if (!decisions) {
-        return [
-            '### Governance Decisions',
-            '',
-            '- No accepted-risk, temporary-exception, review, or override lineage was attached to this verify artifact.',
-            '- To author a repo-local decision: `neurcode governance accept-risk`, `neurcode governance temporary-exception`, or `neurcode governance review`.',
-        ];
-    }
-    const lineageRaw = Array.isArray(decisions.lineage) ? decisions.lineage : [];
-    const lineage = lineageRaw
-        .map((item) => asRecord(item))
-        .filter((item) => item !== null)
-        .slice(0, 6);
-    const lines = [
-        '### Governance Decisions',
-        '',
-        `- Applied decisions: **${formatCount(decisions.decisionsApplied)}**`,
-        `- Active overrides: **${formatCount(decisions.activeOverrides)}**`,
-        `- Expired overrides / invalid entries: **${formatCount(decisions.expiredOverrides)}**`,
-        `- Findings changed by decisions: **${formatCount(decisions.findingsChanged)}**`,
-    ];
-    const sourcePath = asString(decisions.sourcePath);
-    if (sourcePath) {
-        lines.push(`- Source: \`${escapeMarkdownInline(sourcePath)}\``);
-    }
-    if (lineage.length > 0) {
-        lines.push('');
-        lines.push('| Decision | State | Finding | Actor | Effect |');
-        lines.push('| --- | --- | --- | --- | --- |');
-        for (const entry of lineage) {
-            const state = formatUnknown(entry.state, 'unknown');
-            const decisionId = formatUnknown(entry.decisionId, 'unknown');
-            const findingId = formatUnknown(entry.findingId, 'n/a');
-            const actor = formatUnknown(entry.actor, 'unknown');
-            const previous = formatUnknown(entry.previousGate, 'none');
-            const resulting = formatUnknown(entry.resultingGate, 'none');
-            const expired = entry.expired === true ? 'expired; ' : '';
-            lines.push(`| \`${decisionId}\` | \`${state}\` | \`${findingId}\` | ${actor} | ${expired}\`${previous}\` → \`${resulting}\` |`);
-        }
-    }
-    return lines;
-}
-function renderPrioritizedGovernanceFindings(data) {
-    const findings = getGovernanceFindings(data)
-        .filter((finding) => finding.sourceSystem === 'intent-engine' || finding.severity === 'BLOCKING')
-        .sort((a, b) => {
-        const sevRank = (v) => (v.severity === 'BLOCKING' ? 2 : v.severity === 'ADVISORY' ? 1 : 0);
-        return sevRank(b) - sevRank(a) || b.confidence - a.confidence;
-    });
-    if (findings.length === 0) {
-        return [
-            '### Priority Findings',
-            '',
-            '- No canonical governance findings require reviewer attention in this verify snapshot.',
-        ];
-    }
-    const shown = findings.slice(0, MAX_GOVERNANCE_FINDINGS_IN_COMMENT);
-    const omitted = Math.max(0, findings.length - shown.length);
-    const lines = [
-        '### Priority Findings',
-        '',
-    ];
-    for (const finding of shown) {
-        lines.push(`#### ${finding.severity === 'BLOCKING' ? 'Blocking' : 'Advisory'}: ${escapeMarkdownInline(finding.title)}`);
-        lines.push(`- **Why it matters:** ${escapeMarkdownInline(truncateText(finding.operationalImplication || finding.title, 260))}`);
-        lines.push(`- **Evidence:** \`${escapeMarkdownInline(findingEvidenceLocation(finding))}\` ` +
-            `(${escapeMarkdownInline(finding.determinismClassification)}, confidence ${formatConfidence(finding.confidence)})`);
-        lines.push(`- **Boundary / category:** \`${escapeMarkdownInline(finding.category)}\` from \`${escapeMarkdownInline(finding.sourceSystem)}\``);
-        lines.push(`- **Minimal correction path:** ${escapeMarkdownInline(truncateText(finding.remediation || 'Review and correct the bounded governance violation.', 260))}`);
-        lines.push('');
-    }
-    if (omitted > 0) {
-        lines.push(`> ${omitted} additional governance finding(s) omitted from the PR comment. Review the verify JSON artifact for the complete set.`);
-    }
-    return lines;
-}
-function renderReplayProvenance(data) {
-    const gv = data.governanceVerification;
-    const lines = [
-        '### Replay / Evidence',
-        '',
-    ];
-    if (!gv) {
-        lines.push('- Canonical **governanceVerification** envelope missing — `replayChecksum` and replay integrity are unavailable.');
-        lines.push('- **Governance findings** (if any) are still authoritative for merge decisions.');
-        lines.push('');
-        lines.push('> Replay metadata describes reproducibility of the envelope, not runtime correctness of your application.');
-        return lines;
-    }
-    if (typeof gv.replayChecksum === 'string' && gv.replayChecksum.length > 0) {
-        lines.push(`- **replayChecksum:** \`${gv.replayChecksum.slice(0, 18)}…\` (full hash in JSON verify output)`);
-    }
-    else {
-        lines.push('- **replayChecksum:** not recorded — use current CLI `verify --json` to emit checksums where enabled.');
-    }
-    const ri = gv.replayIntegrity;
-    if (ri) {
-        lines.push(`- **Replay integrity:** \`${escapeMarkdownInline(String(ri.status))}\``);
-        const missing = ri.missingArtifacts ?? [];
-        if (missing.length > 0) {
-            lines.push(`- **Missing / degraded dimensions:** ${missing.slice(0, 4).map(escapeMarkdownInline).join('; ')}`);
-        }
-        const notes = ri.notes ?? [];
-        for (const n of notes.slice(0, 2)) {
-            lines.push(`- ${escapeMarkdownInline(n)}`);
-        }
-    }
-    else {
-        lines.push('- **Replay integrity:** not attached (no envelope drift analysis for this run).');
-    }
-    lines.push('');
-    lines.push('- **Evidence artifact:** upload `.neurcode/evidence/` from CI so reviewers can inspect the governance envelope and replay lineage.');
-    lines.push('- **Remediation export:** use `neurcode remediate-export --finding-index 0` for bounded external remediation context.');
-    lines.push('');
-    lines.push('> Replay metadata supports auditability of governance output. It is not a claim that the application is behaviorally correct.');
-    return lines;
-}
-function renderSuggestedAction(verdict) {
-    if (verdict === 'ready') {
-        return ['**Suggested Action:** No governance action required from Neurcode. Continue with standard code review and rollout checks.'];
-    }
-    return [
-        '**Suggested Action:**',
-        '',
-        'Export deterministic remediation context for the highest-priority finding:',
-        '```',
-        'neurcode remediate-export --finding-index 0',
-        '```',
-        '',
-        'Apply the correction outside Neurcode, then re-verify:',
-        '```',
-        'neurcode verify --ci',
-        '```',
-    ];
-}
-function renderWhatToDo(data, verdict) {
-    const suggestions = [];
-    const firstViolation = data.violations[0];
-    if (firstViolation) {
-        suggestions.push(`Prioritize \`${escapeMarkdownInline(firstViolation.file)}\`: ${escapeMarkdownInline(firstViolation.message)}`);
-    }
-    if (verdict === 'blocked') {
-        suggestions.push('Resolve blocking governance findings or record an explicit, bounded governance decision before merge.');
-    }
-    if (data.scopeIssues.length > 0) {
-        suggestions.push('Align out-of-scope file changes with the approved intent contract, or update the contract and re-run verify.');
-    }
-    if (data.warnings.filter((w) => !isSystemStatusWarning(w)).length > 0) {
-        suggestions.push('Review warning-level findings and reduce risk in the affected files.');
-    }
-    if (suggestions.length === 0) {
-        suggestions.push('No immediate action required. Continue with standard review checks.');
-    }
-    return ['### Details', '', ...suggestions.map((suggestion) => `- ${suggestion}`)];
-}
-function renderFooter() {
-    return [
-        '- Governed by Neurcode (deterministic structural + configured policy)',
-        `- Run ID: ${exports.NEURCODE_RUN_ID_PLACEHOLDER}`,
-        '- For replay/evidence retention in CI, upload `.neurcode/evidence/`, `.neurcode/governance-decisions.json`, and snapshots if enabled as job artifacts.',
-    ];
-}
-function safeData(data) {
-    return {
-        ...data,
-        violations: Array.isArray(data.violations) ? data.violations : [],
-        warnings: Array.isArray(data.warnings) ? data.warnings : [],
-        scopeIssues: Array.isArray(data.scopeIssues) ? data.scopeIssues : [],
-        summary: data.summary ?? { totalFilesChanged: 0, totalViolations: 0, totalWarnings: 0, totalScopeIssues: 0 },
-    };
-}
-function formatGovernanceComment(data) {
-    data = safeData(data);
-    const verdict = resolveGovernanceVerdict(data);
-    const reason = renderVerdictReason(verdict, data);
-    const artifactChecks = renderArtifactChecks(data);
-    const blockingCount = countBlockingViolations(data);
-    const advisoryCount = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev !== 'critical' && sev !== 'high';
-    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length + countAdvisoryGovernanceFindings(data);
-    const highlights = renderHighlights(data);
-    const governancePosture = renderGovernancePosture(data, verdict);
-    const governanceDecisions = renderGovernanceDecisions(data);
-    const priorityFindings = renderPrioritizedGovernanceFindings(data);
-    const sections = [
-        exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
-        '## Neurcode Governance Report',
-        '',
-        // ── Quick status ────────────────────────────────────────────────────────
-        renderVerdictLine(verdict),
-        ...(reason ? ['', reason] : []),
-        '',
-        ...renderMergeSafety(verdict),
-        '',
-        `**Blocking Issues:** ${blockingCount}`,
-        `**Advisory:** ${advisoryCount}`,
-        '',
-        ...governancePosture,
-        '',
-        // ── Highlights (top 3 issues, scannable) ────────────────────────────────
-        ...(highlights.length > 0 ? [...highlights, ''] : []),
-        ...priorityFindings,
-        '',
-        ...renderReplayProvenance(data),
-        '',
-        ...governanceDecisions,
-        '',
-        // ── Suggested action ────────────────────────────────────────────────────
-        ...renderSuggestedAction(verdict),
-        '',
-        '---',
-        '',
-        '<details>',
-        '<summary>Detailed verify rows</summary>',
-        '',
-        // ── Detailed breakdown ───────────────────────────────────────────────────
-        ...renderBlockingViolations(data),
-        '',
-        '---',
-        '',
-        ...renderScopeIssues(data),
-        '',
-        '---',
-        '',
-        ...(renderRuntimeCapabilities(data).length > 0
-            ? [...renderRuntimeCapabilities(data), '', '---', '']
-            : []),
-        ...renderAdvisoryViolations(data),
-        '',
-        '---',
-        '',
-        ...renderDriftScore(data),
-        '',
-        '---',
-        '',
-        ...renderSummary(data),
-        '',
-        '---',
-        '',
-        ...renderWhatToDo(data, verdict),
-        '',
-        '---',
-        '',
-        ...(artifactChecks ? [...artifactChecks, '', '---', ''] : []),
-        '</details>',
-        '',
-        ...renderFooter(),
-    ];
-    return sections.join('\n');
-}
-function formatGovernanceStepSummary(data) {
-    data = safeData(data);
-    const verdict = resolveGovernanceVerdict(data);
-    const blockingCount = countBlockingViolations(data);
-    const advisoryCount = data.violations.filter((v) => {
-        if (isArtifactCheckViolation(v))
-            return false;
-        const sev = (v.severity || '').toLowerCase();
-        return sev !== 'critical' && sev !== 'high';
-    }).length + data.warnings.filter((w) => !isSystemStatusWarning(w)).length + countAdvisoryGovernanceFindings(data);
-    const rolloutTrust = resolveRolloutTrust(data, verdict);
-    const governanceGate = resolveGovernanceGate(data, verdict);
-    const decisions = getGovernanceDecisions(data);
-    const replayStatus = asString(getGovernanceEnvelope(data)?.replayIntegrity && asRecord(getGovernanceEnvelope(data)?.replayIntegrity)?.status)
-        || 'not attached';
-    const findings = getGovernanceFindings(data)
-        .sort((a, b) => {
-        const sevRank = (v) => (v.severity === 'BLOCKING' ? 2 : v.severity === 'ADVISORY' ? 1 : 0);
-        return sevRank(b) - sevRank(a) || b.confidence - a.confidence;
-    })
-        .slice(0, 5);
-    const lines = [
-        '## Neurcode Governance',
-        '',
-        `**Verdict:** ${verdict.replace('_', ' ')}`,
-        '',
-        '| Dimension | Result |',
-        '| --- | --- |',
-        `| Rollout trust | \`${escapeMarkdownInline(rolloutTrust)}\` |`,
-        `| Governance gate | \`${escapeMarkdownInline(governanceGate)}\` |`,
-        `| Blocking issues | ${blockingCount} |`,
-        `| Advisory/review issues | ${advisoryCount} |`,
-        `| Replay integrity | \`${escapeMarkdownInline(replayStatus)}\` |`,
-        `| Governance decisions applied | ${formatCount(decisions?.decisionsApplied)} |`,
-        '',
-    ];
-    if (findings.length > 0) {
-        lines.push('### Priority Findings', '');
-        findings.forEach((finding) => {
-            lines.push(`- **${escapeMarkdownInline(finding.title)}** — ${escapeMarkdownInline(truncateText(finding.operationalImplication, 180))} ` +
-                `(\`${escapeMarkdownInline(finding.category)}\`, ${finding.severity.toLowerCase()})`);
-        });
-        lines.push('');
-    }
-    lines.push('Artifacts to retain: `.neurcode/evidence/`, verify JSON, and `.neurcode/governance-decisions.json` when decisions are used.');
-    return lines.join('\n');
-}
-
-
-/***/ }),
-
-/***/ 7920:
+/***/ 5734:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+/**
+ * GitHub Action output setters.
+ * All outputs are derived metadata only — no source content.
+ * All attacker-controlled values (paths, filenames, subsystem names) pass
+ * through outputSafe() before being written.
+ */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -39441,3906 +48520,895 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getPullRequestNumberFromContext = getPullRequestNumberFromContext;
-exports.getExistingGovernanceCommentBody = getExistingGovernanceCommentBody;
-exports.upsertGovernanceReportComment = upsertGovernanceReportComment;
-const github = __importStar(__nccwpck_require__(5251));
-const formatter_1 = __nccwpck_require__(7459);
-function getPullRequestNumberFromContext() {
-    const pullRequest = github.context.payload.pull_request;
-    if (!pullRequest || typeof pullRequest.number !== 'number') {
-        return null;
-    }
-    return pullRequest.number;
-}
-/** Fetch the existing Neurcode comment body for a PR (or null) — used to read the embedded lifecycle. */
-async function getExistingGovernanceCommentBody(token, prNumber) {
-    const n = typeof prNumber === 'number' ? prNumber : getPullRequestNumberFromContext();
-    if (!n)
-        return null;
-    try {
-        const octokit = github.getOctokit(token);
-        const { owner, repo } = github.context.repo;
-        const { data: comments } = await octokit.rest.issues.listComments({ owner, repo, issue_number: n, per_page: 100 });
-        return comments.find((c) => c.body?.includes(formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER))?.body ?? null;
-    }
-    catch {
-        return null;
-    }
-}
-async function upsertGovernanceReportComment(input) {
-    const prNumber = typeof input.prNumber === 'number'
-        ? input.prNumber
-        : getPullRequestNumberFromContext();
-    if (!prNumber) {
-        return;
-    }
-    const octokit = github.getOctokit(input.token);
-    const finalBody = input.body.replaceAll(formatter_1.NEURCODE_RUN_ID_PLACEHOLDER, String(input.runId ?? github.context.runId));
-    const { owner, repo } = github.context.repo;
-    const { data: comments } = await octokit.rest.issues.listComments({
-        owner,
-        repo,
-        issue_number: prNumber,
-        per_page: 100,
-    });
-    const existing = comments.find((comment) => comment.body?.includes(formatter_1.NEURCODE_GOVERNANCE_REPORT_MARKER));
-    if (existing) {
-        await octokit.rest.issues.updateComment({
-            owner,
-            repo,
-            comment_id: existing.id,
-            body: finalBody,
-        });
-        return;
-    }
-    // Silent success: nothing to update and we must not create a new comment.
-    if (input.onlyIfExists) {
-        return;
-    }
-    await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: prNumber,
-        body: finalBody,
-    });
+exports.emitOutputs = emitOutputs;
+const core = __importStar(__nccwpck_require__(4442));
+const sanitize_1 = __nccwpck_require__(1117);
+function emitOutputs(opts) {
+    const { effectCount, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, actionBlocked } = opts;
+    core.setOutput('effect_count', String(effectCount));
+    core.setOutput('subsystems', (0, sanitize_1.outputSafeList)(Object.keys(subsystems).sort()));
+    core.setOutput('sensitive_surfaces', (0, sanitize_1.outputSafeList)(sensitiveHits.map((h) => h.category)));
+    core.setOutput('codeowners_zones_crossed', String(codeowners.zonesCrossed));
+    core.setOutput('codeowners_changed', String(codeownersChanged));
+    // admission_verdict is one of the fixed Phase A strings — safe to emit directly.
+    core.setOutput('admission_verdict', admission.finalVerdict);
+    core.setOutput('covered_paths_count', String(admission.coveredPaths.length));
+    core.setOutput('uncovered_paths_count', String(admission.uncoveredPaths.length));
+    core.setOutput('record_count', String(admission.totalRecordCount));
+    core.setOutput('usable_record_count', String(admission.usableRecordCount));
+    core.setOutput('action_blocked', String(actionBlocked));
 }
 
 
 /***/ }),
 
-/***/ 4050:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ 9660:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
 /**
- * Mechanical / bulk PR detection (deterministic)
- * ==============================================
+ * Step summary renderer — deterministic, source-free.
  *
- * Some wide PRs are wide *by nature* and operationally uninteresting: reverts,
- * release syncs, dependency bumps, generated-file refreshes, formatting sweeps,
- * codemods, snapshot updates, CI migrations. A maintainer already knows a revert
- * or a `bump X from 1.2 to 1.3` touches a lot — flagging "wide blast radius" on
- * those is exactly the kind of noise that gets an Action uninstalled.
- *
- * This module recognises those classes from deterministic signals only — PR
- * title/body semantics, label, file composition (via the topology role), and
- * diff shape (edit symmetry from per-file +/- counts). No classifier, no
- * embeddings, no scoring.
- *
- * CRUCIAL: detecting "mechanical" only ever DOWNGRADES the spread / generated /
- * docs-touches-source signals. It never suppresses a genuinely suspicious
- * signal — a low-surface change reaching into a *significant* module, or a new
- * import edge into a security boundary, still fires. A revert is allowed to be
- * wide; it is not allowed to quietly add an `import ..auth`.
+ * All attacker-controlled values (paths, filenames, subsystem names, diagnostic strings)
+ * pass through mdSafe() before appearing in Markdown output.
  */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.detectMechanical = detectMechanical;
-const repo_topology_1 = __nccwpck_require__(7383);
-const NON_MERGE_NOTE = '';
-const SNAPSHOT_RE = /(^|\/)(__snapshots__\/|cassettes\/|.+\.snap$|.+\.ambr$|.+\.approved\.[a-z]+$|.+\.vcr\.ya?ml$)/i;
-function editSymmetry(files) {
-    const withStats = files.filter((f) => typeof f.additions === 'number' && typeof f.deletions === 'number');
-    if (withStats.length === 0)
-        return { symmetricRatio: 0, lowChurn: false, n: 0 };
-    let symmetric = 0;
-    const churns = [];
-    for (const f of withStats) {
-        const a = f.additions ?? 0;
-        const d = f.deletions ?? 0;
-        churns.push(a + d);
-        // "Replace-shaped": both sides non-trivial and within 25% (or ±2) of each other.
-        if (a > 0 && d > 0 && Math.abs(a - d) <= Math.max(2, 0.25 * Math.max(a, d)))
-            symmetric += 1;
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
     }
-    churns.sort((x, y) => x - y);
-    const median = churns[Math.floor(churns.length / 2)] ?? 0;
-    return { symmetricRatio: symmetric / withStats.length, lowChurn: median <= 15, n: withStats.length };
-}
-function mech(mechanicalClass, reason) {
-    return { isMechanical: true, mechanicalClass, reason };
-}
-/**
- * Deterministic mechanical classification. Ordered most-specific first.
- * `paths` drives composition checks; `fileStats` (optional per-file +/- counts)
- * sharpens the formatting/codemod shape signal but is not required.
- */
-function detectMechanical(input) {
-    const title = (input.title || '').trim();
-    const body = (input.body || '').trim();
-    const labels = (input.labels || []).map((l) => l.toLowerCase().trim());
-    const paths = input.paths.filter(Boolean);
-    if (paths.length === 0)
-        return { isMechanical: false, mechanicalClass: null, reason: NON_MERGE_NOTE };
-    const roles = paths.map(repo_topology_1.roleOf);
-    const everyRoleIn = (allowed) => roles.every((r) => allowed.has(r));
-    const fileStats = input.fileStats ?? paths.map((p) => ({ path: p }));
-    // 1. REVERT — explicit author intent; reverts are legitimately wide.
-    if (/^revert[\s:"(]/i.test(title) || /this reverts commit [0-9a-f]{7,40}/i.test(body)) {
-        return mech('revert', 'PR is a revert (a revert legitimately spans whatever it undoes)');
-    }
-    // 2. RELEASE / version sync.
-    if (labels.includes('release') ||
-        /\b(prepare\s+)?release\b/i.test(title) || /\brc\d+\b/i.test(title) || /\bversion bump\b/i.test(title) ||
-        /^sync\b.*\b(stable|release|main|test)\b/i.test(title) || /\bmerge\b.*\brelease[-/]?\d/i.test(title)) {
-        return mech('release', 'release / version-sync PR');
-    }
-    // 3. DEPENDENCY BUMP — only when the change is confined to manifests/lockfiles,
-    //    or the title is an unambiguous bump. A "bump" that edits source is NOT clean.
-    const allManifests = everyRoleIn(new Set(['build', 'config']));
-    const bumpTitle = /^(chore(\(deps\))?:?\s*)?bump\b/i.test(title) ||
-        /^chore\(deps\)/i.test(title) ||
-        /\b(update|upgrade|bump)\b.*\b(dependency|dependencies|deps|lockfile|requirements)\b/i.test(title) ||
-        labels.includes('dependencies');
-    if (allManifests && (bumpTitle || paths.length > 0)) {
-        return mech('dependency-bump', 'only dependency manifests / lockfiles changed');
-    }
-    // 4. SNAPSHOT refresh.
-    if (paths.every((p) => SNAPSHOT_RE.test(p))) {
-        return mech('snapshot-refresh', 'only snapshot / cassette / approval files changed');
-    }
-    // 5. GENERATED refresh — diff is overwhelmingly generated files.
-    const genRatio = roles.filter((r) => r === 'generated').length / roles.length;
-    if (genRatio >= 0.8) {
-        return mech('generated-refresh', `${Math.round(genRatio * 100)}% of changed files are generated`);
-    }
-    // 6. CI / infra migration — confined to CI/infra/build/config surfaces.
-    if (everyRoleIn(new Set(['ci', 'infra', 'build', 'config']))) {
-        return mech('ci-migration', 'only CI / infra / build / config files changed');
-    }
-    // 7. FORMATTING — explicit intent, ideally corroborated by symmetric diff shape.
-    const sym = editSymmetry(fileStats);
-    const fmtTitle = /\b(format(ting)?|reformat|prettier|gofmt|rustfmt|black|isort|clang-format|autopep8|eslint|lint(ing)?|whitespace|cosmetic|style)\b/i.test(title);
-    if (fmtTitle && (paths.length <= 2 || sym.symmetricRatio >= 0.6)) {
-        return mech('formatting', sym.symmetricRatio >= 0.6 ? 'formatting/style PR (symmetric diff shape)' : 'formatting/style PR');
-    }
-    // 8. CODEMOD / mass rename — uniform, low-churn, symmetric edits across many files.
-    const renameTitle = /\b(codemod|mass[- ]?(rename|update|migration)|rename\b|replace\b.*\bwith\b|migrate\b.*\bto\b)\b/i.test(title);
-    if ((renameTitle && paths.length >= 5) || (paths.length >= 10 && sym.lowChurn && sym.symmetricRatio >= 0.6)) {
-        return mech('codemod', renameTitle ? 'codemod / mass-rename (title)' : 'codemod shape (many files, uniform low-churn symmetric diff)');
-    }
-    return { isMechanical: false, mechanicalClass: null, reason: NON_MERGE_NOTE };
-}
-
-
-/***/ }),
-
-/***/ 9047:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Deterministic operational narrative synthesis
- * =============================================
- *
- * Turns the engine's structured facts (declared lane, touched operational
- * areas, module topology, centrality fan-in, import-edge crossings, mechanical
- * class) into a sparse, operationally-grounded explanation — so a maintainer
- * feels the system understands the *operational shape* of the PR.
- *
- * It is NOT a code reviewer and NOT an AI summariser. Every sentence is a
- * deterministic template filled from facts already computed by the coherence
- * engine. Same result ⇒ same narrative ⇒ replay-safe. Narratives are sparse:
- * a trivial coherent PR gets one short line (or none beyond the verdict).
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.operationalArea = operationalArea;
-exports.synthesizeNarrative = synthesizeNarrative;
-const repo_topology_1 = __nccwpck_require__(7383);
-const AREA_LABEL = {
-    auth: 'the authentication boundary',
-    crypto: 'security / cryptography',
-    payments: 'the payments boundary',
-    persistence: 'persistence / data storage',
-    'runtime-entrypoint': 'runtime entrypoints',
-    infrastructure: 'infrastructure / deploy surfaces',
-    generated: 'generated code',
-    ui: 'UI / rendering',
-    'runtime-source': 'runtime source',
-};
-const PERSISTENCE_TOKENS = new Set([
-    'db', 'database', 'persistence', 'sqlite', 'postgres', 'mysql', 'orm', 'dao',
-    'repository', 'repositories', 'schema', 'store', 'storage', 'migrations', 'migration',
-]);
-const FRONTEND_EXTS = new Set(['tsx', 'jsx', 'vue', 'svelte', 'css', 'scss', 'less', 'html']);
-function tokensOf(p) { return p.toLowerCase().split(/[/\\._\-]+/).filter(Boolean); }
-function extOf(p) { const b = p.split('/').pop() || p; const d = b.lastIndexOf('.'); return d > 0 ? b.slice(d + 1).toLowerCase() : ''; }
-/** Deterministic operational area for a path. */
-function operationalArea(path) {
-    const role = (0, repo_topology_1.roleOf)(path);
-    if (role === 'entrypoint')
-        return 'runtime-entrypoint';
-    if (role === 'infra')
-        return 'infrastructure';
-    if (role === 'generated')
-        return 'generated';
-    const sec = (0, repo_topology_1.significantSecurityTagFor)(path);
-    if (sec === 'auth' || sec === 'authz')
-        return 'auth';
-    if (sec === 'crypto' || sec === 'secrets' || sec === 'security')
-        return 'crypto';
-    if (sec === 'payments' || sec === 'billing')
-        return 'payments';
-    if (sec === 'migrations')
-        return 'persistence';
-    if (tokensOf(path).some((t) => PERSISTENCE_TOKENS.has(t)))
-        return 'persistence';
-    const segs = path.toLowerCase().split('/');
-    if (FRONTEND_EXTS.has(extOf(path)) || segs.includes('components') || segs.includes('ui') || segs.includes('pages') || segs.includes('views'))
-        return 'ui';
-    return 'runtime-source';
-}
-// Article-free adjectives so templates read cleanly as "This <lane> change …".
-const LANE = {
-    docs: 'documentation', test: 'test', chore: 'maintenance', fix: 'fix',
-    refactor: 'refactor', feature: 'feature', unknown: 'unlabelled',
-};
-function uniqueSorted(xs) { return [...new Set(xs)].sort(); }
-function joinList(xs) {
-    if (xs.length === 0)
-        return 'nothing';
-    if (xs.length === 1)
-        return xs[0];
-    if (xs.length === 2)
-        return `${xs[0]} and ${xs[1]}`;
-    return `${xs.slice(0, -1).join(', ')}, and ${xs[xs.length - 1]}`;
-}
-// ── Synthesis ─────────────────────────────────────────────────────────────────
-function synthesizeNarrative(result, profile) {
-    const kind = result.declared.changeKind;
-    const lane = LANE[kind] ?? 'unlabelled';
-    const allFiles = uniqueSorted(result.blastRadius.subsystems.flatMap((s) => s.files));
-    const codeModules = profile
-        ? uniqueSorted(allFiles.filter((f) => { const r = (0, repo_topology_1.roleOf)(f); return r === 'source' || r === 'entrypoint'; }).map((f) => (0, repo_topology_1.subsystemOf)(f, profile)))
-        : [];
-    const reason = (code) => result.reasons.find((r) => r.code === code);
-    const areaLabelsFor = (files) => uniqueSorted(files.map((f) => AREA_LABEL[operationalArea(f)]));
-    const statements = [];
-    if (result.mechanical?.isMechanical) {
-        statements.push({
-            code: 'mechanical',
-            text: `Recognised as a ${result.mechanical.mechanicalClass} change — ${result.mechanical.reason}. Wide-diff coherence signals were suppressed; boundary and import-edge checks still applied.`,
-        });
-    }
-    // Significance reason: topology path emits 'low-surface-touches-significant';
-    // the fixed-taxonomy path emits 'low-surface-touches-sensitive'. Handle both.
-    const sig = reason('low-surface-touches-significant') || reason('low-surface-touches-sensitive');
-    if (sig) {
-        statements.push({
-            code: 'boundary-crossing',
-            text: `Described as ${lane} work, it reaches into ${joinList(areaLabelsFor(sig.evidence))} — an operational boundary it never declares.`,
-            evidence: sig.evidence,
-        });
-    }
-    const edge = reason('import-edge-into-sensitive');
-    if (edge) {
-        const targets = uniqueSorted(result.blastRadius.importEdgeCrossings.map((e) => e.toTag));
-        statements.push({
-            code: 'new-operational-edge',
-            text: `It opens a new operational edge into ${joinList(targets)} — a dependency the module did not previously have.`,
-            evidence: edge.evidence,
-        });
-    }
-    const central = reason('low-surface-touches-central-module');
-    if (central) {
-        const mod = profile && central.evidence.length > 0 ? (0, repo_topology_1.subsystemOf)(central.evidence[0], profile) : '';
-        const fanIn = profile?.centralFanIn[mod];
-        statements.push({
-            code: 'centrality',
-            text: `It touches \`${mod}\`, a high-centrality module ${typeof fanIn === 'number' ? `${fanIn} other module(s) depend on` : 'many modules depend on'} — changes here have broad operational reach.`,
-            evidence: central.evidence,
-        });
-    }
-    const docsrc = reason('docs-change-touches-source');
-    if (docsrc) {
-        statements.push({
-            code: 'widening',
-            text: `Declared as documentation, it widens into ${docsrc.evidence.length} runtime source file(s).`,
-            evidence: docsrc.evidence,
-        });
-    }
-    const gen = reason('generated-code-touched');
-    if (gen) {
-        statements.push({ code: 'generated-spillover', text: `It regenerates code outside a feature or chore — confirm the source-of-truth change accompanies it.`, evidence: gen.evidence });
-    }
-    const wide = reason('wide-blast-radius');
-    if (wide) {
-        const shown = wide.evidence.slice(0, 5);
-        statements.push({
-            code: 'widening',
-            text: `Its blast radius spans ${wide.evidence.length} distinct ${profile ? 'modules' : 'subsystems'}: ${joinList(shown)}${wide.evidence.length > 5 ? ', …' : ''}.`,
-            evidence: wide.evidence,
-        });
-    }
-    // ── Summary: the single best "operational shape" sentence ───────────────────
-    let summary;
-    if (result.level === 'incoherent') {
-        const areas = sig ? areaLabelsFor(sig.evidence) : uniqueSorted(result.blastRadius.importEdgeCrossings.map((e) => e.toTag));
-        summary = `This ${lane} change crosses into ${joinList(areas)} — operational scope it does not declare.`;
-    }
-    else if (result.level === 'review') {
-        if (central)
-            summary = statements.find((s) => s.code === 'centrality').text;
-        else if (docsrc)
-            summary = `This documentation change widens into runtime source.`;
-        else if (edge)
-            summary = statements.find((s) => s.code === 'new-operational-edge').text;
-        else if (wide)
-            summary = `This ${lane} change spreads across ${wide.evidence.length} ${profile ? 'modules' : 'subsystems'} — wider than its label suggests.`;
-        else if (gen)
-            summary = `This ${lane} change modifies generated code.`;
-        else
-            summary = `This ${lane} change is worth a glance.`;
-    }
-    else if (result.mechanical?.isMechanical) {
-        summary = `Recognised as a ${result.mechanical.mechanicalClass} change — a wide diff is expected, and operational scope checks were suppressed.`;
-    }
-    else if (codeModules.length === 1) {
-        summary = `Changes stayed within the \`${codeModules[0]}\` module.`;
-    }
-    else {
-        const areas = uniqueSorted(allFiles.map((f) => AREA_LABEL[operationalArea(f)]));
-        summary = areas.length === 1
-            ? `Changes stayed within ${areas[0]}.`
-            : `Changes stayed within the expected operational boundary for ${lane} changes.`;
-    }
-    return { summary, statements: statements.slice(0, 3) };
-}
-
-
-/***/ }),
-
-/***/ 4098:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Day-Zero Replay Bootstrap (deterministic)
- * =========================================
- *
- * Every observability mode (report / digest / cartography / dynamics) reads the
- * append-only ledger. On first adoption that ledger is empty — so this module
- * RECONSTRUCTS the same operational records by replaying recent merged-PR
- * history. Because a record is a pure projection of a (deterministic) coherence
- * result, the bootstrapped ledger is byte-identical to one accumulated PR-by-PR
- * over months — only the timing differs. No history wait, no DB, no LLM.
- *
- * The pure builder here takes already-fetched PR data; the Action does the
- * (bounded) API fetch and calls it. Replay-safe by construction.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.bootstrapRecords = bootstrapRecords;
-const scope_coherence_1 = __nccwpck_require__(6334);
-const operational_memory_1 = __nccwpck_require__(6481);
-/** Reconstruct operational records from replayed PR history (pure, deterministic). */
-function bootstrapRecords(prs, topology) {
-    return prs
-        .filter((p) => Array.isArray(p.files) && p.files.length > 0)
-        .map((p) => (0, operational_memory_1.recordFromResult)((0, scope_coherence_1.evaluateScopeCoherence)({
-        title: p.title,
-        body: p.body,
-        labels: p.labels ?? [],
-        changedFiles: p.files,
-        topology,
-    }), { pr: p.number, author: p.author ?? '', mergedAt: p.mergedAt }, topology))
-        .sort((a, b) => a.pr - b.pr);
-}
-
-
-/***/ }),
-
-/***/ 315:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Repository Operational Cartography (deterministic)
- * ==================================================
- *
- * A repository is not a bag of files; it is an operational terrain. This layer
- * derives that geography from the co-change structure latent in the records —
- * no graph viz, no embeddings, no node-link spaghetti. Just deterministic folds:
- *
- *   module co-change edges  →  CORRIDORS (paths work flows along)
- *   corridors (connected)   →  REGIONS  (clusters that co-evolve)
- *   module touch frequency  →  PRESSURE ZONES (where activity concentrates)
- *   cross-area co-occurrence →  BOUNDARY POROSITY (how separate territories are)
- *   release-over-release Δ   →  FRACTURES / migration fronts / centralization
- *
- * Regions are labelled by their dominant operational AREA, taken from the real
- * areas of the PRs that touched them (grounded, not path-guessing). Everything
- * is sparse: a compartmentalised repo yields an almost-empty map, and that is
- * the correct, calm output. Replay-safe: pure over deterministic records.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.deriveGeography = deriveGeography;
-exports.compareGeography = compareGeography;
-exports.renderGeographyReport = renderGeographyReport;
-const node_crypto_1 = __nccwpck_require__(7598);
-// ── Deterministic thresholds ──────────────────────────────────────────────────
-const CORRIDOR_MIN_COUNT = 3; // module pair must co-change in ≥3 PRs
-const CORRIDOR_MIN_SHARE = 0.08; // …and in ≥8% of the window
-const PRESSURE_MIN_SHARE = 0.30; // module touched in ≥30% of PRs = pressure zone
-const PRESSURE_MIN_COUNT = 4;
-const BOUNDARY_MIN_SHARE = 0.10; // two specialised areas co-change in ≥10% of PRs
-const BOUNDARY_MIN_COUNT = 3;
-const FRACTURE_DELTA = 0.12; // boundary porosity must rise ≥12pp to be a fracture
-/** runtime-source is the generic "mainland"; specialised areas are the territories. */
-const GENERIC_AREA = 'runtime-source';
-function pairKey(a, b) { return a < b ? `${a} ${b}` : `${b} ${a}`; }
-function pct(x) { return `${Math.round(x * 100)}%`; }
-/** Dominant specialised operational area among a set of records (excludes the mainland). */
-function dominantArea(records) {
-    const counts = new Map();
-    for (const r of records)
-        for (const a of r.areas)
-            if (a !== GENERIC_AREA)
-                counts.set(a, (counts.get(a) ?? 0) + 1);
-    const top = [...counts.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0];
-    return top ? top[0] : 'source';
-}
-// Deterministic connected components over corridor edges.
-function components(modules, edges) {
-    const parent = new Map();
-    const find = (x) => { while (parent.get(x) !== x) {
-        parent.set(x, parent.get(parent.get(x)));
-        x = parent.get(x);
-    } return x; };
-    for (const m of modules)
-        parent.set(m, m);
-    for (const [a, b] of edges) {
-        if (!parent.has(a))
-            parent.set(a, a);
-        if (!parent.has(b))
-            parent.set(b, b);
-        const ra = find(a);
-        const rb = find(b);
-        if (ra !== rb)
-            parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
-    }
-    const groups = new Map();
-    for (const m of modules) {
-        const root = find(m);
-        (groups.get(root) ?? groups.set(root, []).get(root)).push(m);
-    }
-    return [...groups.values()].map((g) => g.sort()).sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]));
-}
-function deriveGeography(records, staticEdges = []) {
-    const n = records.length;
-    const staticPairs = new Set(staticEdges.map((e) => pairKey(e.fromModule, e.toModule)));
-    const touch = new Map();
-    const recordsByModule = new Map();
-    const coChange = new Map();
-    const areaPair = new Map();
-    for (const r of records) {
-        const mods = [...new Set(r.modules)].sort();
-        for (const m of mods) {
-            touch.set(m, (touch.get(m) ?? 0) + 1);
-            (recordsByModule.get(m) ?? recordsByModule.set(m, []).get(m)).push(r);
-        }
-        for (let i = 0; i < mods.length; i++)
-            for (let j = i + 1; j < mods.length; j++) {
-                const k = pairKey(mods[i], mods[j]);
-                coChange.set(k, (coChange.get(k) ?? 0) + 1);
-            }
-        const specialised = [...new Set(r.areas.filter((a) => a !== GENERIC_AREA))].sort();
-        for (let i = 0; i < specialised.length; i++)
-            for (let j = i + 1; j < specialised.length; j++) {
-                const k = pairKey(specialised[i], specialised[j]);
-                areaPair.set(k, (areaPair.get(k) ?? 0) + 1);
-            }
-    }
-    const centralSet = new Set(records.flatMap((r) => r.central));
-    // Corridors: strong module co-change edges.
-    const corridors = [...coChange.entries()]
-        .map(([k, c]) => { const [a, b] = k.split(' '); return { a, b, coChange: c, share: n === 0 ? 0 : c / n, structural: staticPairs.has(k) }; })
-        .filter((e) => e.coChange >= CORRIDOR_MIN_COUNT && e.share >= CORRIDOR_MIN_SHARE)
-        .sort((x, y) => y.coChange - x.coChange || x.a.localeCompare(y.a));
-    // Regions: connected components over corridor edges.
-    const corridorModules = [...new Set(corridors.flatMap((c) => [c.a, c.b]))];
-    const comps = components(corridorModules, corridors.map((c) => [c.a, c.b]));
-    const regions = comps.filter((g) => g.length >= 2).map((mods) => {
-        const anchor = mods.slice().sort((a, b) => (touch.get(b) ?? 0) - (touch.get(a) ?? 0) || a.localeCompare(b))[0];
-        const regionRecords = [...new Set(mods.flatMap((m) => recordsByModule.get(m) ?? []))];
-        return {
-            anchor,
-            modules: mods,
-            pressure: n === 0 ? 0 : Math.max(...mods.map((m) => (touch.get(m) ?? 0))) / n,
-            area: dominantArea(regionRecords),
-            central: mods.some((m) => centralSet.has(m)),
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
         };
-    });
-    const pressureRegions = [...touch.entries()]
-        .map(([module, c]) => ({ module, share: n === 0 ? 0 : c / n, count: c }))
-        .filter((p) => p.count >= PRESSURE_MIN_COUNT && p.share >= PRESSURE_MIN_SHARE)
-        .sort((a, b) => b.share - a.share || a.module.localeCompare(b.module))
-        .map(({ module, share }) => ({ module, share }));
-    const boundaries = [...areaPair.entries()]
-        .map(([k, c]) => { const [areaA, areaB] = k.split(' '); return { areaA, areaB, coChangePRs: c, porosity: n === 0 ? 0 : c / n }; })
-        .filter((b) => b.coChangePRs >= BOUNDARY_MIN_COUNT && b.porosity >= BOUNDARY_MIN_SHARE)
-        .sort((x, y) => y.porosity - x.porosity || x.areaA.localeCompare(y.areaA));
-    const centralAnchors = regions.filter((r) => r.central).map((r) => r.anchor).sort();
-    // Latent structural coupling: static dependency edges between two TOUCHED
-    // modules that did NOT co-change — structurally coupled but operationally isolated.
-    const corridorPairs = new Set(corridors.map((c) => pairKey(c.a, c.b)));
-    const seenLatent = new Set();
-    const latentStructural = [];
-    for (const e of staticEdges) {
-        if (e.fromModule === e.toModule)
-            continue;
-        const k = pairKey(e.fromModule, e.toModule);
-        if (corridorPairs.has(k) || seenLatent.has(k))
-            continue;
-        if (touch.has(e.fromModule) && touch.has(e.toModule)) {
-            seenLatent.add(k);
-            const [a, b] = e.fromModule < e.toModule ? [e.fromModule, e.toModule] : [e.toModule, e.fromModule];
-            latentStructural.push({ a, b });
-        }
-    }
-    latentStructural.sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
-    const mapHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
-        corridors: corridors.map((c) => `${c.a}|${c.b}:${c.coChange}${c.structural ? '*' : ''}`),
-        regions: regions.map((r) => `${r.anchor}[${r.area}${r.central ? '*' : ''}]:${r.modules.length}`),
-        boundaries: boundaries.map((b) => `${b.areaA}|${b.areaB}:${Math.round(b.porosity * 100)}`),
-        pressure: pressureRegions.map((p) => `${p.module}:${Math.round(p.share * 100)}`),
-        latent: latentStructural.map((l) => `${l.a}|${l.b}`),
-    })).digest('hex').slice(0, 12);
-    return { window: n, pressureRegions, corridors, regions, boundaries, centralAnchors, latentStructural, mapHash };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.renderStepSummary = renderStepSummary;
+exports.writeSummary = writeSummary;
+const core = __importStar(__nccwpck_require__(4442));
+const contracts_1 = __nccwpck_require__(7239);
+const sanitize_1 = __nccwpck_require__(1117);
+const MAX_PATHS_INLINE = 20;
+const MAX_SUBSYSTEMS_INLINE = 8;
+function pluralize(n, singular, plural) {
+    return `${n} ${n === 1 ? singular : (plural ?? singular + 's')}`;
 }
-function compareGeography(label, prior, cur) {
-    const shifts = [];
-    const priorBoundary = new Map(prior.boundaries.map((b) => [pairKey(b.areaA, b.areaB), b.porosity]));
-    for (const b of cur.boundaries) {
-        const before = priorBoundary.get(pairKey(b.areaA, b.areaB)) ?? 0;
-        if (b.porosity - before >= FRACTURE_DELTA) {
-            shifts.push({ kind: 'fracture', text: `the ${b.areaA} ↔ ${b.areaB} boundary became more porous (${pct(before)} → ${pct(b.porosity)})` });
-        }
+function verdictBadge(verdict) {
+    switch (verdict) {
+        case 'self_attested_complete': return '✅ self_attested_complete';
+        case 'self_attested_incomplete': return '⚠️ self_attested_incomplete';
+        case 'self_attested_inconsistent': return '❌ self_attested_inconsistent';
+        case 'no_record': return '○ no_record';
+        default: return (0, sanitize_1.mdSafe)(verdict);
     }
-    const priorCorr = new Map(prior.corridors.map((c) => [pairKey(c.a, c.b), c.share]));
-    for (const c of cur.corridors) {
-        const before = priorCorr.get(pairKey(c.a, c.b));
-        if (before === undefined)
-            shifts.push({ kind: 'corridor-new', text: `a new corridor opened between \`${c.a}\` and \`${c.b}\`` });
-        else if (c.share - before >= FRACTURE_DELTA)
-            shifts.push({ kind: 'corridor-intensified', text: `the \`${c.a}\` ↔ \`${c.b}\` corridor intensified (${pct(before)} → ${pct(c.share)})` });
-    }
-    const priorCentral = new Set(prior.centralAnchors);
-    for (const a of cur.centralAnchors)
-        if (!priorCentral.has(a))
-            shifts.push({ kind: 'region-centralized', text: `the \`${a}\` region became operationally central` });
-    return shifts;
 }
-// ── Rendering (calm, sparse, infrastructural) ─────────────────────────────────
-function renderGeographyReport(map, opts) {
-    const lines = [
-        '## Neurcode — Operational Cartography',
-        '',
-        `_${opts?.repo ? `${opts.repo} · ` : ''}window ${map.window} PRs · map \`${map.mapHash}\`_`,
-        '',
-    ];
-    const empty = map.pressureRegions.length === 0 && map.corridors.length === 0 && map.regions.length === 0 && map.boundaries.length === 0 && map.latentStructural.length === 0;
-    if (empty) {
-        lines.push('Operationally compartmentalised — no pressure zones, corridors, or porous boundaries above threshold.');
-        lines.push('', '---', `Deterministic · ${map.window} records · map \`${map.mapHash}\``, '_Operational geography from co-change primitives. Not an architecture diagram._');
-        return lines.join('\n');
-    }
-    if (map.pressureRegions.length > 0) {
-        lines.push('### Pressure zones', '');
-        for (const p of map.pressureRegions.slice(0, 5))
-            lines.push(`- \`${p.module}\` — touched in ${pct(p.share)} of PRs`);
-        lines.push('');
-    }
-    if (map.regions.length > 0) {
-        lines.push('### Operational regions (co-evolving clusters)', '');
-        for (const r of map.regions.slice(0, 6)) {
-            lines.push(`- **${r.area}**${r.central ? ' · central' : ''}: ${r.modules.slice(0, 5).map((m) => `\`${m}\``).join(', ')}${r.modules.length > 5 ? ', …' : ''} (anchor \`${r.anchor}\`)`);
+/** Render a list of paths inline, sanitized, truncated. */
+function pathList(paths, max = MAX_PATHS_INLINE) {
+    const shown = paths.slice(0, max).map((p) => (0, sanitize_1.mdSafe)(p, 150));
+    const extra = paths.length - shown.length;
+    return shown.join(', ') + (extra > 0 ? ` +${extra} more` : '');
+}
+function renderStepSummary(opts) {
+    const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, policyDecision, } = opts;
+    const lines = [];
+    // ── header ──────────────────────────────────────────────────────────────────
+    lines.push(`### Neurcode — Runtime Admission Advisory · ${(0, sanitize_1.mdSafe)(policyDecision.policyLabel, 120)}`);
+    lines.push('');
+    // ── Layer 1: effect inventory ────────────────────────────────────────────────
+    const addedCount = effects.filter((e) => e.kind === 'added').length;
+    const deletedCount = effects.filter((e) => e.kind === 'deleted').length;
+    const modifiedCount = effects.length - addedCount - deletedCount;
+    const subsystemNames = Object.keys(subsystems).sort();
+    const effectParts = [
+        pluralize(effects.length, 'file'),
+        addedCount > 0 ? `${addedCount} added` : null,
+        modifiedCount > 0 ? `${modifiedCount} modified` : null,
+        deletedCount > 0 ? `${deletedCount} deleted` : null,
+    ].filter(Boolean).join(', ');
+    const subsystemPart = subsystemNames.length > 0
+        ? `${pluralize(subsystemNames.length, 'subsystem')} — ` +
+            subsystemNames.slice(0, MAX_SUBSYSTEMS_INLINE).map((s) => (0, sanitize_1.mdSafe)(s)).join(', ') +
+            (subsystemNames.length > MAX_SUBSYSTEMS_INLINE ? ` +${subsystemNames.length - MAX_SUBSYSTEMS_INLINE} more` : '')
+        : '(root only)';
+    lines.push(`**Effects:** ${effectParts} across ${subsystemPart}`);
+    // CODEOWNERS
+    const codeownersStatus = codeowners.status ?? (codeowners.codeownersSourcePath ? 'loaded' : 'absent');
+    const codeownersWarnings = codeowners.warnings ?? [];
+    if (codeownersStatus === 'degraded') {
+        lines.push(codeowners.zonesCrossed > 0
+            ? `**CODEOWNERS:** analysis degraded; ${pluralize(codeowners.zonesCrossed, 'supported ownership zone')} crossed`
+            : '**CODEOWNERS:** analysis degraded; no supported ownership zones crossed');
+        for (const warning of codeownersWarnings.slice(0, 4)) {
+            lines.push(`  - ${(0, sanitize_1.mdSafe)(warning, 220)}`);
         }
-        lines.push('');
     }
-    if (map.corridors.length > 0) {
-        lines.push('### Corridors (cross-module co-change)', '');
-        for (const c of map.corridors.slice(0, 6))
-            lines.push(`- \`${c.a}\` ↔ \`${c.b}\` — ${c.coChange} PRs (${pct(c.share)})${c.structural ? ' · **structural** (static dep)' : ''}`);
-        lines.push('');
+    else if (codeowners.codeownersSourcePath) {
+        lines.push(codeowners.zonesCrossed > 0
+            ? `**CODEOWNERS:** ${pluralize(codeowners.zonesCrossed, 'ownership zone')} crossed`
+            : '**CODEOWNERS:** no ownership zones crossed');
     }
-    if (map.boundaries.length > 0) {
-        lines.push('### Boundaries (cross-area porosity)', '');
-        for (const b of map.boundaries.slice(0, 6))
-            lines.push(`- ${b.areaA} ↔ ${b.areaB} — ${pct(b.porosity)} of PRs`);
-        lines.push('');
+    else {
+        lines.push('**CODEOWNERS:** not present in base commit');
     }
-    if (map.latentStructural.length > 0) {
-        lines.push('### Latent structural coupling (static dep, not co-changing)', '');
-        for (const l of map.latentStructural.slice(0, 6))
-            lines.push(`- \`${l.a}\` → \`${l.b}\` — structurally coupled but operationally isolated`);
-        lines.push('');
+    if (codeownersChanged) {
+        lines.push('> ⚠ **CODEOWNERS itself was modified in this PR** — treat as a sensitive operational change.');
     }
-    const crossings = opts?.ownershipCrossings ?? [];
-    if (crossings.length > 0) {
-        lines.push('### Ownership-crossing corridors', '');
-        for (const c of crossings.slice(0, 6))
-            lines.push(`- \`${c.a}\` ↔ \`${c.b}\` — co-change crosses ownership (${c.ownerA} ↔ ${c.ownerB})`);
-        lines.push('');
+    // Sensitive surfaces
+    if (sensitiveHits.length > 0) {
+        const cats = sensitiveHits.map((h) => `${(0, sanitize_1.mdSafe)(h.category)} (${h.paths.length})`).join(', ');
+        lines.push(`**Sensitive surfaces:** ${cats}`);
+        for (const hit of sensitiveHits) {
+            const shown = hit.paths.slice(0, 6).map((p) => (0, sanitize_1.mdSafe)(p, 120));
+            const extra = hit.paths.length - shown.length;
+            lines.push(`  - *${(0, sanitize_1.mdSafe)(hit.category)}:* ${shown.join(', ')}${extra > 0 ? ` +${extra} more` : ''}`);
+        }
     }
-    lines.push('---', `Deterministic · ${map.window} records · map \`${map.mapHash}\``, '_Operational + structural coupling from co-change and static dependency edges. Not an architecture diagram._');
+    else {
+        lines.push('**Sensitive surfaces:** none detected');
+    }
+    lines.push('');
+    // ── Layer 2: admission ───────────────────────────────────────────────────────
+    lines.push('**Runtime admission:** ' + verdictBadge(admission.finalVerdict));
+    if (admission.finalVerdict === 'no_record') {
+        lines.push('  → No `.neurcode-admission/*.json` present in this PR\'s head tree. ' +
+            'Install the local Neurcode runtime to generate self-attested admission records.');
+        // Always surface discovery diagnostics, even on no_record.
+        if (admission.discoveryDiagnostics.length > 0) {
+            lines.push(`  Discovery warnings (${admission.discoveryDiagnostics.length}):`);
+            for (const d of admission.discoveryDiagnostics.slice(0, 8)) {
+                lines.push(`  - \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 200)}`);
+            }
+        }
+    }
+    else {
+        const usable = admission.usableRecordCount;
+        const total = admission.totalRecordCount;
+        lines.push(`  Records: ${usable} usable of ${total} discovered`);
+        if (admission.coveredPaths.length > 0) {
+            lines.push(`  Covered (${admission.coveredPaths.length}): ${pathList(admission.coveredPaths)}`);
+        }
+        if (admission.uncoveredPaths.length > 0) {
+            lines.push(`  **Uncovered (${admission.uncoveredPaths.length}):** ${pathList(admission.uncoveredPaths)}`);
+        }
+        const badRecords = admission.perRecord.filter((r) => !r.usable);
+        if (badRecords.length > 0) {
+            lines.push(`  Record issues (${badRecords.length}):`);
+            for (const rec of badRecords) {
+                lines.push(`  - \`${(0, sanitize_1.mdSafe)(rec.filename)}\` → ${(0, sanitize_1.mdSafe)(rec.verdict)}: ${(0, sanitize_1.mdSafe)(rec.reasons[0] ?? '', 200)}`);
+            }
+        }
+        // Discovery diagnostics — always surface them.
+        if (admission.discoveryDiagnostics.length > 0) {
+            lines.push(`  Discovery warnings (${admission.discoveryDiagnostics.length}):`);
+            for (const d of admission.discoveryDiagnostics.slice(0, 8)) {
+                lines.push(`  - \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 200)}`);
+            }
+        }
+        // Honesty disclaimer — always present when records exist.
+        lines.push('');
+        lines.push(`> *${contracts_1.SELF_ATTESTED_ADMISSION_DISCLAIMER}*`);
+    }
+    // Strict mode warning
+    if (policyDecision.strictWarning) {
+        lines.push('');
+        lines.push(`> ${(0, sanitize_1.mdSafe)(policyDecision.strictWarning, 500)}`);
+    }
+    lines.push('');
+    lines.push('---');
+    lines.push('*[Neurcode Runtime Admission Advisory](https://github.com/sujit-jaunjal/neurcode-actions) · advisory-only · no telemetry · no source upload*');
     return lines.join('\n');
+}
+async function writeSummary(content) {
+    await core.summary.addRaw(content).write();
 }
 
 
 /***/ }),
 
-/***/ 134:
+/***/ 3842:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 /**
- * Deterministic Repository Operational Memory — Delta Engine
- * ==========================================================
+ * Layer 1 - CODEOWNERS boundary analysis.
  *
- * The PR layer is a rare alarm. This is the opposite surface: an ACCUMULATING,
- * pull-first operational history — "git log for repository operational structure".
+ * CRITICAL TRUST BOUNDARY:
+ *   CODEOWNERS is always read from the BASE commit (git cat-file <baseSha>:path),
+ *   never from the attacker-controlled PR head working tree. A PR that modifies
+ *   CODEOWNERS is flagged by the inventory layer; this module only reads the
+ *   baseline authoritative CODEOWNERS.
  *
- * It never restates standing state ("still 78 modules", "remains coherent").
- * It emits ONLY meaningful operational DELTAS between two operational snapshots
- * (typically release-over-release): a latent coupling becoming active, a corridor
- * cooling, operational pressure migrating, a boundary eroding.
+ * This implements the bounded subset of GitHub CODEOWNERS syntax needed for
+ * deterministic ownership-zone analysis:
+ *   - Patterns without '/' match a filename at any depth.
+ *   - Patterns with '/' are rooted unless they start with a double-star path prefix.
+ *   - '*' and '?' do not cross '/'.
+ *   - '**' can cross directories.
+ *   - A trailing '/' means directory prefix.
+ *   - Last matching rule wins.
  *
- * A snapshot is a pure projection of a GeographyMap (itself a pure fold over the
- * records up to a boundary). Diffing two snapshots is pure. Accumulating the
- * diffs is append-only and re-derivable from the record history — so the whole
- * ledger is replay-safe: re-running over the same history yields byte-identical
- * events. No embeddings, no LLM, no scores, no dashboards.
+ * GitHub CODEOWNERS deliberately does not support some gitignore constructs:
+ * escaped leading '#', '!' negation, and '[...]' character ranges. Those rules
+ * are skipped with bounded diagnostics instead of being misinterpreted.
+ *
+ * Bounded: maximum file bytes, 2000 CODEOWNERS lines, 512 bytes per line,
+ * 16 path segments per pattern, and 16 surfaced parser warnings.
+ *
+ * Output is counts and owner set membership - no file content is surfaced.
  */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.snapshotFromGeography = snapshotFromGeography;
-exports.diffSnapshots = diffSnapshots;
-exports.deriveMemory = deriveMemory;
-exports.serializeMemoryJsonl = serializeMemoryJsonl;
-exports.parseMemoryJsonl = parseMemoryJsonl;
-exports.serializeMemory = serializeMemory;
-exports.parseMemory = parseMemory;
-exports.memoryHash = memoryHash;
-exports.renderReleaseSummary = renderReleaseSummary;
-exports.renderOperationalMemory = renderOperationalMemory;
-const node_crypto_1 = __nccwpck_require__(7598);
-// ── Deltas worth a human's attention (hysteresis against flapping) ────────────
-const INTENSIFY_DELTA = 0.12; // corridor / boundary share must move ≥12pp
-const PRESSURE_DELTA = 0.10; // pressure share move to call a migration
-function pairKey(a, b) { return a < b ? `${a} ${b}` : `${b} ${a}`; }
-function ordered(a, b) { return a < b ? [a, b] : [b, a]; }
-function pct(x) { return `${Math.round(x * 100)}%`; }
-function snapshotFromGeography(label, map) {
-    return {
-        label,
-        window: map.window,
-        pressure: map.pressureRegions.map((p) => ({ module: p.module, share: p.share })),
-        corridors: map.corridors
-            .map((c) => { const [a, b] = ordered(c.a, c.b); return { a, b, share: c.share, structural: c.structural === true }; })
-            .sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b)),
-        boundaries: map.boundaries
-            .map((b) => { const [areaA, areaB] = ordered(b.areaA, b.areaB); return { areaA, areaB, porosity: b.porosity }; })
-            .sort((x, y) => x.areaA.localeCompare(y.areaA) || x.areaB.localeCompare(y.areaB)),
-        centralAnchors: [...map.centralAnchors].sort(),
-        hash: map.mapHash,
-    };
+exports.parseCodownersDetailed = parseCodownersDetailed;
+exports.parseCodowners = parseCodowners;
+exports.matchesPattern = matchesPattern;
+exports.analyzeCodeowners = analyzeCodeowners;
+const child_process_1 = __nccwpck_require__(5317);
+// -- bounds -------------------------------------------------------------------
+const MAX_CODEOWNERS_BYTES = 3 * 1024 * 1024;
+const MAX_CODEOWNERS_LINES = 2_000;
+const MAX_LINE_BYTES = 512;
+const MAX_GLOB_SEGMENTS = 16;
+const MAX_CODEOWNERS_WARNINGS = 16;
+// -- candidate locations (deterministic GitHub priority order) ----------------
+const CANDIDATE_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'];
+function addWarning(warnings, message) {
+    if (warnings.length < MAX_CODEOWNERS_WARNINGS)
+        warnings.push(message);
 }
-/** Coupling kinds that put an edge/cluster into the ACTIVE state (for reactivation tracking). */
-const COUPLING_ACTIVE = new Set(['coupling-activated', 'coupling-emerged', 'coupling-reactivated', 'coupling-intensified', 'coupling-cluster-activated']);
-const COUPLING_DORMANT = new Set(['coupling-dormant', 'coupling-cluster-dormant']);
-// ── The diff: prev → cur, emitting only meaningful deltas ─────────────────────
-/** Does a coupling event (pairwise or cluster) concern the pair (a,b)? */
-function eventCoversPair(e, a, b) {
-    if (e.subject.length === 2)
-        return pairKey(e.subject[0], e.subject[1]) === pairKey(a, b);
-    if (e.subject.length > 2)
-        return e.subject.includes(a) && e.subject.includes(b); // cluster membership
-    return false;
-}
-/** Most recent active/dormant state of a coupling pair from accumulated history. */
-function lastCouplingState(history, a, b) {
-    for (let i = history.length - 1; i >= 0; i--) {
-        const e = history[i];
-        if (!eventCoversPair(e, a, b))
-            continue;
-        if (COUPLING_DORMANT.has(e.kind))
-            return 'dormant';
-        if (COUPLING_ACTIVE.has(e.kind))
-            return 'active';
+function gitTry(repoRoot, args, maxBuffer = 64 * 1024) {
+    try {
+        return {
+            ok: true,
+            stdout: (0, child_process_1.execFileSync)('git', args, {
+                cwd: repoRoot,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe'],
+                maxBuffer,
+            }),
+        };
     }
-    return 'unseen';
+    catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        return { ok: false, stdout: '', error };
+    }
 }
-/** Boundary label at which a pair most recently became active (or null). */
-function becameActiveAt(history, a, b) {
-    for (let i = history.length - 1; i >= 0; i--) {
-        const e = history[i];
-        if (!eventCoversPair(e, a, b))
-            continue;
-        if (COUPLING_ACTIVE.has(e.kind))
-            return e.at;
-        if (COUPLING_DORMANT.has(e.kind))
-            return null;
+function loadCodeownersCandidate(repoRoot, baseSha, filePath) {
+    const ref = `${baseSha}:${filePath}`;
+    const exists = gitTry(repoRoot, ['cat-file', '-e', ref]);
+    if (!exists.ok)
+        return { kind: 'absent' };
+    const sizeOut = gitTry(repoRoot, ['cat-file', '-s', ref]);
+    if (!sizeOut.ok) {
+        return {
+            kind: 'degraded',
+            sourcePath: filePath,
+            warning: `${filePath}: exists in base commit but blob size could not be read.`,
+        };
+    }
+    const size = Number(sizeOut.stdout.trim());
+    if (!Number.isFinite(size) || size < 0) {
+        return {
+            kind: 'degraded',
+            sourcePath: filePath,
+            warning: `${filePath}: blob size is invalid.`,
+        };
+    }
+    if (size > MAX_CODEOWNERS_BYTES) {
+        return {
+            kind: 'degraded',
+            sourcePath: filePath,
+            warning: `${filePath}: skipped because it is ${size} bytes, above the ${MAX_CODEOWNERS_BYTES} byte limit.`,
+        };
+    }
+    const text = gitTry(repoRoot, ['cat-file', 'blob', ref], MAX_CODEOWNERS_BYTES + 4096);
+    if (!text.ok) {
+        return {
+            kind: 'degraded',
+            sourcePath: filePath,
+            warning: `${filePath}: exists in base commit but blob content could not be read.`,
+        };
+    }
+    return { kind: 'loaded', text: text.stdout, sourcePath: filePath };
+}
+function unsupportedPatternReason(pattern) {
+    if (pattern.startsWith('!')) {
+        return 'negation patterns are not supported by GitHub CODEOWNERS';
+    }
+    if (pattern.startsWith('\\#')) {
+        return 'escaped leading # is not supported by GitHub CODEOWNERS';
+    }
+    if (pattern.includes('[') || pattern.includes(']')) {
+        return 'character ranges are not supported by GitHub CODEOWNERS';
     }
     return null;
 }
-// ── Deterministic clustering: collapse a pairwise co-change flood into one event ──
-/** Connected components over a set of undirected edges (deterministic). */
-function connectedComponents(edges) {
-    const parent = new Map();
-    const find = (x) => { while (parent.get(x) !== x) {
-        parent.set(x, parent.get(parent.get(x)));
-        x = parent.get(x);
-    } return x; };
-    for (const [a, b] of edges) {
-        if (!parent.has(a))
-            parent.set(a, a);
-        if (!parent.has(b))
-            parent.set(b, b);
-        const ra = find(a);
-        const rb = find(b);
-        if (ra !== rb)
-            parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
-    }
-    const groups = new Map();
-    for (const k of parent.keys()) {
-        const r = find(k);
-        (groups.get(r) ?? groups.set(r, []).get(r)).push(k);
-    }
-    return [...groups.values()].map((g) => g.sort()).sort((x, y) => y.length - x.length || x[0].localeCompare(y[0]));
-}
-/** Longest common directory prefix of a set of module paths (or '' if none). */
-function commonPrefix(modules) {
-    if (modules.length === 0)
-        return '';
-    const split = modules.map((m) => m.split('/'));
-    const first = split[0];
-    let i = 0;
-    for (; i < first.length; i++)
-        if (!split.every((s) => s[i] === first[i]))
-            break;
-    return first.slice(0, i).join('/');
-}
-/**
- * Turn a set of newly-active (or newly-dormant) corridor edges into events,
- * collapsing any connected component of ≥3 modules into ONE cluster event.
- * `direction` selects activation vs cooling phrasing; `history` lets a 2-module
- * component still resolve activated/emerged/reactivated correctly.
- */
-function couplingEvents(edges, at, prevLabel, history, direction) {
-    if (edges.length === 0)
-        return [];
-    const comps = connectedComponents(edges.map((e) => [e.a, e.b]));
-    const edgeByKey = new Map(edges.map((e) => [pairKey(e.a, e.b), e]));
-    const out = [];
-    for (const comp of comps) {
-        const compEdges = edges.filter((e) => comp.includes(e.a) && comp.includes(e.b));
-        if (comp.length >= 3) {
-            const maxShare = Math.max(...compEdges.map((e) => e.share));
-            const structural = compEdges.filter((e) => e.structural).length * 2 >= compEdges.length;
-            const prefix = commonPrefix(comp);
-            const where = prefix ? `the \`${prefix}\` cluster` : `a cluster of ${comp.length} modules`;
-            if (direction === 'active') {
-                const text = structural
-                    ? `${where} began co-changing together — ${comp.length} structurally-coupled modules now move as one (up to ${pct(maxShare)} of PRs).`
-                    : `${where} began co-changing together — ${comp.length} modules now move as one with no shared structural dependency (up to ${pct(maxShare)} of PRs).`;
-                out.push({ at, kind: 'coupling-cluster-activated', subject: comp, text });
-            }
-            else {
-                out.push({ at, kind: 'coupling-cluster-dormant', subject: comp, text: `${where} cooled — ${comp.length} modules no longer co-changing together.` });
-            }
-            continue;
-        }
-        // 2-module component → a single pairwise event.
-        const e = compEdges[0] ?? edgeByKey.get(pairKey(comp[0], comp[1] ?? comp[0]));
-        if (!e)
-            continue;
-        if (direction === 'dormant') {
-            out.push({ at, kind: 'coupling-dormant', subject: [e.a, e.b], text: `\`${e.a}\` ↔ \`${e.b}\` coupling cooled — no longer co-changing above threshold.` });
-            continue;
-        }
-        const reactivated = lastCouplingState(history, e.a, e.b) === 'dormant';
-        if (reactivated) {
-            out.push({ at, kind: 'coupling-reactivated', subject: [e.a, e.b], text: `\`${e.a}\` ↔ \`${e.b}\` coupling reactivated after going dormant — co-changing again (${pct(e.share)} of PRs).` });
-        }
-        else if (e.structural) {
-            out.push({ at, kind: 'coupling-activated', subject: [e.a, e.b], text: `latent coupling between \`${e.a}\` and \`${e.b}\` became operationally active — a structural dependency that now co-changes (${pct(e.share)} of PRs).` });
-        }
-        else {
-            out.push({ at, kind: 'coupling-emerged', subject: [e.a, e.b], text: `\`${e.a}\` and \`${e.b}\` began co-changing with no structural dependency — operational-only coupling (${pct(e.share)} of PRs).` });
-        }
-    }
-    void prevLabel;
-    return out;
-}
-function diffSnapshots(prev, cur, history = []) {
-    const out = [];
-    const at = cur.label;
-    // ── Coupling lifecycle ──
-    const prevCorr = new Map(prev.corridors.map((c) => [pairKey(c.a, c.b), c]));
-    const curCorr = new Map(cur.corridors.map((c) => [pairKey(c.a, c.b), c]));
-    // Intensification stays pairwise (a strong, specific signal).
-    for (const c of cur.corridors) {
-        const before = prevCorr.get(pairKey(c.a, c.b));
-        if (before && c.share - before.share >= INTENSIFY_DELTA) {
-            out.push({ at, kind: 'coupling-intensified', subject: [c.a, c.b], text: `the \`${c.a}\` ↔ \`${c.b}\` corridor intensified (${pct(before.share)} → ${pct(c.share)}).` });
-        }
-    }
-    // Newly-active edges → activated / emerged / reactivated, clustered if ≥3 modules.
-    const newEdges = cur.corridors
-        .filter((c) => !prevCorr.has(pairKey(c.a, c.b)))
-        .map((c) => ({ a: c.a, b: c.b, share: c.share, structural: c.structural }));
-    out.push(...couplingEvents(newEdges, at, prev.label, history, 'active'));
-    // Newly-dormant edges → cooled, clustered if ≥3 modules; flaps suppressed.
-    const goneEdges = prev.corridors
-        .filter((c) => !curCorr.has(pairKey(c.a, c.b)) && becameActiveAt(history, c.a, c.b) !== prev.label)
-        .map((c) => ({ a: c.a, b: c.b, share: c.share, structural: c.structural }));
-    out.push(...couplingEvents(goneEdges, at, prev.label, history, 'dormant'));
-    // ── Boundary drift ──
-    const prevB = new Map(prev.boundaries.map((b) => [pairKey(b.areaA, b.areaB), b.porosity]));
-    const curB = new Map(cur.boundaries.map((b) => [pairKey(b.areaA, b.areaB), b.porosity]));
-    for (const b of cur.boundaries) {
-        const before = prevB.get(pairKey(b.areaA, b.areaB)) ?? 0;
-        if (b.porosity - before >= INTENSIFY_DELTA) {
-            out.push({ at, kind: 'boundary-eroded', subject: [b.areaA, b.areaB], text: `the ${b.areaA} ↔ ${b.areaB} boundary became more porous (${pct(before)} → ${pct(b.porosity)}).` });
-        }
-    }
-    for (const b of prev.boundaries) {
-        const after = curB.get(pairKey(b.areaA, b.areaB)) ?? 0;
-        if (b.porosity - after >= INTENSIFY_DELTA) {
-            out.push({ at, kind: 'boundary-tightened', subject: [b.areaA, b.areaB], text: `the ${b.areaA} ↔ ${b.areaB} boundary tightened (${pct(b.porosity)} → ${pct(after)}).` });
-        }
-    }
-    // ── Pressure migration / emergence ──
-    const prevPressure = new Map(prev.pressure.map((p) => [p.module, p.share]));
-    for (const p of cur.pressure) {
-        if (!prevPressure.has(p.module)) {
-            out.push({ at, kind: 'pressure-emerged', subject: [p.module], text: `\`${p.module}\` emerged as an operational pressure zone (${pct(p.share)} of PRs).` });
-        }
-    }
-    const topPrev = prev.pressure[0];
-    const topCur = cur.pressure[0];
-    if (topPrev && topCur && topPrev.module !== topCur.module && topCur.share - (prevPressure.get(topCur.module) ?? 0) >= PRESSURE_DELTA) {
-        out.push({ at, kind: 'pressure-migrated', subject: ordered(topPrev.module, topCur.module), text: `operational pressure migrated from \`${topPrev.module}\` toward \`${topCur.module}\`.` });
-    }
-    // ── Region centralization ──
-    const prevCentral = new Set(prev.centralAnchors);
-    for (const a of cur.centralAnchors) {
-        if (!prevCentral.has(a))
-            out.push({ at, kind: 'region-centralized', subject: [a], text: `the \`${a}\` region became operationally central.` });
-    }
-    // Stable, deterministic ordering.
-    return out.sort((x, y) => x.kind.localeCompare(y.kind) || x.subject.join().localeCompare(y.subject.join()));
-}
-/**
- * Re-derive the full operational memory from an ordered sequence of snapshots.
- *
- * Two noise-suppressors:
- *  1. The first kept snapshot is a SILENT baseline (no delta from nothing) — a
- *     fresh install never emits a flood of "new" events.
- *  2. `minWindow` raises the baseline to the first snapshot whose cumulative
- *     window is statistically meaningful. Snapshots below it are absorbed into
- *     the baseline, so the cold-start (a sampling window opening mid-history,
- *     where the whole standing co-change structure "appears at once") is
- *     suppressed rather than dumped as events. Default 0 = full day-zero replay.
- */
-function deriveMemory(snapshots, opts = {}) {
-    const minWindow = opts.minWindow ?? 0;
-    const seq = minWindow > 0 ? snapshots.filter((s) => s.window >= minWindow) : snapshots;
-    const events = [];
-    for (let i = 1; i < seq.length; i++) {
-        events.push(...diffSnapshots(seq[i - 1], seq[i], events));
-    }
-    return { v: 1, events };
-}
-const MEM_PREFIX = '<!-- neurcode-operational-memory:';
-const MEM_SUFFIX = '-->';
-/** Compact, append-friendly JSONL store (one event per line) for an in-repo artifact. */
-function serializeMemoryJsonl(mem) {
-    return mem.events.map((e) => JSON.stringify({ at: e.at, k: e.kind, s: e.subject, t: e.text })).join('\n');
-}
-function parseMemoryJsonl(text) {
-    if (!text)
-        return null;
-    const events = [];
-    for (const line of text.split('\n')) {
-        const t = line.trim();
-        if (!t || t.startsWith('#'))
-            continue;
-        try {
-            const o = JSON.parse(t);
-            if (o.at && o.k && Array.isArray(o.s))
-                events.push({ at: o.at, kind: o.k, subject: o.s, text: o.t });
-        }
-        catch { /* skip malformed line */ }
-    }
-    return { v: 1, events };
-}
-/** Hidden round-trippable block (for embedding in a comment/PR if ever needed). */
-function serializeMemory(mem) {
-    const compact = { v: 1, e: mem.events.map((e) => ({ a: e.at, k: e.kind, s: e.subject, t: e.text })) };
-    return `${MEM_PREFIX}${JSON.stringify(compact)}${MEM_SUFFIX}`;
-}
-function parseMemory(text) {
-    if (!text)
-        return null;
-    const start = text.indexOf(MEM_PREFIX);
-    if (start === -1)
-        return null;
-    const end = text.indexOf(MEM_SUFFIX, start);
-    if (end === -1)
-        return null;
-    try {
-        const obj = JSON.parse(text.slice(start + MEM_PREFIX.length, end).trim());
-        if (!Array.isArray(obj.e))
-            return null;
-        return { v: 1, events: obj.e.map((e) => ({ at: e.a, kind: e.k, subject: e.s, text: e.t })) };
-    }
-    catch {
-        return null;
-    }
-}
-function memoryHash(mem) {
-    return (0, node_crypto_1.createHash)('sha256').update(mem.events.map((e) => `${e.at}|${e.kind}|${e.subject.join(',')}`).join(';')).digest('hex').slice(0, 12);
-}
-// ── Release operational summary (delta-only; null when nothing changed) ────────
-const KIND_GROUP = {
-    'coupling-activated': 'Coupling', 'coupling-emerged': 'Coupling', 'coupling-dormant': 'Coupling',
-    'coupling-reactivated': 'Coupling', 'coupling-intensified': 'Coupling',
-    'coupling-cluster-activated': 'Coupling', 'coupling-cluster-dormant': 'Coupling',
-    'pressure-emerged': 'Pressure', 'pressure-migrated': 'Pressure',
-    'boundary-eroded': 'Boundaries', 'boundary-tightened': 'Boundaries',
-    'region-centralized': 'Regions',
-};
-const GROUP_ORDER = ['Coupling', 'Pressure', 'Boundaries', 'Regions'];
-/**
- * Render the operational deltas for a single release boundary.
- * Returns null when there is no operationally meaningful change — the caller
- * then emits NOTHING (the release note gains no operational appendix).
- */
-const RELEASE_SUMMARY_MAX = 6; // a release note must stay scannable
-function renderReleaseSummary(events, opts) {
-    if (events.length === 0)
-        return null;
-    const byGroup = new Map();
-    for (const e of events) {
-        const g = KIND_GROUP[e.kind];
-        (byGroup.get(g) ?? byGroup.set(g, []).get(g)).push(e);
-    }
-    const lines = [
-        '### Neurcode — Operational changes',
-        '',
-        `_${opts.repo ? `${opts.repo} · ` : ''}${opts.from} → ${opts.to}_`,
-        '',
-    ];
-    // Push-surface stays calm: show at most RELEASE_SUMMARY_MAX, summarise the rest.
-    let shown = 0;
-    let omitted = 0;
-    for (const g of GROUP_ORDER) {
-        const evs = byGroup.get(g);
-        if (!evs || evs.length === 0)
-            continue;
-        for (const e of evs) {
-            if (shown < RELEASE_SUMMARY_MAX) {
-                lines.push(`- ${e.text}`);
-                shown += 1;
-            }
-            else
-                omitted += 1;
-        }
-    }
-    if (omitted > 0)
-        lines.push(`- _+${omitted} more operational delta${omitted === 1 ? '' : 's'} — see the full operational memory._`);
-    lines.push('', '_Deterministic operational deltas vs the previous release. Standing state is intentionally omitted. Full history accumulates in `.neurcode/reports/operational-memory.md`._');
-    return lines.join('\n');
-}
-/** Compact, scannable rendering of the whole accumulated memory (pull surface). */
-function renderOperationalMemory(mem, opts) {
-    const intro = 'How this repository\'s operational structure has changed over time — which modules start (and stop) moving together, where activity concentrates. Read it like a changelog.';
-    if (mem.events.length === 0) {
-        return [
-            '## Neurcode — Operational Memory',
-            '',
-            `_${opts?.repo ? `${opts.repo} · ` : ''}no operational evolution recorded yet._`,
-            '',
-            'Nothing has shifted operationally yet — which is normal for a stable or young repository. As releases accumulate, meaningful changes (a new coupling, pressure migrating, a cluster cooling) will appear here. Standing state is never restated.',
-        ].join('\n');
-    }
-    const byBoundary = new Map();
-    const order = [];
-    for (const e of mem.events) {
-        if (!byBoundary.has(e.at)) {
-            byBoundary.set(e.at, []);
-            order.push(e.at);
-        }
-        byBoundary.get(e.at).push(e);
-    }
-    const lines = [
-        '## Neurcode — Operational Memory',
-        '',
-        `_${opts?.repo ? `${opts.repo} · ` : ''}${mem.events.length} operational events · memory \`${memoryHash(mem)}\`_`,
-        '',
-        `> ${intro}`,
-        '',
-    ];
-    // Most-recent boundary first — a maintainer reads top-down like a changelog.
-    for (const at of order.slice().reverse()) {
-        lines.push(`### ${at}`, '');
-        for (const e of byBoundary.get(at))
-            lines.push(`- ${e.text}`);
-        lines.push('');
-    }
-    lines.push('---', '_Append-only operational history, re-derivable from your merge history (nothing to trust or lose). Not an architecture diagram, not a score._');
-    if (opts?.path)
-        lines.push(`_Lives at \`${opts.path}\` in your repo._`);
-    return lines.join('\n');
-}
-
-
-/***/ }),
-
-/***/ 7460:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Operational Momentum & Stability Dynamics (deterministic)
- * =========================================================
- *
- * Prior layers answer "what is the operational shape now / how did it drift?".
- * This layer answers "how is it MOVING?" across a sequence of release eras —
- * is a pattern intensifying, cooling, stabilising, dissipating, or persistent?
- *
- * This is MOVEMENT ANALYSIS over observed history, NOT prediction. Every state
- * is a deterministic classification of a value series the engine already
- * produced. Requires ≥3 eras (2 = drift, already covered). Sparse: flat and
- * volatile series are suppressed. Replay-safe: pure over the era bundles, which
- * are pure over the deterministic records.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.eraFromRecords = eraFromRecords;
-exports.classifyTrajectory = classifyTrajectory;
-exports.deriveMomentum = deriveMomentum;
-exports.synthesizeDynamicsReport = synthesizeDynamicsReport;
-const node_crypto_1 = __nccwpck_require__(7598);
-const GENERIC_AREA = 'runtime-source';
-function pairKey(a, b) { return a < b ? `${a} ${b}` : `${b} ${a}`; }
-/** Build one era's metric bundle from its records (single deterministic pass). */
-function eraFromRecords(label, records) {
-    const n = records.length;
-    const rate = (p) => (n === 0 ? 0 : records.filter(p).length / n);
-    const touch = new Map();
-    const coChange = new Map();
-    const areaPair = new Map();
-    for (const r of records) {
-        const mods = [...new Set(r.modules)].sort();
-        for (const m of mods)
-            touch.set(m, (touch.get(m) ?? 0) + 1);
-        for (let i = 0; i < mods.length; i++)
-            for (let j = i + 1; j < mods.length; j++)
-                coChange.set(pairKey(mods[i], mods[j]), (coChange.get(pairKey(mods[i], mods[j])) ?? 0) + 1);
-        const sp = [...new Set(r.areas.filter((a) => a !== GENERIC_AREA))].sort();
-        for (let i = 0; i < sp.length; i++)
-            for (let j = i + 1; j < sp.length; j++)
-                areaPair.set(pairKey(sp[i], sp[j]), (areaPair.get(pairKey(sp[i], sp[j])) ?? 0) + 1);
-    }
-    const totalTouches = [...touch.values()].reduce((a, b) => a + b, 0);
-    const sortedMods = [...touch.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    const concentration = totalTouches === 0 ? 0 : sortedMods.slice(0, 3).reduce((a, m) => a + m[1], 0) / totalTouches;
-    const pressure = {};
-    for (const [m, c] of touch)
-        pressure[m] = n === 0 ? 0 : c / n;
-    const corridors = {};
-    for (const [k, c] of coChange)
-        corridors[k] = n === 0 ? 0 : c / n;
-    const boundaries = {};
-    for (const [k, c] of areaPair)
-        boundaries[k] = n === 0 ? 0 : c / n;
-    return {
-        label, window: n, concentration,
-        signals: {
-            widening: rate((r) => r.codes.includes('widening')),
-            generatedSpillover: rate((r) => r.codes.includes('generated-spillover')),
-            boundaryCrossing: rate((r) => r.codes.includes('boundary-crossing')),
-            flagged: rate((r) => r.verdict !== 'coherent'),
-        },
-        pressure, corridors, boundaries,
-        central: [...new Set(records.flatMap((r) => r.central))].sort(),
-        topModule: sortedMods[0]?.[0] ?? null,
-    };
-}
-const STEP_EPS = 0.03; // per-step noise floor (3pp)
-const MIN_NET = 0.12; // net change to call intensifying/cooling (12pp)
-const STABLE_RANGE = 0.05; // recent points within 5pp = stable
-function classifyTrajectory(values) {
-    const n = values.length;
-    if (n < 3)
-        return { state: 'flat' };
-    const deltas = [];
-    for (let i = 1; i < n; i++)
-        deltas.push(values[i] - values[i - 1]);
-    const net = values[n - 1] - values[0];
-    const first = values[0];
-    const last = values[n - 1];
-    const peak = Math.max(...values);
-    const range = peak - Math.min(...values);
-    const rises = deltas.filter((d) => d > STEP_EPS).length;
-    const falls = deltas.filter((d) => d < -STEP_EPS).length;
-    // Trailing flat run: how many of the most recent steps are within the noise
-    // floor. ≥2 small steps = the series has levelled off ("plateau").
-    let trailingFlat = 0;
-    for (let i = deltas.length - 1; i >= 0; i--) {
-        if (Math.abs(deltas[i]) <= STEP_EPS)
-            trailingFlat += 1;
-        else
-            break;
-    }
-    const recentPlateau = trailingFlat >= 2;
-    // Plateau cases take precedence — distinguishes "rose then settled" from
-    // "still rising", which a net-only test cannot.
-    if (recentPlateau && range > STABLE_RANGE) {
-        if (peak - last >= MIN_NET && last <= first + STEP_EPS)
-            return { state: 'dissipated' };
-        if (Math.abs(last - first) >= MIN_NET)
-            return { state: 'stabilized', sinceIndex: n - 1 - trailingFlat };
-        return { state: 'flat' };
-    }
-    // Active trend.
-    if (net >= MIN_NET && rises >= falls)
-        return { state: 'intensifying' };
-    if (net <= -MIN_NET && falls >= rises)
-        return { state: 'cooling' };
-    if (rises > 0 && falls > 0 && Math.abs(net) < MIN_NET && range > STABLE_RANGE * 2)
-        return { state: 'volatile' };
-    return { state: 'flat' };
-}
-const SIGNAL_LABEL = {
-    widening: 'blast-radius widening',
-    generatedSpillover: 'generated-code spillover',
-    boundaryCrossing: 'undeclared boundary crossings',
-    flagged: 'flagged-PR rate',
-};
-const PROMINENCE = { corridor: 0.10, boundary: 0.10, pressure: 0.30 };
-function pct(x) { return `${Math.round(x * 100)}%`; }
-function path(series) { return series.map(pct).join(' → '); }
-function subjectsAboveProminence(eras, pick, min) {
-    const max = new Map();
-    for (const e of eras)
-        for (const [k, v] of Object.entries(pick(e)))
-            max.set(k, Math.max(max.get(k) ?? 0, v));
-    return [...max.entries()].filter(([, v]) => v >= min).map(([k]) => k).sort();
-}
-function deriveMomentum(eras) {
-    if (eras.length < 3)
-        return [];
-    const out = [];
-    const n = eras.length;
-    const emit = (subject, kind, series, labelFor) => {
-        const t = classifyTrajectory(series);
-        const presentAll = series.every((v) => v > 0);
-        const persistent = presentAll && (t.state === 'flat' || t.state === 'stabilized');
-        // A present-in-every-era flat series is "persistent", not nothing.
-        const state = persistent && t.state === 'flat' ? 'persistent' : t.state;
-        if (state === 'flat')
-            return; // suppress noise
-        if (state === 'volatile')
-            return; // suppress oscillation
-        const sinceLabel = t.sinceIndex !== undefined ? eras[t.sinceIndex].label : undefined;
-        out.push({ subject, kind, state, series, persistent, sinceLabel, text: phrase(subject, kind, labelFor, state, series, sinceLabel, persistent, n) });
-    };
-    emit('concentration', 'concentration', eras.map((e) => e.concentration), 'operational concentration');
-    for (const sig of ['widening', 'generatedSpillover', 'boundaryCrossing', 'flagged']) {
-        emit(sig, 'signal', eras.map((e) => e.signals[sig]), SIGNAL_LABEL[sig]);
-    }
-    for (const b of subjectsAboveProminence(eras, (e) => e.boundaries, PROMINENCE.boundary)) {
-        emit(b, 'boundary', eras.map((e) => e.boundaries[b] ?? 0), `the ${b.replace(' ', ' ↔ ')} boundary`);
-    }
-    for (const c of subjectsAboveProminence(eras, (e) => e.corridors, PROMINENCE.corridor)) {
-        emit(c, 'corridor', eras.map((e) => e.corridors[c] ?? 0), `the \`${c.split(' ').join('` ↔ `')}\` corridor`);
-    }
-    for (const p of subjectsAboveProminence(eras, (e) => e.pressure, PROMINENCE.pressure)) {
-        emit(p, 'pressure', eras.map((e) => e.pressure[p] ?? 0), `pressure on \`${p}\``);
-    }
-    // Order: intensifying/cooling first (most kinetic), then stabilized/dissipated/persistent.
-    const rank = { intensifying: 0, cooling: 1, dissipated: 2, stabilized: 3, persistent: 4, volatile: 5, flat: 6 };
-    return out.sort((a, b) => rank[a.state] - rank[b.state] || a.kind.localeCompare(b.kind) || a.subject.localeCompare(b.subject));
-}
-function phrase(_subject, _kind, label, state, series, sinceLabel, persistent, eraCount) {
-    const cap = label.charAt(0).toUpperCase() + label.slice(1);
-    switch (state) {
-        case 'intensifying': return `${cap} has risen across ${eraCount} release eras (${path(series)}).`;
-        case 'cooling': return `${cap} momentum cooled across ${eraCount} release eras (${path(series)}).`;
-        case 'stabilized': return `${cap} stabilized${sinceLabel ? ` after ${sinceLabel}` : ''} (around ${pct(series[series.length - 1])}).`;
-        case 'dissipated': return `${cap} dissipated (peaked ${pct(Math.max(...series))}, now ${pct(series[series.length - 1])}).`;
-        case 'persistent': return `${cap} has persisted across ${eraCount} release eras (around ${pct(series[series.length - 1])}).`;
-        default: return `${cap}: ${path(series)}.`;
-    }
-}
-function synthesizeDynamicsReport(input) {
-    const findings = deriveMomentum(input.eras);
-    const momentumHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
-        repo: input.repo ?? null,
-        eras: input.eras.map((e) => e.label),
-        findings: findings.map((f) => `${f.kind}:${f.subject}:${f.state}`),
-    })).digest('hex').slice(0, 12);
-    const lines = [
-        '## Neurcode — Operational Dynamics',
-        '',
-        `_${input.repo ? `${input.repo} · ` : ''}${input.eras.length} release eras (${input.eras.map((e) => e.label).join(' → ')}) · momentum \`${momentumHash}\`_`,
-        '',
-    ];
-    if (input.eras.length < 3) {
-        lines.push('Not enough release history for momentum analysis (need ≥3 eras).');
-    }
-    else if (findings.length === 0) {
-        lines.push('Operationally steady — no sustained momentum, cooling, or stabilization above threshold across these eras.');
-    }
-    else {
-        const kinetic = findings.filter((f) => f.state === 'intensifying' || f.state === 'cooling' || f.state === 'dissipated');
-        const settled = findings.filter((f) => f.state === 'stabilized' || f.state === 'persistent');
-        if (kinetic.length > 0) {
-            lines.push('### Movement', '');
-            for (const f of kinetic.slice(0, 6))
-                lines.push(`- ${f.text}`);
-            lines.push('');
-        }
-        if (settled.length > 0) {
-            lines.push('### Settled', '');
-            for (const f of settled.slice(0, 6))
-                lines.push(`- ${f.text}`);
-            lines.push('');
-        }
-    }
-    lines.push('---', `Deterministic movement analysis across ${input.eras.length} eras · momentum \`${momentumHash}\``, '_Observed-history momentum from replay-safe primitives. Not a forecast._');
-    return { eras: input.eras.length, findings, momentumHash, markdown: lines.join('\n') };
-}
-
-
-/***/ }),
-
-/***/ 6481:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Longitudinal Operational Memory (deterministic)
- * ===============================================
- *
- * Per-PR coherence understands one PR. This layer understands how the
- * repository's operational topology *evolves* across many PRs — drift,
- * volatility, hotspot emergence, widening concentration, generated spillover,
- * boundary-crossing trends, contributor patterns.
- *
- * It is built only from primitives the engine already emits. Each PR projects
- * to a tiny, deterministic `OperationalRecord`; a window of records is reduced
- * to trend metrics by pure functions; trends become sparse temporal narratives
- * only when they cross significance thresholds.
- *
- * Replay-safety: a record is a pure projection of a (deterministic) coherence
- * result, and the timeline is a pure fold over records. The on-disk ledger
- * (`.neurcode/operational-ledger.jsonl`, one record per line) is therefore a
- * CACHE — it can always be rebuilt by replaying history, and each line's
- * `scopeHash` lets you verify the cache against a re-derivation. No DB, no
- * embeddings, no probabilistic scoring, no AI summaries.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.recordFromResult = recordFromResult;
-exports.serializeRecord = serializeRecord;
-exports.parseLedger = parseLedger;
-exports.deriveTimeline = deriveTimeline;
-exports.synthesizeTemporalNarrative = synthesizeTemporalNarrative;
-const repo_topology_1 = __nccwpck_require__(7383);
-const narrative_1 = __nccwpck_require__(9047);
-// ── Projection: coherence result → operational record ─────────────────────────
-function recordFromResult(result, meta, profile) {
-    const files = [...new Set(result.blastRadius.subsystems.flatMap((s) => s.files))];
-    // Operational files = code + infra + generated. Housekeeping (docs/test/build/
-    // config/ci) doesn't define operational reach and would dilute the trends.
-    const opFiles = files.filter((f) => { const r = (0, repo_topology_1.roleOf)(f); return r === 'source' || r === 'entrypoint' || r === 'infra' || r === 'generated'; });
-    const codeFiles = files.filter((f) => { const r = (0, repo_topology_1.roleOf)(f); return r === 'source' || r === 'entrypoint'; });
-    const areas = [...new Set(opFiles.map(narrative_1.operationalArea))].sort();
-    const codes = [...new Set((result.narrative?.statements ?? []).map((s) => s.code))].sort();
-    const modules = profile
-        ? [...new Set(codeFiles.map((f) => (0, repo_topology_1.subsystemOf)(f, profile)))].filter((m) => m !== '(root)').sort()
-        : [];
-    const central = profile
-        ? [...new Set(codeFiles.map((f) => (0, repo_topology_1.subsystemOf)(f, profile)).filter((m) => profile.centralModules.includes(m)))].sort()
-        : [];
-    return {
-        pr: meta.pr,
-        author: meta.author ?? '',
-        ...(meta.mergedAt ? { mergedAt: meta.mergedAt } : {}),
-        kind: result.declared.changeKind,
-        verdict: result.level,
-        mechanical: result.mechanical?.isMechanical ? (result.mechanical.mechanicalClass ?? null) : null,
-        modules,
-        areas,
-        codes,
-        central,
-        scopeHash: result.scopeHash,
-    };
-}
-// JSONL ledger helpers — the ledger is an append-only cache of records.
-function serializeRecord(r) {
-    // Stable key order for byte-deterministic ledger lines.
-    return JSON.stringify({
-        pr: r.pr, author: r.author, ...(r.mergedAt ? { mergedAt: r.mergedAt } : {}),
-        kind: r.kind, verdict: r.verdict, mechanical: r.mechanical,
-        modules: r.modules, areas: r.areas, codes: r.codes, central: r.central, scopeHash: r.scopeHash,
-    });
-}
-function parseLedger(text) {
-    return text.split('\n').map((l) => l.trim()).filter(Boolean)
-        .map((l) => { try {
-        return JSON.parse(l);
-    }
-    catch {
-        return null;
-    } })
-        .filter((r) => r !== null && typeof r.pr === 'number')
-        .sort((a, b) => a.pr - b.pr);
-}
-// ── Trend significance thresholds (deterministic, conservative) ───────────────
-const MIN_WINDOW = 12; // below this, no trend claims (too little signal)
-const MIN_HALF = 5; // each half of a split must have this many PRs
-const RATE_DELTA = 0.15; // recent-vs-prior rate must move ≥15pp to be a trend
-const HOTSPOT_MIN_SHARE = 0.30; // module touched in ≥30% of recent PRs
-const HOTSPOT_MIN_TOUCHES = 4;
-const CONTRIBUTOR_MIN_EVENTS = 3; // an author must repeat a pattern ≥3× to be flagged
-const TOP_CONCENTRATION_K = 3;
-function rate(records, pred) {
-    return records.length === 0 ? 0 : records.filter(pred).length / records.length;
-}
-function dominantArea(records, pred) {
-    const counts = new Map();
-    for (const r of records.filter(pred))
-        for (const a of r.areas)
-            counts.set(a, (counts.get(a) ?? 0) + 1);
-    const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
-    return top ? top[0] : undefined;
-}
-function buildTrend(metric, recent, prior, pred) {
-    if (recent.length < MIN_HALF || prior.length < MIN_HALF)
-        return null;
-    const rRecent = rate(recent, pred);
-    const rPrior = rate(prior, pred);
-    if (Math.abs(rRecent - rPrior) < RATE_DELTA)
-        return null;
-    return {
-        metric,
-        recent: rRecent,
-        prior: rPrior,
-        recentCount: recent.filter(pred).length,
-        priorCount: prior.filter(pred).length,
-        direction: rRecent > rPrior ? 'rising' : 'falling',
-        area: dominantArea(recent, pred),
-    };
-}
-function deriveTimeline(all, windowSize = 30) {
-    const records = [...all].sort((a, b) => a.pr - b.pr).slice(-windowSize);
-    const window = records.length;
-    const verdict = {
-        coherent: records.filter((r) => r.verdict === 'coherent').length,
-        review: records.filter((r) => r.verdict === 'review').length,
-        incoherent: records.filter((r) => r.verdict === 'incoherent').length,
-    };
-    const trends = [];
-    if (window >= MIN_WINDOW) {
-        const mid = Math.floor(window / 2);
-        const prior = records.slice(0, mid);
-        const recent = records.slice(mid);
-        const candidates = [
-            ['widening', (r) => r.codes.includes('widening')],
-            ['boundary-crossing', (r) => r.codes.includes('boundary-crossing')],
-            ['generated-spillover', (r) => r.codes.includes('generated-spillover')],
-            ['new-operational-edge', (r) => r.codes.includes('new-operational-edge')],
-            ['flagged', (r) => r.verdict !== 'coherent'],
-        ];
-        for (const [metric, pred] of candidates) {
-            const t = buildTrend(metric, recent, prior, pred);
-            if (t)
-                trends.push(t);
-        }
-    }
-    // Hotspots: modules touched in a large share of the recent window.
-    const touchCounts = new Map();
-    for (const r of records)
-        for (const m of r.modules)
-            touchCounts.set(m, (touchCounts.get(m) ?? 0) + 1);
-    const hotspots = [...touchCounts.entries()]
-        .map(([module, touches]) => ({ module, touches, share: touches / Math.max(1, window) }))
-        .filter((h) => h.touches >= HOTSPOT_MIN_TOUCHES && h.share >= HOTSPOT_MIN_SHARE)
-        .sort((a, b) => b.touches - a.touches || a.module.localeCompare(b.module));
-    // Contributor patterns: an author repeating an operational primitive.
-    const byAuthorCode = new Map();
-    for (const r of records) {
-        if (!r.author)
-            continue;
-        for (const code of r.codes) {
-            if (code === 'mechanical' || code === 'containment')
-                continue; // not risk patterns
-            const key = `${r.author} ${code}`;
-            const e = byAuthorCode.get(key) ?? { events: 0, areas: new Set() };
-            e.events += 1;
-            for (const a of r.areas)
-                e.areas.add(a);
-            byAuthorCode.set(key, e);
-        }
-    }
-    const contributors = [...byAuthorCode.entries()]
-        .filter(([, e]) => e.events >= CONTRIBUTOR_MIN_EVENTS)
-        .map(([key, e]) => { const [author, code] = key.split(' '); return { author, code, events: e.events, areas: [...e.areas].sort() }; })
-        .sort((a, b) => b.events - a.events || a.author.localeCompare(b.author));
-    // Concentration: share of all module-touches held by the top-K modules.
-    const totalTouches = [...touchCounts.values()].reduce((a, b) => a + b, 0);
-    const topModules = [...touchCounts.entries()].map(([module, touches]) => ({ module, touches }))
-        .sort((a, b) => b.touches - a.touches || a.module.localeCompare(b.module)).slice(0, TOP_CONCENTRATION_K);
-    const topShare = totalTouches === 0 ? 0 : topModules.reduce((a, m) => a + m.touches, 0) / totalTouches;
-    // Emerging central: central modules that appear in the recent half but not the prior half.
-    let emergingCentral = [];
-    if (window >= MIN_WINDOW) {
-        const mid = Math.floor(window / 2);
-        const priorCentral = new Set(records.slice(0, mid).flatMap((r) => r.central));
-        const recentCentral = new Set(records.slice(mid).flatMap((r) => r.central));
-        emergingCentral = [...recentCentral].filter((m) => !priorCentral.has(m)).sort();
-    }
-    return { window, verdict, trends, hotspots, contributors, concentration: { topModules, topShare }, emergingCentral };
-}
-const METRIC_PHRASE = {
-    widening: 'blast-radius widening',
-    'boundary-crossing': 'undeclared boundary crossings',
-    'generated-spillover': 'generated-code spillover',
-    'new-operational-edge': 'new operational edges into sensitive boundaries',
-    flagged: 'flagged (review/incoherent) PRs',
-};
-function pct(x) { return `${Math.round(x * 100)}%`; }
-function synthesizeTemporalNarrative(metrics) {
-    const statements = [];
-    if (metrics.window < MIN_WINDOW) {
-        return { window: metrics.window, statements: [] }; // too little history — stay silent
-    }
-    for (const t of metrics.trends) {
-        const phrase = METRIC_PHRASE[t.metric] ?? t.metric;
-        const areaClause = t.area && (t.metric === 'generated-spillover' || t.metric === 'boundary-crossing')
-            ? `, concentrated in ${t.area === 'runtime-source' ? 'runtime source' : t.area.replace(/-/g, ' ')}`
-            : '';
-        statements.push({
-            code: `trend:${t.metric}`,
-            text: `${t.direction === 'rising' ? 'Rising' : 'Falling'}: ${phrase} ${t.direction === 'rising' ? 'rose' : 'fell'} from ${pct(t.prior)} to ${pct(t.recent)} of PRs over the last ${metrics.window}${areaClause}.`,
-        });
-    }
-    for (const h of metrics.hotspots.slice(0, 2)) {
-        statements.push({ code: 'hotspot', text: `Hotspot: \`${h.module}\` was touched by ${h.touches} of the last ${metrics.window} PRs (${pct(h.share)}).` });
-    }
-    for (const m of metrics.emergingCentral.slice(0, 2)) {
-        statements.push({ code: 'emerging-central', text: `\`${m}\` is becoming operationally central — it began receiving cross-module dependency in the recent window.` });
-    }
-    for (const c of metrics.contributors.slice(0, 2)) {
-        const phrase = METRIC_PHRASE[c.code] ?? c.code.replace(/-/g, ' ');
-        statements.push({ code: 'contributor', text: `\`${c.author}\` shows a repeated ${phrase} pattern (${c.events} PRs)${c.areas.length ? ` touching ${c.areas.slice(0, 3).join(', ')}` : ''}.` });
-    }
-    if (metrics.concentration.topShare >= 0.6 && metrics.concentration.topModules.length > 0) {
-        const mods = metrics.concentration.topModules.map((m) => `\`${m.module}\``).join(', ');
-        statements.push({ code: 'concentration', text: `Operational activity is concentrating: ${mods} account for ${pct(metrics.concentration.topShare)} of module touches.` });
-    }
-    return { window: metrics.window, statements: statements.slice(0, 6) };
-}
-
-
-/***/ }),
-
-/***/ 6794:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Pilot Trust & Survivability instrumentation (deterministic)
- * ===========================================================
- *
- * The architecture is complete; the open question is sociology — does a
- * maintainer keep trusting the Action after weeks of real usage? This derives
- * the answer from the operational ledger itself (no dashboards, no scoring, no
- * analytics theatre):
- *
- *   silent-rate     coherent PRs (no comment)        — is presence staying low?
- *   flag-rate       review + incoherent              — review-fatigue proxy
- *   FAIL-eligible   incoherent                       — does FAIL stay rare?
- *   mechanical      reverts/bumps/codemods suppressed — the calm work
- *   override-rate   incoherent records in the ledger  — merged WHILE incoherent
- *                                                       (a finding the maintainer
- *                                                        accepted/overrode)
- *   trend           recent vs prior flag-rate         — TRUST DECAY detection
- *
- * A ledger record is a MERGED PR, so an incoherent record means a maintainer
- * merged despite the ⛔ — the deterministic override/false-positive signal.
- * Rising flag-rate over the window = the system is getting noisier = trust at
- * risk. Pure over the ledger ⇒ replay-safe.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.derivePilotMetrics = derivePilotMetrics;
-exports.synthesizePilotReport = synthesizePilotReport;
-const node_crypto_1 = __nccwpck_require__(7598);
-// Deterministic sociology thresholds.
-const TREND_MIN_WINDOW = 24;
-const TREND_DELTA = 0.08; // flag-rate move ≥8pp = a trend
-const WATCH_FLAG_RATE = 0.12; // >12% of PRs flagged → fatigue risk
-const ATRISK_FLAG_RATE = 0.25; // >25% flagged → review fatigue / noise
-const ATRISK_INCOHERENT_RATE = 0.10;
-const ATRISK_TREND_DELTA = 0.15; // flag-rate rising ≥15pp → decay
-function rate(records, pred) {
-    return records.length === 0 ? 0 : records.filter(pred).length / records.length;
-}
-function derivePilotMetrics(all, windowSize = 120) {
-    const records = [...all].sort((a, b) => a.pr - b.pr).slice(-windowSize);
-    const window = records.length;
-    const isFlag = (r) => r.verdict !== 'coherent';
-    const silentRate = rate(records, (r) => r.verdict === 'coherent');
-    const reviewRate = rate(records, (r) => r.verdict === 'review');
-    const incoherentRate = rate(records, (r) => r.verdict === 'incoherent');
-    const flagRate = rate(records, isFlag);
-    const mechanicalRate = rate(records, (r) => r.mechanical !== null);
-    const overrideRate = incoherentRate;
-    let flagTrend = 'n/a';
-    let trendDelta = 0;
-    if (window >= TREND_MIN_WINDOW) {
-        const mid = Math.floor(window / 2);
-        const prior = rate(records.slice(0, mid), isFlag);
-        const recent = rate(records.slice(mid), isFlag);
-        trendDelta = recent - prior;
-        flagTrend = Math.abs(trendDelta) < TREND_DELTA ? 'stable' : trendDelta > 0 ? 'rising' : 'falling';
-    }
-    const reasons = [];
-    let survivability = 'healthy';
-    if (flagRate >= ATRISK_FLAG_RATE) {
-        survivability = 'at-risk';
-        reasons.push(`flag-rate ${pct(flagRate)} — review fatigue risk`);
-    }
-    else if (incoherentRate >= ATRISK_INCOHERENT_RATE) {
-        survivability = 'at-risk';
-        reasons.push(`FAIL-eligible ${pct(incoherentRate)} — ⛔ no longer rare`);
-    }
-    else if (flagTrend === 'rising' && trendDelta >= ATRISK_TREND_DELTA) {
-        survivability = 'at-risk';
-        reasons.push(`flag-rate rising sharply (+${pct(trendDelta)}) — trust decay`);
-    }
-    else if (flagRate >= WATCH_FLAG_RATE) {
-        survivability = 'watch';
-        reasons.push(`flag-rate ${pct(flagRate)} — watch for fatigue`);
-    }
-    else if (flagTrend === 'rising') {
-        survivability = 'watch';
-        reasons.push(`flag-rate creeping up (+${pct(trendDelta)})`);
-    }
-    return { window, silentRate, reviewRate, incoherentRate, flagRate, mechanicalRate, overrideRate, flagTrend, survivability, reasons };
-}
-function pct(x) { return `${Math.round(x * 100)}%`; }
-function synthesizePilotReport(input) {
-    const metrics = derivePilotMetrics(input.records, input.windowSize ?? 120);
-    const pilotHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
-        repo: input.repo ?? null, window: metrics.window,
-        s: Math.round(metrics.silentRate * 100), f: Math.round(metrics.flagRate * 100),
-        i: Math.round(metrics.incoherentRate * 100), trend: metrics.flagTrend, surv: metrics.survivability,
-    })).digest('hex').slice(0, 12);
-    const trendWord = metrics.flagTrend === 'stable' ? 'holding'
-        : metrics.flagTrend === 'falling' ? 'improving'
-            : metrics.flagTrend === 'rising' ? 'rising — watch' : '';
-    const lines = [
-        '## Neurcode — Pilot Trust & Survivability',
-        '',
-        `_${input.repo ? `${input.repo} · ` : ''}window ${metrics.window} merged PRs · pilot \`${pilotHash}\`_`,
-        '',
-    ];
-    if (metrics.window < 8) {
-        lines.push('Not enough history yet for a trust profile (need ≥8 merged PRs).');
-    }
-    else {
-        lines.push(`**Trust profile:** ${metrics.survivability}`, '');
-        lines.push(`- Silence: ${pct(metrics.silentRate)} of merged PRs coherent — no comment${trendWord ? ` · presence ${trendWord}` : ''}.`);
-        lines.push(`- Review-class: ${pct(metrics.reviewRate)} · FAIL-eligible (incoherent): ${pct(metrics.incoherentRate)}${metrics.incoherentRate < 0.05 ? ' — rare' : ''}.`);
-        if (metrics.mechanicalRate > 0)
-            lines.push(`- Mechanical PRs auto-suppressed: ${pct(metrics.mechanicalRate)} (reverts / bumps / codemods stayed quiet).`);
-        if (metrics.overrideRate > 0)
-            lines.push(`- Overrides (merged while incoherent): ${pct(metrics.overrideRate)}.`);
-        if (metrics.reasons.length === 0)
-            lines.push('- No trust-decay detected — flag-rate low and stable across the window.');
-        else
-            for (const r of metrics.reasons)
-                lines.push(`- ⚠ ${r}.`);
-    }
-    lines.push('', '---', `Deterministic · ${metrics.window} ledger records · pilot \`${pilotHash}\``, '_Operational trust dynamics from the replay-safe ledger. Not analytics, not scoring._');
-    return { metrics, pilotHash, markdown: lines.join('\n') };
-}
-
-
-/***/ }),
-
-/***/ 3664:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Deterministic Operational Evolution Reports
- * ===========================================
- *
- * Longitudinal memory exposes per-PR records and intra-window trends. This layer
- * synthesises them into a calm, sparse, periodic REPORT that answers one
- * question: "how is this repository operationally evolving?"
- *
- * The report axis is current-window vs prior-window (real before/after), so it
- * can state genuine drift — "concentration rose from 80% to 85%", "widening
- * narrowed", or, just as importantly, "spillover remained stable". Unlike the
- * per-PR comment (which stays silent when nothing is wrong), a periodic report
- * is allowed to affirm stability — but every line is one factual, infrastructure-
- * native sentence. No KPIs, no scoring, no AI prose.
- *
- * Replay-safe: a snapshot is a pure reduction of (deterministic) records and the
- * report is a pure function of two snapshots, so the same windows always yield
- * the same report and the same `reportHash`.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.snapshotFromRecords = snapshotFromRecords;
-exports.synthesizeDriftReport = synthesizeDriftReport;
-exports.renderReportMarkdown = renderReportMarkdown;
-const node_crypto_1 = __nccwpck_require__(7598);
-const operational_memory_1 = __nccwpck_require__(6481);
-const HOTSPOT_MIN_SHARE = 0.30;
-const TOP_K = 3;
-function snapshotFromRecords(records) {
-    const n = records.length;
-    const rate = (p) => (n === 0 ? 0 : records.filter(p).length / n);
-    const touch = new Map();
-    for (const r of records)
-        for (const m of r.modules)
-            touch.set(m, (touch.get(m) ?? 0) + 1);
-    const totalTouches = [...touch.values()].reduce((a, b) => a + b, 0);
-    const sortedMods = [...touch.entries()]
-        .map(([module, c]) => ({ module, touches: c, share: n === 0 ? 0 : c / n }))
-        .sort((a, b) => b.touches - a.touches || a.module.localeCompare(b.module));
-    const areaCount = new Map();
-    for (const r of records)
-        for (const a of r.areas)
-            areaCount.set(a, (areaCount.get(a) ?? 0) + 1);
-    const areaShare = {};
-    for (const [a, c] of [...areaCount.entries()].sort())
-        areaShare[a] = n === 0 ? 0 : c / n;
-    return {
-        window: n,
-        verdict: { coherent: rate((r) => r.verdict === 'coherent'), review: rate((r) => r.verdict === 'review'), incoherent: rate((r) => r.verdict === 'incoherent') },
-        signals: {
-            widening: rate((r) => r.codes.includes('widening')),
-            boundaryCrossing: rate((r) => r.codes.includes('boundary-crossing')),
-            generatedSpillover: rate((r) => r.codes.includes('generated-spillover')),
-            newEdge: rate((r) => r.codes.includes('new-operational-edge')),
-            flagged: rate((r) => r.verdict !== 'coherent'),
-        },
-        hotspots: sortedMods.filter((m) => m.share >= HOTSPOT_MIN_SHARE).map(({ module, share }) => ({ module, share })),
-        topModules: sortedMods.slice(0, TOP_K).map(({ module, share }) => ({ module, share })),
-        concentrationTopShare: totalTouches === 0 ? 0 : sortedMods.slice(0, TOP_K).reduce((a, m) => a + m.touches, 0) / totalTouches,
-        centralModules: [...new Set(records.flatMap((r) => r.central))].sort(),
-        areaShare,
-    };
-}
-const RATE_THRESHOLD = 0.10; // signal-rate move ≥10pp to be drift
-const CONCENTRATION_THRESHOLD = 0.05; // concentration move ≥5pp
-function dir(cur, prior, thr) {
-    const d = cur - prior;
-    if (Math.abs(d) < thr)
-        return 'stable';
-    return d > 0 ? 'rising' : 'falling';
-}
-function pct(x) { return `${Math.round(x * 100)}%`; }
-/** widening reads as widening/narrowing; other signals as rising/falling. */
-function signalWord(metric, d) {
-    if (d === 'stable')
-        return 'stable';
-    if (metric === 'widening')
-        return d === 'rising' ? 'widening' : 'narrowing';
-    return d;
-}
-function withPrior(label, cur, prior, thr, metric) {
-    if (prior === undefined)
-        return { code: metric, text: `${label}: ${pct(cur)}.` };
-    const d = dir(cur, prior, thr);
-    const word = signalWord(metric, d);
-    const wasClause = Math.round(cur * 100) === Math.round(prior * 100) ? '' : ` (was ${pct(prior)})`;
-    return { code: metric, text: `${label}: ${pct(cur)}${wasClause} — ${word}.` };
-}
-function synthesizeDriftReport(input) {
-    const cur = snapshotFromRecords(input.current);
-    const prior = input.prior && input.prior.length > 0 ? snapshotFromRecords(input.prior) : undefined;
-    const periodLabel = input.periodLabel ?? `last ${cur.window} PRs${prior ? ` vs prior ${prior.window}` : ''}`;
-    const sections = [];
-    // Posture
-    sections.push({
-        heading: 'Posture',
-        lines: [withPrior('Flagged (review + incoherent)', cur.signals.flagged, prior?.signals.flagged, RATE_THRESHOLD, 'flagged')],
-    });
-    // Operational signals — always render the three headline signals so the report
-    // can calmly affirm stability; that is the report's job.
-    sections.push({
-        heading: 'Operational signals',
-        lines: [
-            withPrior('Blast-radius widening', cur.signals.widening, prior?.signals.widening, RATE_THRESHOLD, 'widening'),
-            withPrior('Generated-code spillover', cur.signals.generatedSpillover, prior?.signals.generatedSpillover, RATE_THRESHOLD, 'generated-spillover'),
-            withPrior('Undeclared boundary crossings', cur.signals.boundaryCrossing, prior?.signals.boundaryCrossing, RATE_THRESHOLD, 'boundary-crossing'),
-        ],
-    });
-    // Concentration
-    const concLines = [withPrior('Top-3 module concentration', cur.concentrationTopShare, prior?.concentrationTopShare, CONCENTRATION_THRESHOLD, 'concentration')];
-    if (cur.topModules.length > 0) {
-        concLines.push({ code: 'top-modules', text: `Top modules: ${cur.topModules.map((m) => `\`${m.module}\` (${pct(m.share)})`).join(', ')}.` });
-    }
-    sections.push({ heading: 'Concentration', lines: concLines });
-    // Hotspots + emergence/cooling vs prior
-    const hotspotLines = cur.hotspots.slice(0, 4).map((h) => ({ code: 'hotspot', text: `\`${h.module}\` — touched in ${pct(h.share)} of PRs.` }));
-    if (prior) {
-        const priorSet = new Set(prior.hotspots.map((h) => h.module));
-        const curSet = new Set(cur.hotspots.map((h) => h.module));
-        const emerged = cur.hotspots.filter((h) => !priorSet.has(h.module)).map((h) => h.module);
-        const cooled = prior.hotspots.filter((h) => !curSet.has(h.module)).map((h) => h.module);
-        if (emerged.length)
-            hotspotLines.push({ code: 'hotspot-emerged', text: `New this period: ${emerged.map((m) => `\`${m}\``).join(', ')}.` });
-        if (cooled.length)
-            hotspotLines.push({ code: 'hotspot-cooled', text: `Cooled: ${cooled.map((m) => `\`${m}\``).join(', ')}.` });
-    }
-    if (hotspotLines.length > 0)
-        sections.push({ heading: 'Hotspots', lines: hotspotLines });
-    // Contributor operational spread (current window)
-    const contributors = (0, operational_memory_1.deriveTimeline)(input.current, input.current.length).contributors;
-    if (contributors.length > 0) {
-        sections.push({
-            heading: 'Contributor operational spread',
-            lines: contributors.slice(0, 4).map((c) => ({
-                code: 'contributor',
-                text: `\`${c.author}\` — repeated ${c.code.replace(/-/g, ' ')} (${c.events} PRs)${c.areas.length ? ` in ${c.areas.slice(0, 3).join(', ')}` : ''}.`,
-            })),
-        });
-    }
-    const hashInput = JSON.stringify({ periodLabel, window: cur.window, priorWindow: prior?.window ?? null, sections, profile: input.repoProfileHash ?? null });
-    const reportHash = (0, node_crypto_1.createHash)('sha256').update(hashInput).digest('hex').slice(0, 12);
-    return { title: 'Operational Evolution Report', periodLabel, window: cur.window, priorWindow: prior?.window ?? null, sections, reportHash };
-}
-// ── Calm markdown rendering ───────────────────────────────────────────────────
-function renderReportMarkdown(report, opts) {
-    const lines = [
-        '## Neurcode — Operational Evolution Report',
-        '',
-        `_${report.periodLabel}${opts?.repoProfileHash ? ` · repo profile \`${opts.repoProfileHash}\`` : ''} · report \`${report.reportHash}\`_`,
-        '',
-    ];
-    for (const section of report.sections) {
-        if (section.lines.length === 0)
-            continue;
-        lines.push(`### ${section.heading}`, '');
-        for (const line of section.lines)
-            lines.push(`- ${line.text}`);
-        lines.push('');
-    }
-    lines.push('---', `Deterministic · derived from ${opts?.recordCount ?? report.window} operational records · report \`${report.reportHash}\``, '_Operational observability, not developer metrics. Derived from replay-safe topology primitives._');
-    return lines.join('\n');
-}
-
-
-/***/ }),
-
-/***/ 5194:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Operational Synthesis (deterministic fusion)
- * ============================================
- *
- * The platform now has many operational layers — drift, geography, momentum,
- * release transitions. Each is correct but FRAGMENTED. This layer fuses them
- * into ONE coherent, sparse operational digest.
- *
- * It is fusion, not summarisation: each statement is a deterministic
- * reconciliation of structured findings the other layers already produced. When
- * three layers point at the same fact (concentration rising + a pressure zone +
- * intensifying momentum, all on the same module) it emits ONE consolidated
- * sentence and lists which layers reinforced it. When a short-window drift and a
- * release-era momentum disagree, it says so plainly. When everything is quiet,
- * the digest is one calm line. Replay-safe: pure over the layer outputs, which
- * are pure over deterministic records.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.synthesizeOperationalDigest = synthesizeOperationalDigest;
-const node_crypto_1 = __nccwpck_require__(7598);
-const operational_report_1 = __nccwpck_require__(3664);
-const operational_cartography_1 = __nccwpck_require__(315);
-const operational_dynamics_1 = __nccwpck_require__(7460);
-const DRIFT_THRESHOLD = 0.10;
-function drift(cur, prior) {
-    const d = cur - prior;
-    if (Math.abs(d) < DRIFT_THRESHOLD)
-        return 'stable';
-    return d > 0 ? 'rising' : 'falling';
-}
-function areaOfModule(module, geo) {
-    return geo.regions.find((r) => r.modules.includes(module))?.area;
-}
-function synthesizeOperationalDigest(input) {
-    const cur = (0, operational_report_1.snapshotFromRecords)(input.current);
-    const prior = input.prior && input.prior.length > 0 ? (0, operational_report_1.snapshotFromRecords)(input.prior) : undefined;
-    const geo = (0, operational_cartography_1.deriveGeography)(input.current, input.staticEdges ?? []);
-    const momentum = input.eras && input.eras.length >= 3 ? (0, operational_dynamics_1.deriveMomentum)(input.eras) : [];
-    const mom = (kind, subject) => momentum.find((m) => m.kind === kind && (subject === undefined || m.subject === subject));
-    const statements = [];
-    const topModule = geo.pressureRegions[0]?.module ?? cur.topModules?.[0]?.module;
-    // ── 1. Concentration / pressure: consolidation · migration · dispersal · stabilization
-    const concMom = mom('concentration');
-    const concDrift = prior ? drift(cur.concentrationTopShare, prior.concentrationTopShare) : undefined;
-    const migrated = prior && geo.pressureRegions.length > 0 && cur.topModules[0] && prior.topModules[0]
-        && cur.topModules[0].module !== prior.topModules[0].module
-        && cur.topModules[0].share - (prior.topModules.find((m) => m.module === cur.topModules[0].module)?.share ?? 0) >= DRIFT_THRESHOLD;
-    if (migrated && topModule) {
-        const area = areaOfModule(topModule, geo);
-        statements.push({ state: 'migrating', text: `Operational pressure has migrated toward \`${topModule}\`${area ? ` (the ${area} region)` : ''}.`, provenance: prov(['drift', concMom ? 'momentum' : null]) });
-    }
-    else if (topModule && (concDrift === 'rising' || concMom?.state === 'intensifying')) {
-        // Reinforcement vs conflict between short-window drift and release-era momentum.
-        if (concDrift === 'rising' && concMom?.state === 'cooling') {
-            statements.push({ state: 'conflicting', text: `Operational concentration rose recently, but across release eras it is cooling — recent pressure may not persist.`, provenance: ['drift', 'momentum'] });
-        }
-        else {
-            const area = areaOfModule(topModule, geo);
-            statements.push({ state: 'consolidating', text: `Operational pressure is consolidating around \`${topModule}\`${area ? ` (the ${area} region)` : ''}.`, provenance: prov(['geography', concDrift === 'rising' ? 'drift' : null, concMom?.state === 'intensifying' ? 'momentum' : null]) });
-        }
-    }
-    else if (concMom?.state === 'stabilized') {
-        statements.push({ state: 'stabilizing', text: `Operational concentration has stabilized${concMom.sinceLabel ? ` after ${concMom.sinceLabel}` : ''} (around ${pct(cur.concentrationTopShare)}).`, provenance: ['momentum'] });
-    }
-    else if (concDrift === 'falling' || concMom?.state === 'cooling') {
-        statements.push({ state: 'dispersing', text: `Operational pressure is dispersing — concentration is ${concMom?.state === 'cooling' ? 'cooling across release eras' : 'falling'}.`, provenance: prov([concDrift === 'falling' ? 'drift' : null, concMom?.state === 'cooling' ? 'momentum' : null]) });
-    }
-    // ── 2. Signals: widening + generated spillover (dissipation / intensification / containment)
-    for (const [sig, label] of [['widening', 'Blast-radius widening'], ['generatedSpillover', 'Generated-code spillover']]) {
-        const m = mom('signal', sig);
-        const d = prior ? drift(cur.signals[sig], prior.signals[sig]) : undefined;
-        if (m?.state === 'dissipated' || m?.state === 'cooling' || d === 'falling') {
-            statements.push({ state: 'dispersing', text: `${label} has ${m?.state === 'dissipated' ? 'dissipated' : 'cooled'}.`, provenance: prov([d === 'falling' ? 'drift' : null, m ? 'momentum' : null]) });
-        }
-        else if (m?.state === 'intensifying' || d === 'rising') {
-            statements.push({ state: 'consolidating', text: `${label} is intensifying.`, provenance: prov([d === 'rising' ? 'drift' : null, m ? 'momentum' : null]) });
-        }
-        else if (sig === 'generatedSpillover' && cur.signals.generatedSpillover > 0 && cur.signals.generatedSpillover < 0.1 && (m === undefined || m.state === 'persistent')) {
-            statements.push({ state: 'contained', text: `Generated-code spillover stayed contained (${pct(cur.signals.generatedSpillover)}).`, provenance: ['drift'] });
-        }
-    }
-    // ── 3. Corridors: co-evolution of regions (momentum-confirmed, else geography-present)
-    const corridorMom = momentum.filter((m) => m.kind === 'corridor' && (m.state === 'intensifying' || m.state === 'persistent'));
-    const corridorSubject = corridorMom[0]?.subject ?? (geo.corridors[0] ? `${geo.corridors[0].a} ${geo.corridors[0].b}` : undefined);
-    if (corridorSubject) {
-        const [a, b] = corridorSubject.split(' ');
-        const aa = areaOfModule(a, geo);
-        const ba = areaOfModule(b, geo);
-        const regionClause = aa && ba && aa !== ba ? ` — ${aa} and ${ba} regions increasingly co-evolve` : '';
-        const phrase = corridorMom[0]?.state === 'intensifying' ? 'continues to strengthen'
-            : corridorMom[0]?.state === 'persistent' ? 'remains a sustained co-change path'
-                : 'is an active co-change path';
-        const structural = geo.corridors.find((c) => (c.a === a && c.b === b) || (c.a === b && c.b === a))?.structural === true;
-        const reinforced = structural ? ' — reinforced by both replay evolution and static dependency topology' : '';
-        statements.push({ state: 'co-evolving', text: `The \`${a}\` ↔ \`${b}\` corridor ${phrase}${regionClause}${reinforced}.`, provenance: prov([corridorMom[0] ? 'momentum' : null, 'geography', structural ? 'static' : null]) });
-    }
-    // Order by kineticness; cap.
-    const rank = { migrating: 0, consolidating: 1, conflicting: 2, 'co-evolving': 3, dispersing: 4, stabilizing: 5, contained: 6 };
-    const ordered = statements.sort((x, y) => rank[x.state] - rank[y.state]).slice(0, 6);
-    const digestHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
-        repo: input.repo ?? null, window: cur.window, eras: input.eras?.length ?? 0,
-        s: ordered.map((s) => `${s.state}:${s.text}`),
-    })).digest('hex').slice(0, 12);
-    return { window: cur.window, eras: input.eras?.length ?? 0, statements: ordered, digestHash, markdown: render(ordered, cur.window, input.eras?.length ?? 0, input.repo, digestHash) };
-}
-function pct(x) { return `${Math.round(x * 100)}%`; }
-function prov(parts) { return parts.filter((p) => !!p); }
-function render(statements, window, eras, repo, hash) {
-    const lines = [
-        '## Neurcode — Operational Digest',
-        '',
-        `_${repo ? `${repo} · ` : ''}window ${window} PRs${eras >= 3 ? ` · ${eras} release eras` : ''} · digest \`${hash}\`_`,
-        '',
-    ];
-    if (statements.length === 0) {
-        lines.push('Operationally quiet — no consolidation, migration, co-evolution, or dissipation above threshold across this window.');
-    }
-    else {
-        for (const s of statements) {
-            const reinforced = s.provenance.length >= 2 ? ` _(reinforced across ${s.provenance.join(' + ')})_` : '';
-            lines.push(`- ${s.text}${reinforced}`);
-        }
-    }
-    lines.push('', '---', `Deterministic synthesis of drift + geography + momentum · digest \`${hash}\``, '_One coherent operational picture, fused from replay-safe primitives. Not a summary._');
-    return lines.join('\n');
-}
-
-
-/***/ }),
-
-/***/ 7881:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Compact OSS PR comment.
- *
- * Maintainers skim PR checks in seconds. This renderer optimises for that:
- * one verdict, one sentence, a tiny declared-vs-touched table, the few reasons
- * that matter, and a deduped advisory list of reliability findings. No A–F
- * grade, no score, no governance-posture / replay / evidence / decision-lineage
- * sections — those are enterprise concerns and are intentionally absent here.
- *
- * It reuses the same comment marker as the enterprise formatter so a repo that
- * later turns enterprise mode on upgrades the same PR comment in place.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.NEURCODE_RUN_ID_PLACEHOLDER = exports.NEURCODE_GOVERNANCE_REPORT_MARKER = void 0;
-exports.dedupeStructural = dedupeStructural;
-exports.formatOssScopeComment = formatOssScopeComment;
-exports.formatOssStepSummary = formatOssStepSummary;
-exports.shouldComment = shouldComment;
-exports.resolveOssExit = resolveOssExit;
-const pr_lifecycle_1 = __nccwpck_require__(4638);
-exports.NEURCODE_GOVERNANCE_REPORT_MARKER = '<!-- neurcode-governance-report -->';
-exports.NEURCODE_RUN_ID_PLACEHOLDER = '{{NEURCODE_RUN_ID}}';
-const MAX_REASONS = 3;
-const MAX_EVIDENCE_PER_REASON = 3;
-const MAX_STRUCTURAL_ROWS = 6;
-const SUBSYSTEM_LABEL = {
-    docs: 'docs',
-    test: 'tests',
-    ci: 'CI',
-    build: 'build/deps',
-    config: 'config',
-    frontend: 'frontend',
-    generated: 'generated code',
-    sensitive: 'sensitive',
-    source: 'source',
-};
-function esc(value) {
-    return value.replace(/\|/g, '\\|').replace(/`/g, '\\`');
-}
-function verdictBadge(level) {
-    if (level === 'incoherent')
-        return '⛔ **Scope mismatch**';
-    if (level === 'review')
-        return '⚠️ **Worth a look**';
-    return '✅ **Scope coherent**';
-}
-/** Dedupe structural findings by file+line+rule — collapses the policy-engine mirror. */
-function dedupeStructural(findings) {
-    const seen = new Set();
-    const out = [];
-    for (const f of findings) {
-        const key = `${f.file}:${f.line ?? ''}:${f.ruleId.toUpperCase()}`;
-        if (seen.has(key))
-            continue;
-        seen.add(key);
-        out.push(f);
-    }
-    return out.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0) || a.ruleId.localeCompare(b.ruleId));
-}
-function renderTouched(result) {
-    const subs = result.blastRadius.subsystems;
-    if (subs.length === 0)
-        return '_(no files classified)_';
-    return subs
-        .map((s) => {
-        const label = SUBSYSTEM_LABEL[s.subsystem] ?? s.subsystem;
-        const tagSuffix = s.tags.length > 0 ? ` (${s.tags.join(', ')})` : '';
-        const bold = s.significant === true || s.subsystem === 'sensitive';
-        const text = `${label}${tagSuffix} ×${s.files.length}`;
-        return bold ? `**${esc(text)}**` : esc(text);
-    })
-        .join(' · ');
-}
-function formatOssScopeComment(input) {
-    const { result } = input;
-    const declared = result.declared;
-    const structural = dedupeStructural(input.structural);
-    const kindLabel = declared.changeKind === 'unknown' ? 'unlabeled' : declared.changeKind;
-    const issueRef = declared.linkedIssues.length > 0
-        ? ` · linked #${declared.linkedIssues.join(', #')}`
-        : '';
-    // The operational narrative (deterministic) is the headline when present.
-    const summary = result.narrative?.summary || result.headline;
-    const statements = result.narrative?.statements ?? [];
-    const lines = [
-        exports.NEURCODE_GOVERNANCE_REPORT_MARKER,
-        '## Neurcode — PR Scope Coherence',
-        '',
-        `${verdictBadge(result.level)} — ${esc(summary)}`,
-        '',
-        `> **Reads as:** \`${esc(kindLabel)}\`${issueRef}` + (declared.title ? ` — “${esc(declared.title)}”` : ''),
-        `> **Actually touches:** ${renderTouched(result)}`,
-        '',
-    ];
-    // Lifecycle: how operational coherence evolved across pushes (only when there's a story).
-    if (input.lifecycle && input.lifecycle.pushes.length >= 2) {
-        const a = (0, pr_lifecycle_1.analyzeLifecycle)(input.lifecycle);
-        if (a.narrative)
-            lines.push(`> **Lifecycle:** ${esc(a.narrative)}`, '');
-    }
-    // Sparse "operational read" — only when the narrative has something to say
-    // beyond the verdict (i.e. flagged or mechanically-suppressed PRs).
-    if (statements.length > 0) {
-        lines.push('### Operational read', '');
-        for (const s of statements.slice(0, MAX_REASONS)) {
-            lines.push(`- ${esc(s.text)}`);
-            const ev = (s.evidence ?? []).slice(0, MAX_EVIDENCE_PER_REASON).map((e) => `\`${esc(e)}\``);
-            if (ev.length > 0) {
-                const more = (s.evidence ?? []).length > MAX_EVIDENCE_PER_REASON
-                    ? ` _+${(s.evidence ?? []).length - MAX_EVIDENCE_PER_REASON} more_` : '';
-                lines.push(`  ${ev.join(', ')}${more}`);
-            }
-        }
-        lines.push('');
-    }
-    if (structural.length > 0) {
-        const shown = structural.slice(0, MAX_STRUCTURAL_ROWS);
-        const omitted = structural.length - shown.length;
-        lines.push('### Reliability checks (advisory)', '');
-        for (const f of shown) {
-            const loc = f.line ? `${f.file}:${f.line}` : f.file;
-            lines.push(`- \`${esc(loc)}\` — ${esc(f.ruleId)} ${esc(f.title)}`);
-        }
-        if (omitted > 0)
-            lines.push('', `> +${omitted} more in the CI log.`);
-        lines.push('');
-    }
-    lines.push('---', `Deterministic · scope \`${result.scopeHash}\` · re-run on this commit to reproduce · run ${exports.NEURCODE_RUN_ID_PLACEHOLDER}`, '_Advisory — this never blocks your merge unless a maintainer turns that on. Neurcode checks operational boundaries (scope vs. blast radius), not code style; it runs alongside your code reviewer._');
-    // Hidden, machine-readable per-PR lifecycle store (read on the next push).
-    if (input.lifecycle && input.lifecycle.pushes.length > 0) {
-        lines.push('', (0, pr_lifecycle_1.serializeLifecycle)(input.lifecycle));
-    }
-    return lines.join('\n');
-}
-/**
- * GitHub step-summary variant. Level-aware so a first-time maintainer is never
- * confused by silence: on a coherent PR it states plainly that "no comment" is
- * the EXPECTED result — not a broken or skipped run.
- */
-function formatOssStepSummary(result) {
-    const facts = [
-        `- Reads as: \`${esc(result.declared.changeKind)}\``,
-        `- Touches: ${result.blastRadius.subsystems.map((s) => `${s.subsystem}×${s.files.length}`).join(', ') || 'none'}`,
-        `- Scope hash: \`${result.scopeHash}\` — re-run on the same commit to reproduce this exact verdict.`,
-    ];
-    if (result.level === 'coherent') {
-        return [
-            '## Neurcode — PR Scope Coherence',
-            '',
-            '✅ **Scope coherent — no PR comment posted. This is the expected result.**',
-            '',
-            "Neurcode stays silent on healthy PRs and speaks only when a change's actual blast radius diverges from what it says it does. It is advisory and never blocks your merge.",
-            '',
-            ...facts,
-        ].join('\n');
-    }
-    return [
-        '## Neurcode — PR Scope Coherence',
-        '',
-        `${verdictBadge(result.level)} — ${result.narrative?.summary || result.headline}`,
-        '',
-        'Neurcode posted one advisory comment on this PR. It is advisory and never blocks your merge unless a maintainer turns that on.',
-        '',
-        ...facts,
-    ].join('\n');
-}
-/**
- * Silent-success comment policy: HIGH SIGNAL, LOW PRESENCE.
- * - 'flagged' (default): comment only on review/incoherent; coherent PRs stay
- *   quiet (a prior comment is still updated to resolved, but none is created).
- * - 'always': comment on every PR.  - 'never': CI outputs / step-summary only.
- */
-function shouldComment(level, commentOn) {
-    if (commentOn === 'never')
-        return false;
-    if (commentOn === 'always')
+function isOwnerToken(token) {
+    if (/^@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?$/.test(token))
         return true;
-    return level !== 'coherent';
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(token);
 }
 /**
- * OSS exit semantics. Advisory by default — trust is the priority for a first
- * install. A maintainer can opt into hard-failing on mismatch once they trust
- * the signal (`scope_coherence_fail: true`).
+ * Parse CODEOWNERS text into bounded, validated rules plus diagnostics.
+ * Lines exceeding MAX_LINE_BYTES are skipped instead of truncated.
  */
-function resolveOssExit(input) {
-    if (input.level === 'incoherent') {
-        return input.failOnIncoherent
-            ? { shouldFail: true, warning: 'Neurcode: PR scope mismatch (configured to block).' }
-            : { shouldFail: false, warning: 'Neurcode: PR scope mismatch — advisory only.' };
+function parseCodownersDetailed(text) {
+    const warnings = [];
+    const rules = [];
+    let boundedText = text;
+    if (Buffer.byteLength(text, 'utf8') > MAX_CODEOWNERS_BYTES) {
+        const truncated = Buffer.from(text, 'utf8').subarray(0, MAX_CODEOWNERS_BYTES).toString('utf8');
+        const lastNewline = truncated.lastIndexOf('\n');
+        boundedText = lastNewline >= 0 ? truncated.slice(0, lastNewline) : '';
+        addWarning(warnings, `CODEOWNERS content exceeded ${MAX_CODEOWNERS_BYTES} bytes; trailing partial line skipped.`);
     }
-    if (input.level === 'review') {
-        return { shouldFail: false, warning: 'Neurcode: PR scope worth a review.' };
+    const allLines = boundedText.split('\n');
+    const lines = allLines.slice(0, MAX_CODEOWNERS_LINES);
+    if (allLines.length > MAX_CODEOWNERS_LINES) {
+        addWarning(warnings, `CODEOWNERS has more than ${MAX_CODEOWNERS_LINES} lines; remaining lines skipped.`);
     }
-    return { shouldFail: false, warning: null };
-}
-
-
-/***/ }),
-
-/***/ 4638:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-/**
- * PR Operational Lifecycle (deterministic, per-push)
- * ==================================================
- *
- * The merged state alone can't tell "flagged then fixed" from "always coherent".
- * This tracks how a single PR's operational coherence evolves ACROSS PUSHES and
- * derives the convergence story — converged, fix-loop, persistent, or unresolved.
- *
- * The lifecycle is stored IN the PR comment itself (a hidden block), so there is
- * no separate telemetry pipeline: each run reads the prior lifecycle, appends the
- * current push's state, and re-derives the story. Only DISTINCT operational
- * states count (re-pushing the same diff — same scopeHash — is not a new state),
- * which keeps the timeline sparse. Pure ⇒ replay-safe.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.emptyLifecycle = emptyLifecycle;
-exports.appendPush = appendPush;
-exports.analyzeLifecycle = analyzeLifecycle;
-exports.serializeLifecycle = serializeLifecycle;
-exports.parseLifecycle = parseLifecycle;
-const EMBED_PREFIX = '<!-- neurcode-lifecycle:';
-const EMBED_SUFFIX = '-->';
-function emptyLifecycle() { return { v: 1, pushes: [] }; }
-/** Append the current push, collapsing no-op re-pushes (identical scopeHash). */
-function appendPush(prior, current) {
-    const pushes = prior?.pushes ? [...prior.pushes] : [];
-    const last = pushes[pushes.length - 1];
-    if (last && last.hash === current.hash)
-        return { v: 1, pushes }; // no operational change
-    pushes.push({ seq: pushes.length, verdict: current.verdict, codes: [...current.codes].sort(), hash: current.hash });
-    return { v: 1, pushes };
-}
-function analyzeLifecycle(state) {
-    const pushes = state.pushes;
-    const distinctStates = pushes.length;
-    const flag = (p) => p.verdict !== 'coherent';
-    let fixes = 0;
-    let regressions = 0;
-    for (let i = 1; i < pushes.length; i++) {
-        if (flag(pushes[i - 1]) && !flag(pushes[i]))
-            fixes += 1;
-        if (!flag(pushes[i - 1]) && flag(pushes[i]))
-            regressions += 1;
-    }
-    const everFlagged = pushes.some(flag);
-    const last = pushes[pushes.length - 1];
-    const lastFlagged = last ? flag(last) : false;
-    // Transient codes: signals that appeared at some point but are gone in the last state.
-    const everCodes = new Set(pushes.flatMap((p) => p.codes));
-    const lastCodes = new Set(last?.codes ?? []);
-    const transientCodes = [...everCodes].filter((c) => !lastCodes.has(c)).sort();
-    let convergence;
-    if (distinctStates <= 1 && !everFlagged)
-        convergence = 'clean';
-    else if (!lastFlagged && everFlagged)
-        convergence = (regressions >= 1 || fixes >= 2) ? 'fix-loop' : 'converged';
-    else if (lastFlagged && pushes.every(flag))
-        convergence = 'persistent';
-    else if (lastFlagged)
-        convergence = 'unresolved';
-    else
-        convergence = 'clean';
-    return { convergence, distinctStates, fixes, regressions, transientCodes, narrative: narrate(convergence, distinctStates, fixes, regressions, transientCodes) };
-}
-function transientClause(codes) {
-    if (codes.length === 0)
-        return '';
-    const label = {
-        'generated-spillover': 'generated-code spillover', 'boundary-crossing': 'the boundary crossing',
-        'new-operational-edge': 'the new operational edge', widening: 'operational widening',
-        'low-surface-touches-significant': 'the significant-boundary touch', 'docs-change-touches-source': 'the docs/source widening',
-    };
-    const named = codes.map((c) => label[c] ?? c).slice(0, 2);
-    return ` — ${named.join(' and ')} resolved along the way`;
-}
-function narrate(convergence, distinct, fixes, regressions, transient) {
-    switch (convergence) {
-        case 'clean': return null; // no story — silence
-        case 'converged': return `Converged before merge — flagged earlier, resolved across ${distinct} operational states${transientClause(transient)}.`;
-        case 'fix-loop': return `Entered repeated remediation loops (${fixes} fix / ${regressions} regression cycle${fixes + regressions === 1 ? '' : 's'}) before converging.`;
-        case 'persistent': return `Operational incoherence has persisted across ${distinct} pushes — not yet converged.`;
-        case 'unresolved': return `Not yet converged — re-flagged after an earlier coherent state.`;
-        default: return null;
-    }
-}
-// ── Hidden-comment serialisation (the per-PR store) ───────────────────────────
-function serializeLifecycle(state) {
-    // Compact: drop full hashes to short prefixes to keep the block small.
-    const compact = { v: 1, pushes: state.pushes.map((p) => ({ s: p.seq, v: p.verdict, c: p.codes, h: p.hash.slice(0, 8) })) };
-    return `${EMBED_PREFIX}${JSON.stringify(compact)}${EMBED_SUFFIX}`;
-}
-function parseLifecycle(commentBody) {
-    if (!commentBody)
-        return null;
-    const start = commentBody.indexOf(EMBED_PREFIX);
-    if (start === -1)
-        return null;
-    const end = commentBody.indexOf(EMBED_SUFFIX, start);
-    if (end === -1)
-        return null;
-    const json = commentBody.slice(start + EMBED_PREFIX.length, end).trim();
-    try {
-        const obj = JSON.parse(json);
-        if (!Array.isArray(obj.pushes))
-            return null;
-        return { v: 1, pushes: obj.pushes.map((p) => ({ seq: p.s, verdict: p.v, codes: Array.isArray(p.c) ? p.c : [], hash: p.h })) };
-    }
-    catch {
-        return null;
-    }
-}
-
-
-/***/ }),
-
-/***/ 9006:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Release-aware operational intelligence (deterministic)
- * ======================================================
- *
- * Rolling windows capture continuous drift; software actually evolves in EPOCHS
- * — releases, migrations, architectural transitions. This layer groups the
- * longitudinal records by release boundary (git tag + date), snapshots each
- * release, and compares release-to-release to surface architectural transitions
- * and migration epochs.
- *
- * The narratives are release-ANCHORED FACTS, never causal claims. The system
- * states "v2.8: operational concentration rose 71% → 78%"; it does NOT guess
- * *why* (that would be prose). The maintainer knows what shipped in v2.8.
- *
- * Replay-safe: buckets are a pure grouping of (deterministic) records by a
- * release list, snapshots/transitions are pure folds, so the same (records,
- * releases) always yield the same report and the same reportHash.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isPreRelease = isPreRelease;
-exports.groupByReleases = groupByReleases;
-exports.detectTransitions = detectTransitions;
-exports.detectEpochs = detectEpochs;
-exports.synthesizeReleaseReport = synthesizeReleaseReport;
-const node_crypto_1 = __nccwpck_require__(7598);
-const operational_report_1 = __nccwpck_require__(3664);
-/**
- * Pre-release tags (alpha/beta/rc/dev/nightly) are not stable architectural
- * boundaries — they fragment the timeline into tiny, noisy windows. Excluded by
- * default; their PRs roll into the next stable release.
- */
-function isPreRelease(tag) {
-    return /(?:[-.]|^)(?:alpha|beta|rc|pre|preview|dev|snapshot|nightly|canary)\b/i.test(tag) ||
-        /\d(?:a|b|rc|alpha|beta)\d+$/i.test(tag) ||
-        /[-.](?:a|b|rc)\d+$/i.test(tag);
-}
-const MIN_RELEASE_PRS = 5;
-const CONCENTRATION_SHIFT = 0.10;
-const SIGNAL_SHIFT = 0.12;
-const COUPLING_SHIFT = 0.15;
-const EPOCH_RATE = 0.15;
-// ── Grouping ──────────────────────────────────────────────────────────────────
-/** Assign each record (by mergedAt) to the first release whose date is >= it. */
-function groupByReleases(records, releases) {
-    const sortedReleases = [...releases].filter((r) => r.tag && r.date).sort((a, b) => a.date.localeCompare(b.date));
-    const dated = records.filter((r) => typeof r.mergedAt === 'string' && r.mergedAt);
-    const byTag = new Map();
-    for (const rel of sortedReleases)
-        byTag.set(rel.tag, []);
-    const unreleased = [];
-    for (const rec of dated) {
-        const m = rec.mergedAt;
-        const rel = sortedReleases.find((r) => r.date >= m);
-        if (rel)
-            byTag.get(rel.tag).push(rec);
-        else
-            unreleased.push(rec);
-    }
-    const buckets = sortedReleases
-        .map((rel) => ({ tag: rel.tag, date: rel.date, records: byTag.get(rel.tag).sort((a, b) => a.pr - b.pr) }))
-        .filter((b) => b.records.length > 0)
-        .map((b) => ({ ...b, snapshot: (0, operational_report_1.snapshotFromRecords)(b.records) }));
-    if (unreleased.length > 0) {
-        buckets.push({ tag: 'unreleased', date: '9999', records: unreleased.sort((a, b) => a.pr - b.pr), snapshot: (0, operational_report_1.snapshotFromRecords)(unreleased) });
-    }
-    return buckets;
-}
-function pct(x) { return `${Math.round(x * 100)}%`; }
-function pairRates(records) {
-    const counts = new Map();
-    for (const r of records) {
-        const areas = [...new Set(r.areas)].sort();
-        for (let i = 0; i < areas.length; i++) {
-            for (let j = i + 1; j < areas.length; j++)
-                counts.set(`${areas[i]} + ${areas[j]}`, (counts.get(`${areas[i]} + ${areas[j]}`) ?? 0) + 1);
-        }
-    }
-    const out = new Map();
-    const n = Math.max(1, records.length);
-    for (const [k, c] of counts)
-        out.set(k, { rate: c / n, count: c });
-    return out;
-}
-function detectTransitions(buckets) {
-    const out = [];
-    const real = buckets.filter((b) => b.tag !== 'unreleased');
-    for (let i = 1; i < real.length; i++) {
-        const cur = real[i];
-        const prior = real[i - 1];
-        if (cur.records.length < MIN_RELEASE_PRS || prior.records.length < MIN_RELEASE_PRS)
+    for (let i = 0; i < lines.length; i++) {
+        const lineNo = i + 1;
+        const rawLine = lines[i];
+        if (Buffer.byteLength(rawLine, 'utf8') > MAX_LINE_BYTES) {
+            addWarning(warnings, `line ${lineNo}: skipped because it exceeds ${MAX_LINE_BYTES} bytes.`);
             continue;
-        const cs = cur.snapshot;
-        const ps = prior.snapshot;
-        if (Math.abs(cs.concentrationTopShare - ps.concentrationTopShare) >= CONCENTRATION_SHIFT) {
-            const rising = cs.concentrationTopShare > ps.concentrationTopShare;
-            const top = cs.topModules[0]?.module;
-            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'concentration-shift', architectural: true,
-                text: `operational concentration ${rising ? 'rose' : 'fell'} ${pct(ps.concentrationTopShare)} → ${pct(cs.concentrationTopShare)}${top ? ` (top \`${top}\`)` : ''}` });
         }
-        const curTop = cs.topModules[0]?.module;
-        const priorTop = ps.topModules[0]?.module;
-        if (curTop && priorTop && curTop !== priorTop && cs.hotspots.length > 0) {
-            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'hotspot-shift', architectural: true,
-                text: `the dominant module shifted from \`${priorTop}\` to \`${curTop}\`` });
-        }
-        const priorCentral = new Set(ps.centralModules);
-        const curCentral = new Set(cs.centralModules);
-        for (const m of cs.centralModules.filter((x) => !priorCentral.has(x))) {
-            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'new-central', architectural: true, text: `\`${m}\` became operationally central` });
-        }
-        for (const m of ps.centralModules.filter((x) => !curCentral.has(x))) {
-            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'lost-central', architectural: true, text: `\`${m}\` is no longer operationally central` });
-        }
-        if (Math.abs(cs.signals.widening - ps.signals.widening) >= SIGNAL_SHIFT) {
-            const narrowed = cs.signals.widening < ps.signals.widening;
-            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'widening-shift', architectural: false,
-                text: `blast-radius widening ${narrowed ? 'narrowed' : 'widened'} ${pct(ps.signals.widening)} → ${pct(cs.signals.widening)}` });
-        }
-        if (Math.abs(cs.signals.generatedSpillover - ps.signals.generatedSpillover) >= SIGNAL_SHIFT) {
-            const rising = cs.signals.generatedSpillover > ps.signals.generatedSpillover;
-            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'spillover-shift', architectural: false,
-                text: `generated-code spillover ${rising ? 'rose' : 'fell'} ${pct(ps.signals.generatedSpillover)} → ${pct(cs.signals.generatedSpillover)}` });
-        }
-        // Coupling: an area-pair that co-changes markedly more than the prior release.
-        const curPairs = pairRates(cur.records);
-        const priorPairs = pairRates(prior.records);
-        const rising = [...curPairs.entries()]
-            .filter(([k, v]) => v.count >= 2 && v.rate - (priorPairs.get(k)?.rate ?? 0) >= COUPLING_SHIFT)
-            .sort((a, b) => b[1].rate - a[1].rate);
-        if (rising.length > 0) {
-            const [pairKey, v] = rising[0];
-            out.push({ tag: cur.tag, priorTag: prior.tag, kind: 'coupling-shift', architectural: false,
-                text: `${pairKey.replace(/-/g, ' ')} increasingly co-change (${pct(priorPairs.get(pairKey)?.rate ?? 0)} → ${pct(v.rate)} of PRs)` });
-        }
-    }
-    return out;
-}
-function detectEpochs(buckets) {
-    const real = buckets.filter((b) => b.tag !== 'unreleased' && b.records.length >= MIN_RELEASE_PRS);
-    const epochs = [];
-    for (const metric of ['generated-spillover', 'widening']) {
-        const rateOf = (b) => metric === 'widening' ? b.snapshot.signals.widening : b.snapshot.signals.generatedSpillover;
-        let runStart = -1;
-        for (let i = 0; i <= real.length; i++) {
-            const elevated = i < real.length && rateOf(real[i]) >= EPOCH_RATE;
-            if (elevated && runStart === -1)
-                runStart = i;
-            else if (!elevated && runStart !== -1) {
-                if (i - runStart >= 2)
-                    epochs.push({ fromTag: real[runStart].tag, toTag: real[i - 1].tag, metric, releases: i - runStart });
-                runStart = -1;
-            }
-        }
-    }
-    return epochs;
-}
-function synthesizeReleaseReport(input) {
-    const releases = input.includePreReleases ? input.releases : input.releases.filter((r) => !isPreRelease(r.tag));
-    const buckets = groupByReleases(input.records, releases);
-    const transitions = detectTransitions(buckets);
-    const epochs = detectEpochs(buckets);
-    const transitionTags = new Set(transitions.filter((t) => t.architectural).map((t) => t.tag));
-    const reportHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
-        repo: input.repo ?? null,
-        buckets: buckets.map((b) => ({ tag: b.tag, w: b.records.length, c: Math.round(b.snapshot.concentrationTopShare * 100), top: b.snapshot.topModules[0]?.module ?? null })),
-        transitions: transitions.map((t) => `${t.tag}:${t.kind}`),
-        epochs: epochs.map((e) => `${e.fromTag}-${e.toTag}:${e.metric}`),
-    })).digest('hex').slice(0, 12);
-    const lines = [
-        '## Neurcode — Release Operational History',
-        '',
-        `_${input.repo ? `${input.repo} · ` : ''}${buckets.length} release window(s) · report \`${reportHash}\`_`,
-        '',
-        '### Topology by release',
-        '',
-    ];
-    // Newest first for readability.
-    for (const b of [...buckets].reverse()) {
-        const s = b.snapshot;
-        const top = s.topModules[0]?.module;
-        const marker = transitionTags.has(b.tag) ? '  ⟳ transition' : '';
-        lines.push(`- **${b.tag}** (${b.records.length} PRs): concentration ${pct(s.concentrationTopShare)}${top ? ` · top \`${top}\`` : ''} · flagged ${pct(s.signals.flagged)}${marker}`);
-    }
-    lines.push('');
-    lines.push('### Transitions', '');
-    if (transitions.length === 0) {
-        lines.push('- No architectural or operational transitions detected across these releases.');
-    }
-    else {
-        for (const t of transitions)
-            lines.push(`- **${t.priorTag} → ${t.tag}:** ${t.text}.`);
-    }
-    lines.push('');
-    if (epochs.length > 0) {
-        lines.push('### Migration epochs', '');
-        for (const e of epochs) {
-            lines.push(`- **${e.fromTag} → ${e.toTag}:** ${e.metric.replace(/-/g, ' ')} stayed elevated across ${e.releases} releases.`);
-        }
-        lines.push('');
-    }
-    lines.push('---', `Deterministic · ${input.records.filter((r) => r.mergedAt).length} dated records across ${buckets.length} releases · report \`${reportHash}\``, '_Release-anchored operational facts, derived from replay-safe topology primitives. Not causal claims._');
-    return { repo: input.repo, buckets: buckets.length, transitions, epochs, reportHash, markdown: lines.join('\n') };
-}
-
-
-/***/ }),
-
-/***/ 7383:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Repository Operational Topology (deterministic, language-agnostic)
- * ==================================================================
- *
- * The current scope-coherence ontology classifies files against a hardcoded,
- * web-backend-shaped token list (auth/scheduler/payments/runtime/…). A replay
- * audit over real repos showed why that is insufficient: 25–80% of every repo's
- * code lands in an undifferentiated `source` bucket, and Rust/Dart/Go monorepos
- * (AppFlowy, CrewAI, Supabase) carry rich module structure the ontology never
- * sees.
- *
- * This module derives a repository's operational topology from the file tree
- * itself — no hardcoded ecosystem semantics, no LLM, no embeddings, no network.
- * The unit of structure is the **module**, defined the way each ecosystem
- * already defines it: a directory containing a package manifest (Cargo.toml,
- * pubspec.yaml, go.mod, package.json, pyproject.toml, …). Everything is a pure
- * function of a sorted path list, so the same tree yields the same profile and
- * the same `profileHash` — replay-stable by construction.
- *
- * What stays hardcoded (intentionally): a SMALL set of *universal* security
- * tokens (auth/crypto/secrets/payments/migrations). Those are genuinely
- * cross-language sensitive. What becomes derived: module boundaries, runtime
- * entrypoints, generated regions, and which modules are operationally
- * significant. The web-backend *architectural* tokens (scheduler/runtime/
- * executor/kernel) are deliberately dropped here — that role is now inferred
- * from entrypoints and (optionally) import centrality.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.normalizePath = normalizePath;
-exports.securityTagFor = securityTagFor;
-exports.significantSecurityTagFor = significantSecurityTagFor;
-exports.roleOf = roleOf;
-exports.deriveTopology = deriveTopology;
-exports.subsystemOf = subsystemOf;
-exports.isSignificant = isSignificant;
-exports.withCentrality = withCentrality;
-exports.findManifestPaths = findManifestPaths;
-exports.deriveManifestEdges = deriveManifestEdges;
-const node_crypto_1 = __nccwpck_require__(7598);
-// ── Universal security overlay (intentionally hardcoded, cross-language) ───────
-// Token-exact match on path segments. Deliberately excludes architectural
-// role words (scheduler/runtime/executor/kernel) — those are derived.
-const SECURITY_TOKENS = {
-    auth: 'auth', authn: 'auth', authz: 'authz', oauth: 'auth', sso: 'auth', saml: 'auth',
-    credential: 'credentials', credentials: 'credentials',
-    secret: 'secrets', secrets: 'secrets',
-    security: 'security', crypto: 'crypto', cryptography: 'crypto', encryption: 'crypto', jwt: 'auth',
-    rbac: 'permissions', permission: 'permissions', permissions: 'permissions',
-    payment: 'payments', payments: 'payments', billing: 'billing', checkout: 'payments',
-    migration: 'migrations', migrations: 'migrations',
-};
-// A directory is a "module root" if it directly contains one of these manifests.
-const MANIFESTS = new Set([
-    'package.json', 'cargo.toml', 'go.mod', 'pubspec.yaml',
-    'pyproject.toml', 'setup.py', 'setup.cfg', 'pom.xml',
-    'build.gradle', 'build.gradle.kts', 'composer.json', 'gemfile', 'mix.exs',
-    'cmakelists.txt',
-]);
-// Monorepo container segments — when a manifest is absent, a child of one of
-// these is still a recognisable module boundary.
-const MONOREPO_CONTAINERS = new Set([
-    'packages', 'apps', 'services', 'crates', 'libs', 'lib', 'modules', 'plugins', 'cmd', 'projects',
-]);
-const CODE_EXTS = new Set([
-    'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'go', 'rs', 'dart',
-    'java', 'kt', 'kts', 'rb', 'php', 'c', 'cc', 'cpp', 'h', 'hpp', 'cs', 'scala', 'swift', 'ex', 'exs',
-]);
-const DOC_EXTS = new Set(['md', 'mdx', 'rst', 'adoc', 'mdc']);
-const CONFIG_EXTS = new Set(['yml', 'yaml', 'json', 'toml', 'ini', 'cfg', 'properties', 'env']);
-// ── Path helpers (self-contained — no dependency on scope-coherence) ──────────
-function normalizePath(p) {
-    return (p || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').trim();
-}
-function dirOf(path) {
-    const i = path.lastIndexOf('/');
-    return i === -1 ? '' : path.slice(0, i);
-}
-function baseOf(path) {
-    return path.split('/').pop() || path;
-}
-function extOf(path) {
-    const b = baseOf(path);
-    const d = b.lastIndexOf('.');
-    return d > 0 ? b.slice(d + 1).toLowerCase() : '';
-}
-function segsOf(path) {
-    return path.toLowerCase().split('/').filter(Boolean);
-}
-function tokensOf(path) {
-    return path.toLowerCase().split(/[/\\._\-]+/).filter(Boolean);
-}
-/** Universal security tag for a path, or null. Token-exact (no "author"⊃"auth"). */
-function securityTagFor(path) {
-    for (const tok of tokensOf(path)) {
-        if (SECURITY_TOKENS[tok])
-            return SECURITY_TOKENS[tok];
-    }
-    return null;
-}
-const FRONTEND_EXTS_T = new Set(['tsx', 'jsx', 'vue', 'svelte', 'css', 'scss', 'less', 'html']);
-const SOFT_SECURITY_TAGS = new Set(['auth', 'authz', 'permissions']);
-function isFrontendPath(path) {
-    const segs = segsOf(path);
-    return FRONTEND_EXTS_T.has(extOf(path)) ||
-        segs.includes('components') || segs.includes('ui') || segs.includes('pages') || segs.includes('views');
-}
-/**
- * Security tag for OPERATIONAL significance — like securityTagFor, but a soft
- * tag (auth/authz/permissions) in a frontend file is NOT significant: an
- * `Auth/` UI component tree is not the authentication runtime. Hard tags
- * (secrets/crypto/payments/migrations) stay significant everywhere. Evidenced
- * by supabase#46222 (a Modal→Dialog UI codemod under Auth/Policies/).
- */
-function significantSecurityTagFor(rawPath) {
-    const path = normalizePath(rawPath);
-    const tag = securityTagFor(path);
-    if (!tag)
-        return null;
-    if (SOFT_SECURITY_TAGS.has(tag) && isFrontendPath(path))
-        return null;
-    return tag;
-}
-// ── Structural role (path-based, language-agnostic, profile-independent) ──────
-// Runtime entrypoints only. NOT lib.rs/mod.rs — a Rust library root is touched
-// routinely and is not operationally critical the way a binary entrypoint is.
-// (Real-PR evidence: AppFlowy#7996 over-fired on lib-log/src/lib.rs.)
-const ENTRYPOINT_BASENAMES = new Set([
-    'main.rs', 'main.go', 'main.py', '__main__.py', 'main.dart',
-]);
-// A main.* under a tooling/test/example path is a helper binary, NOT the
-// product runtime entrypoint — it must not count as operationally significant.
-// (Real-PR evidence: hashicorp/terraform#38606, a CI checker tool's main.go.)
-// NB: 'cmd' is intentionally absent — Go product entrypoints live in cmd/ (e.g.
-// cmd/terraform). A tooling binary lives under tools/hack/scripts/testdata.
-const TOOLING_SEGS = new Set([
-    'test', 'tests', 'testdata', 'example', 'examples', 'hack', 'tools', 'tool',
-    'scripts', 'mocks', 'fixtures', 'e2e', 'bench', 'benchmarks', 'demo', 'demos',
-]);
-function isToolingPath(path) {
-    return segsOf(path).some((s) => TOOLING_SEGS.has(s));
-}
-function roleOf(rawPath) {
-    const path = normalizePath(rawPath);
-    const lower = path.toLowerCase();
-    const segs = segsOf(lower);
-    const base = baseOf(lower);
-    const ext = extOf(lower);
-    const nameNoExt = base.includes('.') ? base.slice(0, base.indexOf('.')) : base;
-    // Generated (strong, cross-language signals). Broadened for Go/k8s/proto/mocks
-    // codegen so generated churn is recognised, not mistaken for source.
-    if (segs.includes('generated') || segs.includes('__generated__') || segs.includes('openapi-gen') || segs.includes('mocks') ||
-        base.startsWith('zz_generated') ||
-        /(_pb2(_grpc)?\.py|\.pb\.(go|cc|h|dart)|\.g\.dart|\.freezed\.dart|\.gr\.dart|\.config\.dart|\.generated\.[a-z]+|\.designer\.cs|_generated\.go|\.gen\.go|_gen\.go|_swagger_doc_generated\.go)$/.test(base)) {
-        return 'generated';
-    }
-    // CI
-    if (lower.startsWith('.github/workflows/') || lower.startsWith('.circleci/') ||
-        base === 'jenkinsfile' || base === '.travis.yml' || base === '.gitlab-ci.yml' || base === 'azure-pipelines.yml') {
-        return 'ci';
-    }
-    // Infra surfaces
-    if (segs.includes('terraform') || segs.includes('k8s') || segs.includes('kubernetes') ||
-        segs.includes('helm') || segs.includes('charts') || segs.includes('ansible') ||
-        segs.includes('deploy') || segs.includes('deployment') ||
-        ext === 'tf' || /^dockerfile/.test(base) || /^docker-compose/.test(base)) {
-        return 'infra';
-    }
-    // Docs (+ examples/cursor rules)
-    if (DOC_EXTS.has(ext) || segs.includes('docs') || segs.includes('doc') || segs.includes('.cursor') ||
-        segs.includes('examples') || segs.includes('example_dags') || segs.includes('samples') ||
-        ['readme', 'changelog', 'contributing', 'license', 'notice', 'authors', 'thanks', 'maintainers', 'codeowners', 'support', 'todo'].includes(nameNoExt)) {
-        return 'docs';
-    }
-    // Tests
-    if (segs.includes('test') || segs.includes('tests') || segs.includes('__tests__') ||
-        segs.includes('spec') || segs.includes('e2e') ||
-        base === 'conftest.py' || /(^test_|_test\.|\.test\.|\.spec\.)/.test(base)) {
-        return 'test';
-    }
-    // Build / dependency manifests
-    if (MANIFESTS.has(base) || /^requirements.*\.txt$/.test(base) || base === 'makefile' ||
-        base === 'tsconfig.json' || ext === 'lock' || base.endsWith('.lock')) {
-        return 'build';
-    }
-    // Runtime entrypoints
-    if (ENTRYPOINT_BASENAMES.has(base) || segs.includes('cmd') || segs.includes('bin')) {
-        return 'entrypoint';
-    }
-    // Security-tool baselines are config, not security code
-    if (base.endsWith('.baseline') || base === '.gitleaks.toml' || base === '.trivyignore') {
-        return 'config';
-    }
-    // Config
-    if (CONFIG_EXTS.has(ext) || base.startsWith('.env') || segs.includes('config')) {
-        return 'config';
-    }
-    // First-party source
-    return 'source';
-}
-// ── Topology derivation ───────────────────────────────────────────────────────
-function deriveTopology(rawPaths) {
-    const paths = [...new Set(rawPaths.map(normalizePath).filter(Boolean))].sort();
-    // 1. Module roots = directories that hold a package manifest (excluding the
-    //    repo root, which would swallow everything). Plus monorepo-container
-    //    children that hold source, as a fallback for repos without nested manifests.
-    const manifestDirs = new Set();
-    for (const p of paths) {
-        if (MANIFESTS.has(baseOf(p.toLowerCase()))) {
-            const d = dirOf(p);
-            if (d)
-                manifestDirs.add(d);
-        }
-    }
-    const containerChildren = new Set();
-    for (const p of paths) {
-        const segs = p.split('/');
-        if (segs.length >= 3 && MONOREPO_CONTAINERS.has(segs[0].toLowerCase()) && CODE_EXTS.has(extOf(p))) {
-            containerChildren.add(`${segs[0]}/${segs[1]}`);
-        }
-    }
-    let moduleRoots = [...new Set([...manifestDirs, ...containerChildren])];
-    // If we found essentially no structure, fall back to top-level directories
-    // that contain code (so even a flat repo gets *some* partition).
-    if (moduleRoots.length <= 1) {
-        const topDirs = new Set();
-        for (const p of paths) {
-            const segs = p.split('/');
-            if (segs.length >= 2 && CODE_EXTS.has(extOf(p)))
-                topDirs.add(segs[0]);
-        }
-        moduleRoots = [...new Set([...moduleRoots, ...topDirs])];
-    }
-    // Longest-first so subsystemOf() matches the deepest (most specific) module.
-    moduleRoots.sort((a, b) => b.length - a.length || a.localeCompare(b));
-    // 2. Record which modules contain a runtime entrypoint — informational, for
-    //    explanation only. Significance is FILE-level (see isSignificant), so a
-    //    2000-file app is not "all significant" just because it has a main.*.
-    const entrypointModules = new Set();
-    for (const p of paths) {
-        if (roleOf(p) === 'entrypoint') {
-            const mod = matchModuleRoot(p, moduleRoots);
-            if (mod)
-                entrypointModules.add(mod);
-        }
-    }
-    const profileHash = (0, node_crypto_1.createHash)('sha256')
-        .update(JSON.stringify({ m: moduleRoots }))
-        .digest('hex').slice(0, 12);
-    return {
-        moduleRoots,
-        entrypointModules: [...entrypointModules].sort(),
-        centralModules: [],
-        centralFanIn: {},
-        fileCount: paths.length,
-        profileHash,
-    };
-}
-function matchModuleRoot(path, moduleRoots) {
-    const dir = dirOf(path);
-    for (const root of moduleRoots) {
-        if (dir === root || dir.startsWith(`${root}/`) || path.startsWith(`${root}/`))
-            return root;
-    }
-    return null;
-}
-/** The repo-specific module a file belongs to (or its top-level dir as fallback). */
-function subsystemOf(rawPath, profile) {
-    const path = normalizePath(rawPath);
-    const mod = matchModuleRoot(path, profile.moduleRoots);
-    if (mod)
-        return mod;
-    const segs = path.split('/');
-    return segs.length >= 2 ? segs[0] : '(root)';
-}
-/**
- * Operationally significant = a runtime entrypoint, a universal security zone,
- * a module flagged significant by derivation, or a centrality hotspot. This is
- * the generalized, repo-derived replacement for the hardcoded "sensitive" tag.
- */
-function isSignificant(rawPath, profile) {
-    const path = normalizePath(rawPath);
-    if (roleOf(path) === 'entrypoint' && !isToolingPath(path))
-        return true; // product entrypoint (not a tools/test/example binary)
-    if (significantSecurityTagFor(path) !== null)
-        return true; // file-level: universal security overlay (soft tags exempt in UI)
-    const mod = matchModuleRoot(path, profile.moduleRoots); // module-level: only via import centrality
-    return mod !== null && profile.centralModules.includes(mod);
-}
-/**
- * Layer fan-in centrality onto an existing profile. A module imported by many
- * distinct other modules is high-blast-radius. Threshold is the 90th-percentile
- * of fan-in (min 3), so "central" stays a small, high-signal set. Pure and
- * deterministic given the edge list; callers supply edges however they like.
- */
-function withCentrality(profile, edges) {
-    const fanIn = new Map();
-    for (const e of edges) {
-        if (e.fromModule === e.toModule)
+        const trimmed = rawLine.trim();
+        if (!trimmed || trimmed.startsWith('#'))
             continue;
-        if (!fanIn.has(e.toModule))
-            fanIn.set(e.toModule, new Set());
-        fanIn.get(e.toModule).add(e.fromModule);
-    }
-    const counts = [...fanIn.entries()].map(([m, s]) => ({ m, n: s.size })).sort((a, b) => b.n - a.n);
-    if (counts.length === 0)
-        return profile;
-    const sorted = counts.map((c) => c.n).sort((a, b) => a - b);
-    const p90 = sorted[Math.floor(sorted.length * 0.9)] ?? sorted[sorted.length - 1];
-    const threshold = Math.max(3, p90);
-    const centralCounts = counts.filter((c) => c.n >= threshold);
-    const central = centralCounts.map((c) => c.m).sort();
-    const centralFanIn = {};
-    for (const c of centralCounts)
-        centralFanIn[c.m] = c.n;
-    const profileHash = (0, node_crypto_1.createHash)('sha256')
-        .update(JSON.stringify({ m: profile.moduleRoots, c: central }))
-        .digest('hex').slice(0, 12);
-    return { ...profile, centralModules: central, centralFanIn, profileHash };
-}
-/** Manifest file paths in a tree (so a caller knows the minimal set to read). */
-function findManifestPaths(rawPaths) {
-    return [...new Set(rawPaths.map(normalizePath).filter((p) => p && MANIFESTS.has(baseOf(p.toLowerCase()))))].sort();
-}
-function joinRelative(baseDir, rel) {
-    const stack = baseDir.split('/').filter(Boolean);
-    for (const seg of rel.replace(/\\/g, '/').split('/').filter(Boolean)) {
-        if (seg === '.')
+        const tokens = trimmed.split(/\s+/);
+        const pattern = tokens[0];
+        if (!pattern)
             continue;
-        else if (seg === '..')
-            stack.pop();
-        else
-            stack.push(seg);
-    }
-    return stack.join('/');
-}
-function deriveManifestEdges(manifests, moduleRoots) {
-    const moduleOfDir = (dir) => {
-        let best = null;
-        for (const r of moduleRoots) {
-            if ((dir === r || dir.startsWith(`${r}/`)) && (!best || r.length > best.length))
-                best = r;
-        }
-        return best;
-    };
-    // package.json "name" → module index (for `workspace:` deps referenced by name).
-    const nameToModule = new Map();
-    for (const m of manifests) {
-        if (baseOf(normalizePath(m.path).toLowerCase()) !== 'package.json')
+        const reason = unsupportedPatternReason(pattern);
+        if (reason) {
+            addWarning(warnings, `line ${lineNo}: skipped pattern "${pattern}" because ${reason}.`);
             continue;
-        try {
-            const json = JSON.parse(m.content);
-            const dir = dirOf(normalizePath(m.path));
-            const mod = moduleOfDir(dir) ?? dir;
-            if (typeof json.name === 'string' && mod)
-                nameToModule.set(json.name, mod);
         }
-        catch { /* tolerate malformed manifests */ }
-    }
-    // Module basename → module root (for Gradle `project(':foo:bar')` refs).
-    const basenameToModule = new Map();
-    for (const r of moduleRoots) {
-        const b = r.split('/').pop();
-        if (b && !basenameToModule.has(b))
-            basenameToModule.set(b, r);
-    }
-    const edges = [];
-    const seen = new Set();
-    const add = (from, to) => {
-        if (!from || !to || from === to)
-            return;
-        const key = `${from}->${to}`;
-        if (seen.has(key))
-            return;
-        seen.add(key);
-        edges.push({ fromModule: from, toModule: to });
-    };
-    for (const m of manifests) {
-        const path = normalizePath(m.path);
-        const base = baseOf(path.toLowerCase());
-        const dir = dirOf(path);
-        const fromModule = moduleOfDir(dir) ?? dir;
-        if (base === 'cargo.toml' || base === 'pubspec.yaml' || base === 'go.mod') {
-            // path = "../x"  ·  path: ../x  ·  => ../x   (relative, first-party only)
-            const re = /(?:path\s*[=:]\s*["']?|=>\s*)(\.\.?\/[^\s"'),]+)/g;
-            let mm;
-            while ((mm = re.exec(m.content)) !== null)
-                add(fromModule, moduleOfDir(joinRelative(dir, mm[1])));
+        const segmentCount = pattern.split('/').filter(Boolean).length;
+        if (segmentCount > MAX_GLOB_SEGMENTS) {
+            addWarning(warnings, `line ${lineNo}: skipped pattern "${pattern}" because it exceeds ${MAX_GLOB_SEGMENTS} path segments.`);
+            continue;
         }
-        else if (base === 'package.json') {
-            try {
-                const json = JSON.parse(m.content);
-                const deps = { ...(json.dependencies ?? {}), ...(json.devDependencies ?? {}), ...(json.peerDependencies ?? {}) };
-                for (const [name, ver] of Object.entries(deps)) {
-                    const v = String(ver);
-                    if (/^(file:|link:)/.test(v))
-                        add(fromModule, moduleOfDir(joinRelative(dir, v.replace(/^(file:|link:)/, ''))));
-                    else if (/^workspace:/.test(v))
-                        add(fromModule, nameToModule.get(name) ?? null);
+        const ownerTokens = [];
+        for (const token of tokens.slice(1)) {
+            if (token.startsWith('#'))
+                break;
+            if (isOwnerToken(token))
+                ownerTokens.push(token);
+        }
+        if (ownerTokens.length === 0) {
+            addWarning(warnings, `line ${lineNo}: skipped pattern "${pattern}" because it has no valid owners.`);
+            continue;
+        }
+        rules.push({ pattern, owners: ownerTokens });
+    }
+    return { rules, warnings, degraded: warnings.length > 0 };
+}
+/**
+ * Backward-compatible parser API used by existing tests.
+ */
+function parseCodowners(text) {
+    return parseCodownersDetailed(text).rules;
+}
+function escapeRegexChar(ch) {
+    return /[\\^$.*+?()[\]{}|]/.test(ch) ? `\\${ch}` : ch;
+}
+function globFragmentToRegex(pattern) {
+    let out = '';
+    for (let i = 0; i < pattern.length; i++) {
+        const ch = pattern[i];
+        if (ch === '*') {
+            if (pattern[i + 1] === '*') {
+                if (pattern[i + 2] === '/') {
+                    out += '(?:.*/)?';
+                    i += 2;
+                }
+                else {
+                    out += '.*';
+                    i += 1;
                 }
             }
-            catch { /* tolerate malformed manifests */ }
-        }
-        else if (base === 'build.gradle' || base === 'build.gradle.kts') {
-            // Gradle inter-module deps: project(':foo:bar') / project(path: ':foo')
-            const re = /project\(\s*(?:path\s*[:=]\s*)?['"]:?([\w:.\-]+)['"]\s*\)/g;
-            let mm;
-            while ((mm = re.exec(m.content)) !== null) {
-                const name = mm[1].split(':').filter(Boolean).pop();
-                if (name)
-                    add(fromModule, basenameToModule.get(name) ?? null);
+            else {
+                out += '[^/]*';
             }
         }
-        else if (base === 'cmakelists.txt') {
-            // CMake: add_subdirectory(rel) declares a structural sub-module edge.
-            const re = /add_subdirectory\(\s*([^\s)]+)/g;
-            let mm;
-            while ((mm = re.exec(m.content)) !== null) {
-                const rel = mm[1].replace(/['"]/g, '');
-                if (!rel.startsWith('${') && !rel.startsWith('/'))
-                    add(fromModule, moduleOfDir(joinRelative(dir, rel)));
-            }
-        }
-    }
-    return edges.sort((a, b) => a.fromModule.localeCompare(b.fromModule) || a.toModule.localeCompare(b.toModule));
-}
-
-
-/***/ }),
-
-/***/ 6334:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-/**
- * Deterministic PR Scope Coherence
- * ================================
- *
- * The OSS wedge. Answers one question, deterministically and with no LLM:
- *
- *   "Did this PR stay within a coherent operational boundary?"
- *
- * It compares the DECLARED scope of a PR (derived from its title, body,
- * labels, and linked-issue references) against the ACTUAL blast radius of the
- * diff (which subsystems the changed files belong to, plus newly-added
- * import edges that cross into sensitive boundaries).
- *
- * Design constraints (non-negotiable — this is the brand):
- *   - Pure functions over sorted inputs. Same PR ⇒ same verdict ⇒ same hash.
- *   - No embeddings, no vector DB, no probabilistic scoring, no network.
- *   - Conservative escalation: ⛔ incoherent is reserved for the one
- *     emotionally-unambiguous case (a low-surface change — docs/test/chore —
- *     that quietly modifies sensitive code). Everything else maxes out at
- *     ⚠️ review, and the default is ✅ coherent. This keeps signal high and
- *     false-positive blast-back low on real OSS repos.
- *
- * This module imports nothing from @actions/* so it stays trivially testable
- * and portable into the CLI runtime later.
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.classifyFile = classifyFile;
-exports.deriveDeclaredScope = deriveDeclaredScope;
-exports.parseImportEdgeCrossings = parseImportEdgeCrossings;
-exports.deriveBlastRadius = deriveBlastRadius;
-exports.assessScopeCoherence = assessScopeCoherence;
-exports.evaluateScopeCoherence = evaluateScopeCoherence;
-const node_crypto_1 = __nccwpck_require__(7598);
-const repo_topology_1 = __nccwpck_require__(7383);
-const mechanical_signals_1 = __nccwpck_require__(4050);
-const narrative_1 = __nccwpck_require__(9047);
-// ── Subsystem taxonomy ────────────────────────────────────────────────────────
-/**
- * High-signal, deliberately TIGHT sensitive-boundary tokens. Matched against
- * whole path tokens (split on /\._-) so "author" never matches "auth" and
- * "session"/"worker"/"token"/"net" are intentionally excluded — they are too
- * common in queue/transport codebases (Celery, Kombu) and would generate
- * exactly the false positives that erode maintainer trust.
- */
-const SENSITIVE_TOKENS = {
-    auth: 'auth',
-    authn: 'auth',
-    authz: 'authz',
-    oauth: 'auth',
-    sso: 'auth',
-    saml: 'auth',
-    credential: 'credentials',
-    credentials: 'credentials',
-    secret: 'secrets',
-    secrets: 'secrets',
-    security: 'security',
-    crypto: 'crypto',
-    cryptography: 'crypto',
-    encryption: 'crypto',
-    jwt: 'auth',
-    rbac: 'permissions',
-    permission: 'permissions',
-    permissions: 'permissions',
-    payment: 'payments',
-    payments: 'payments',
-    billing: 'billing',
-    checkout: 'payments',
-    scheduler: 'scheduler',
-    executor: 'executor',
-    runtime: 'runtime',
-    kernel: 'kernel',
-    migration: 'migrations',
-    migrations: 'migrations',
-};
-/**
- * "Soft" sensitive tags are common as frontend folder names (an `Auth/` UI
- * component tree, a `permissions` settings page). They are downgraded to
- * frontend when the file is clearly a UI file — only the auth *runtime* should
- * trip the sensitive boundary, not the screen that configures it. Hard tags
- * (secrets, crypto, payments, scheduler, runtime, …) stay sensitive everywhere.
- */
-const SOFT_SENSITIVE_TAGS = new Set(['auth', 'authz', 'permissions']);
-const DOC_FILENAMES = new Set([
-    'readme', 'changelog', 'contributing', 'license', 'notice', 'authors',
-    'thanks', 'maintainers', 'codeowners', 'security', 'support', 'todo',
-]);
-const BUILD_FILENAMES = new Set([
-    'package.json', 'pnpm-lock.yaml', 'yarn.lock', 'package-lock.json',
-    'pyproject.toml', 'setup.py', 'setup.cfg', 'pipfile', 'pipfile.lock',
-    'poetry.lock', 'cargo.toml', 'cargo.lock', 'go.mod', 'go.sum',
-    'build.gradle', 'pom.xml', 'makefile', 'tsconfig.json', 'webpack.config.js',
-    'rollup.config.js', 'manifest.in',
-]);
-// 'mdc' = Cursor rule files; they are agent documentation, not load-bearing source.
-const DOC_EXTS = new Set(['md', 'mdx', 'rst', 'adoc', 'mdc']);
-const FRONTEND_EXTS = new Set(['tsx', 'jsx', 'vue', 'svelte', 'css', 'scss', 'less', 'html']);
-const CONFIG_EXTS = new Set(['yml', 'yaml', 'json', 'toml', 'ini', 'cfg', 'properties']);
-function normalizePath(p) {
-    return (p || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').trim();
-}
-function tokensOf(path) {
-    return path.toLowerCase().split(/[/\\._\-]+/).filter(Boolean);
-}
-function basename(path) {
-    const parts = path.split('/');
-    return parts[parts.length - 1] || path;
-}
-function extOf(path) {
-    const base = basename(path);
-    const dot = base.lastIndexOf('.');
-    return dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
-}
-/** Returns the sensitive tag for a path, or null. Token-exact to avoid substrings. */
-function sensitiveTagFor(path) {
-    for (const tok of tokensOf(path)) {
-        if (SENSITIVE_TOKENS[tok])
-            return SENSITIVE_TOKENS[tok];
-    }
-    return null;
-}
-/** Deterministic single-subsystem classification. First match wins. */
-function classifyFile(rawPath) {
-    const path = normalizePath(rawPath);
-    const lower = path.toLowerCase();
-    const segs = lower.split('/');
-    const base = basename(lower);
-    const ext = extOf(lower);
-    const nameNoExt = base.includes('.') ? base.slice(0, base.indexOf('.')) : base;
-    // 1. Generated code (strong signals only)
-    if (segs.includes('generated') || segs.includes('__generated__') ||
-        /(_pb2\.py|\.pb\.go|\.generated\.[a-z]+|\.g\.dart|\.designer\.cs)$/.test(base)) {
-        return { subsystem: 'generated' };
-    }
-    // 2. CI
-    if (lower.startsWith('.github/workflows/') || lower.startsWith('.circleci/') ||
-        base === 'jenkinsfile' || base === '.travis.yml' || base === '.gitlab-ci.yml' ||
-        base === 'azure-pipelines.yml') {
-        return { subsystem: 'ci' };
-    }
-    // 3. Docs — and example/sample code, which accompanies docs rather than
-    // being load-bearing source (e.g. Airflow's example_dags/).
-    if (DOC_EXTS.has(ext) || segs.includes('docs') || segs.includes('doc') ||
-        segs.includes('.cursor') ||
-        segs.includes('examples') || segs.includes('example_dags') || segs.includes('samples') ||
-        DOC_FILENAMES.has(nameNoExt) || (ext === 'txt' && segs.includes('docs'))) {
-        return { subsystem: 'docs' };
-    }
-    // 4. Tests
-    if (segs.includes('test') || segs.includes('tests') || segs.includes('__tests__') ||
-        segs.includes('spec') || segs.includes('e2e') ||
-        base === 'conftest.py' || /(^test_|_test\.|\.test\.|\.spec\.)/.test(base)) {
-        return { subsystem: 'test' };
-    }
-    // 5. Build / dependency manifests
-    if (BUILD_FILENAMES.has(base) || /^dockerfile/.test(base) || /^requirements.*\.txt$/.test(base) ||
-        ext === 'gradle' || base === '.babelrc') {
-        return { subsystem: 'build' };
-    }
-    // 5b. Security-TOOL artifacts. A `.secrets.baseline` (detect-secrets),
-    // `.gitleaks.toml`, or `.trivyignore` names a security tool but is config, not
-    // security CODE. Without this a routine baseline refresh reads as "touches secrets".
-    if (base === '.secrets.baseline' || base.endsWith('.baseline') ||
-        base === '.gitleaks.toml' || base === '.gitleaksignore' || base === '.trivyignore') {
-        return { subsystem: 'config' };
-    }
-    // 6 / 7. Sensitive boundary vs frontend. A sensitive token in a UI file is
-    // downgraded for the soft tags (auth/authz/permissions) — an `Auth/` component
-    // tree is not the authentication runtime. Hard tags stay sensitive everywhere.
-    const isFrontend = FRONTEND_EXTS.has(ext) || segs.includes('components') ||
-        segs.includes('ui') || segs.includes('pages') || segs.includes('views');
-    const tag = sensitiveTagFor(path);
-    if (tag && !(isFrontend && SOFT_SENSITIVE_TAGS.has(tag))) {
-        return { subsystem: 'sensitive', tag };
-    }
-    if (isFrontend) {
-        return { subsystem: 'frontend' };
-    }
-    // 8. Config
-    if (CONFIG_EXTS.has(ext) || base.startsWith('.env') || segs.includes('config')) {
-        return { subsystem: 'config' };
-    }
-    // 9. First-party source (fallback)
-    return { subsystem: 'source' };
-}
-// ── Declared-scope derivation ─────────────────────────────────────────────────
-const CONVENTIONAL_KIND = {
-    docs: 'docs', doc: 'docs',
-    test: 'test', tests: 'test',
-    chore: 'chore', build: 'chore', ci: 'chore', deps: 'chore', release: 'chore',
-    fix: 'fix', bugfix: 'fix', hotfix: 'fix', patch: 'fix',
-    refactor: 'refactor', perf: 'refactor', style: 'refactor',
-    feat: 'feature', feature: 'feature',
-};
-const LABEL_KIND = [
-    { match: /^(documentation|docs?)$/, kind: 'docs' },
-    { match: /^(bug|bugfix|defect)$/, kind: 'fix' },
-    { match: /^(enhancement|feature|feat)$/, kind: 'feature' },
-    { match: /^(dependencies|deps|chore|build|ci)$/, kind: 'chore' },
-    { match: /^(tests?|testing)$/, kind: 'test' },
-    { match: /^(refactor|refactoring|cleanup)$/, kind: 'refactor' },
-];
-// Ordered keyword fallback. Lower-surface kinds first so an ambiguous title
-// like "fix typo in docs" classifies as docs (the safer, higher-signal call).
-// Boundaries are stricter than \b: a keyword must not be embedded in a
-// hyphenated/underscored identifier, so branch names ("v3-2-test") and compound
-// words ("publish-docs") do NOT mislabel a PR. Evidenced by apache/airflow#67233.
-const KEYWORD_KIND = [
-    { kind: 'docs', words: /(?<![\w-])(typo|readme|changelog|docs?|documentation|comments?|spelling|grammar|wording)(?![\w-])/ },
-    { kind: 'test', words: /(?<![\w-])(tests?|specs?|coverage|flaky|fixtures?)(?![\w-])/ },
-    { kind: 'chore', words: /(?<![\w-])(bump|upgrade|dependency|dependencies|lockfile|formatting|lint|linting|release|version)(?![\w-])/ },
-    { kind: 'refactor', words: /(?<![\w-])(refactor|cleanup|rename|restructure|simplify|dedupe|deduplicate|tidy)(?![\w-])/ },
-    { kind: 'fix', words: /(?<![\w-])(fix|fixes|fixed|bug|regression|hotfix|broken|crash|error|patch)(?![\w-])/ },
-    { kind: 'feature', words: /(?<![\w-])(add|adds|implement|introduce|support|new|feature|enable)(?![\w-])/ },
-];
-function detectDeclaredSensitiveTags(text) {
-    const found = new Set();
-    const lower = ` ${text.toLowerCase()} `;
-    for (const [token, tag] of Object.entries(SENSITIVE_TOKENS)) {
-        const re = new RegExp(`(^|[^a-z0-9])${token}([^a-z0-9]|$)`, 'i');
-        if (re.test(lower))
-            found.add(tag);
-    }
-    return [...found].sort();
-}
-function parseLinkedIssues(body) {
-    const nums = new Set();
-    const re = /#(\d{1,7})\b/g;
-    let m;
-    while ((m = re.exec(body)) !== null) {
-        const n = Number(m[1]);
-        if (Number.isFinite(n) && n > 0)
-            nums.add(n);
-    }
-    return [...nums].sort((a, b) => a - b);
-}
-function deriveDeclaredScope(input) {
-    const title = (input.title || '').trim();
-    const body = (input.body || '').trim();
-    const labels = (input.labels || []).map((l) => l.toLowerCase().trim()).filter(Boolean).sort();
-    const haystack = `${title}\n${body}`;
-    let changeKind = 'unknown';
-    let changeKindSource = 'default';
-    const conv = title.match(/^([a-z]+)(?:\([^)]*\))?!?:/i);
-    if (conv && CONVENTIONAL_KIND[conv[1].toLowerCase()]) {
-        changeKind = CONVENTIONAL_KIND[conv[1].toLowerCase()];
-        changeKindSource = 'conventional-prefix';
-    }
-    if (changeKind === 'unknown') {
-        for (const label of labels) {
-            const hit = LABEL_KIND.find((l) => l.match.test(label));
-            if (hit) {
-                changeKind = hit.kind;
-                changeKindSource = 'label';
-                break;
-            }
-        }
-    }
-    if (changeKind === 'unknown') {
-        const lowerTitle = title.toLowerCase();
-        for (const k of KEYWORD_KIND) {
-            if (k.words.test(lowerTitle)) {
-                changeKind = k.kind;
-                changeKindSource = 'keyword';
-                break;
-            }
-        }
-    }
-    return {
-        changeKind,
-        changeKindSource,
-        declaredSensitiveTags: detectDeclaredSensitiveTags(haystack),
-        linkedIssues: parseLinkedIssues(body),
-        title: title.length > 120 ? `${title.slice(0, 119)}…` : title,
-    };
-}
-// ── Blast-radius derivation ───────────────────────────────────────────────────
-/**
- * Parse a unified diff for ADDED import statements that cross into a sensitive
- * boundary. Conservative by construction: only first-party signals (relative
- * JS/TS imports, or dotted module paths whose segments name a sensitive token)
- * count, and only when the importing file is NOT itself sensitive.
- */
-function parseImportEdgeCrossings(diffText) {
-    if (!diffText)
-        return [];
-    const crossings = [];
-    const seen = new Set();
-    let currentFile = '';
-    for (const line of diffText.split('\n')) {
-        if (line.startsWith('+++ ')) {
-            const m = line.match(/^\+\+\+ b\/(.+)$/);
-            currentFile = m ? normalizePath(m[1]) : '';
-            continue;
-        }
-        if (!line.startsWith('+') || line.startsWith('+++'))
-            continue;
-        if (!currentFile)
-            continue;
-        if (classifyFile(currentFile).subsystem === 'sensitive')
-            continue; // sensitive→sensitive is expected
-        const added = line.slice(1);
-        const modules = [];
-        // JS / TS
-        const jsFrom = added.match(/\bfrom\s+['"]([^'"]+)['"]/);
-        const jsReq = added.match(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/);
-        const jsBare = added.match(/^\s*import\s+['"]([^'"]+)['"]/);
-        if (jsFrom)
-            modules.push(jsFrom[1]);
-        if (jsReq)
-            modules.push(jsReq[1]);
-        if (jsBare)
-            modules.push(jsBare[1]);
-        // Python
-        const pyFrom = added.match(/^\s*from\s+([.\w]+)\s+import\b/);
-        const pyImport = added.match(/^\s*import\s+([.\w]+)/);
-        if (pyFrom)
-            modules.push(pyFrom[1]);
-        if (pyImport && !jsBare)
-            modules.push(pyImport[1]);
-        for (const mod of modules) {
-            const tag = sensitiveTagFor(mod);
-            if (!tag)
-                continue;
-            const key = `${currentFile}|${mod}|${tag}`;
-            if (seen.has(key))
-                continue;
-            seen.add(key);
-            crossings.push({ fromFile: currentFile, importedModule: mod, toTag: tag });
-        }
-    }
-    return crossings.sort((a, b) => a.fromFile.localeCompare(b.fromFile) || a.importedModule.localeCompare(b.importedModule));
-}
-function deriveBlastRadius(changedFiles, diffText = '') {
-    const files = [...new Set(changedFiles.map(normalizePath).filter(Boolean))].sort();
-    const bySubsystem = new Map();
-    for (const file of files) {
-        const { subsystem, tag } = classifyFile(file);
-        if (!bySubsystem.has(subsystem))
-            bySubsystem.set(subsystem, { files: new Set(), tags: new Set() });
-        const entry = bySubsystem.get(subsystem);
-        entry.files.add(file);
-        if (tag)
-            entry.tags.add(tag);
-    }
-    const subsystems = [...bySubsystem.entries()]
-        .map(([subsystem, v]) => ({
-        subsystem,
-        files: [...v.files].sort(),
-        tags: [...v.tags].sort(),
-    }))
-        .sort((a, b) => a.subsystem.localeCompare(b.subsystem));
-    const sensitiveTags = [...new Set(subsystems.flatMap((s) => s.tags))].sort();
-    return {
-        fileCount: files.length,
-        subsystems,
-        distinctSubsystemCount: subsystems.length,
-        sensitiveTags,
-        touchedGenerated: subsystems.some((s) => s.subsystem === 'generated'),
-        importEdgeCrossings: parseImportEdgeCrossings(diffText),
-    };
-}
-// ── Coherence assessment ──────────────────────────────────────────────────────
-const LOW_SURFACE = new Set(['docs', 'test', 'chore']);
-/**
- * A docs/test/chore PR is only "low-surface" while it stays small. A 100-file
- * release sync labelled `chore`/`test` is a bulk operation, not the small
- * innocuous change that hides a sensitive edit — flagging it is noise.
- * Evidenced by apache/airflow#67233. The headline case is always a few files.
- */
-const LOW_SURFACE_MAX_FILES = 20;
-/**
- * A docs PR editing a single source file is almost always a docstring/comment
- * fix — benign. Only flag when it edits several source files (a clearer "this
- * is actually code work mislabelled as docs" signal). Evidenced by the run:
- * apache/airflow#67101/#67114 (1-file docstring typos) were noise.
- */
-const DOCS_SOURCE_MIN = 3;
-/** First-party subsystems that count toward "blast radius spread". */
-const SPREAD_SUBSYSTEMS = new Set(['source', 'sensitive', 'frontend', 'generated']);
-const WIDE_SPREAD_THRESHOLD = 4;
-function maxLevel(a, b) {
-    const rank = { coherent: 0, review: 1, incoherent: 2 };
-    return rank[a] >= rank[b] ? a : b;
-}
-function stableHash(declared, blast, level, mechanicalClass) {
-    const shape = {
-        kind: declared.changeKind,
-        level,
-        subs: blast.subsystems.map((s) => `${s.subsystem}:${s.files.length}:${s.tags.join('+')}`),
-        sensitive: blast.sensitiveTags,
-        edges: blast.importEdgeCrossings.map((e) => `${e.fromFile}->${e.toTag}`),
-        generated: blast.touchedGenerated,
-        mechanical: mechanicalClass ?? null,
-    };
-    return (0, node_crypto_1.createHash)('sha256').update(JSON.stringify(shape)).digest('hex').slice(0, 12);
-}
-function assessScopeCoherence(declared, blast, mechanical) {
-    const reasons = [];
-    let level = 'coherent';
-    // Mechanical/bulk PRs (reverts, bumps, codemods…) are legitimately wide.
-    // Suppress only the spread / generated / docs-source signals — never the
-    // significance (Rule 1) or import-edge (Rule 2) signals.
-    const mech = mechanical?.isMechanical === true;
-    const sensitiveHit = blast.subsystems.find((s) => s.subsystem === 'sensitive');
-    const undeclaredSensitiveTags = (sensitiveHit?.tags ?? [])
-        .filter((tag) => !declared.declaredSensitiveTags.includes(tag));
-    const sourceHit = blast.subsystems.find((s) => s.subsystem === 'source');
-    const spread = blast.subsystems.filter((s) => SPREAD_SUBSYSTEMS.has(s.subsystem)).length;
-    const isLowSurface = LOW_SURFACE.has(declared.changeKind) && blast.fileCount <= LOW_SURFACE_MAX_FILES;
-    // RULE 1 — the headline. A small low-surface change quietly touching sensitive code.
-    if (isLowSurface && undeclaredSensitiveTags.length > 0) {
-        level = maxLevel(level, 'incoherent');
-        reasons.push({
-            code: 'low-surface-touches-sensitive',
-            message: `A ${declared.changeKind} change modifies ${undeclaredSensitiveTags.join(', ')} code that the PR never mentions.`,
-            evidence: sensitiveHit.files.filter((f) => undeclaredSensitiveTags.includes(classifyFile(f).tag || '')),
-        });
-    }
-    // RULE 2 — import edge newly reaching into a sensitive boundary.
-    const undeclaredEdges = blast.importEdgeCrossings.filter((e) => !declared.declaredSensitiveTags.includes(e.toTag));
-    if (undeclaredEdges.length > 0) {
-        level = maxLevel(level, isLowSurface ? 'incoherent' : 'review');
-        reasons.push({
-            code: 'import-edge-into-sensitive',
-            message: `New import edge(s) reach into ${[...new Set(undeclaredEdges.map((e) => e.toTag))].sort().join(', ')}.`,
-            evidence: undeclaredEdges.map((e) => `${e.fromFile} → ${e.importedModule}`),
-        });
-    }
-    // RULE 3 — a docs change editing several real first-party source files.
-    if (!mech && declared.changeKind === 'docs' && sourceHit && sourceHit.files.length >= DOCS_SOURCE_MIN
-        && undeclaredSensitiveTags.length === 0) {
-        level = maxLevel(level, 'review');
-        reasons.push({
-            code: 'docs-change-touches-source',
-            message: `A docs change also edits ${sourceHit.files.length} source files.`,
-            evidence: sourceHit.files,
-        });
-    }
-    // RULE 4 — generated-code spillover in a DOCS/TEST change. Regen accompanying
-    // a real code change (fix/feature/refactor/chore) is normal and not flagged.
-    if (!mech && blast.touchedGenerated && (declared.changeKind === 'docs' || declared.changeKind === 'test')) {
-        const gen = blast.subsystems.find((s) => s.subsystem === 'generated');
-        level = maxLevel(level, 'review');
-        reasons.push({
-            code: 'generated-code-touched',
-            message: `Generated code was modified in a ${declared.changeKind} change.`,
-            evidence: gen.files,
-        });
-    }
-    // RULE 5 — unusually wide blast radius for a non-feature change.
-    if (!mech && spread >= WIDE_SPREAD_THRESHOLD &&
-        (isLowSurface || declared.changeKind === 'fix' || declared.changeKind === 'unknown')) {
-        level = maxLevel(level, 'review');
-        reasons.push({
-            code: 'wide-blast-radius',
-            message: `Touches ${spread} distinct code subsystems — wide for a ${declared.changeKind} change.`,
-            evidence: blast.subsystems.filter((s) => SPREAD_SUBSYSTEMS.has(s.subsystem)).map((s) => s.subsystem),
-        });
-    }
-    let headline = buildHeadline(level, declared, blast, undeclaredSensitiveTags);
-    if (level === 'coherent' && mech && mechanical) {
-        headline = `Recognised as a ${mechanical.mechanicalClass} change — a wide diff is expected here.`;
-    }
-    return {
-        level, declared, blastRadius: blast, reasons, headline,
-        scopeHash: stableHash(declared, blast, level, mechanical?.mechanicalClass),
-        ...(mech && mechanical ? { mechanical } : {}),
-    };
-}
-function buildHeadline(level, declared, blast, undeclaredSensitiveTags) {
-    const kind = declared.changeKind === 'unknown' ? 'unlabeled' : declared.changeKind;
-    if (level === 'incoherent') {
-        const tags = undeclaredSensitiveTags.length > 0 ? undeclaredSensitiveTags.join(', ') : blast.sensitiveTags.join(', ');
-        return `This PR reads as a ${kind} change but modifies ${tags} code.`;
-    }
-    if (level === 'review') {
-        const subs = blast.subsystems.filter((s) => SPREAD_SUBSYSTEMS.has(s.subsystem)).map((s) => s.subsystem);
-        const list = subs.length > 0 ? subs.join(', ') : 'multiple areas';
-        return `This ${kind} change spans ${list} — worth a glance to confirm it's intended.`;
-    }
-    return `Changes stay within the expected boundary for a ${kind} change.`;
-}
-/** Convenience: end-to-end from raw PR signals + changed files + diff. */
-function evaluateScopeCoherence(input) {
-    const declared = deriveDeclaredScope(input);
-    const mechanical = input.disableMechanical
-        ? undefined
-        : (0, mechanical_signals_1.detectMechanical)({
-            title: input.title,
-            body: input.body,
-            labels: input.labels,
-            paths: input.changedFiles,
-            fileStats: input.fileStats,
-        });
-    const result = input.topology
-        ? assessWithTopology(declared, input.changedFiles, input.diffText || '', input.topology, mechanical)
-        : assessScopeCoherence(declared, deriveBlastRadius(input.changedFiles, input.diffText), mechanical);
-    // Narrative is a pure function of the deterministic result — replay-safe.
-    return { ...result, narrative: (0, narrative_1.synthesizeNarrative)(result, input.topology) };
-}
-// ── Topology-aware assessment (repo-derived significance + module spread) ─────
-// A parallel path to assessScopeCoherence, deliberately isolated so the
-// validated default behaviour is untouched. Same conservative rule shape; the
-// difference is WHERE "significant" and "spread" come from — the repo's own
-// module topology rather than the hardcoded token taxonomy.
-const TOPOLOGY_NONCODE_ROLES = new Set(['docs', 'test', 'ci', 'build', 'config', 'infra', 'generated']);
-function assessWithTopology(declared, rawFiles, diffText, topology, mechanical) {
-    const mech = mechanical?.isMechanical === true;
-    const files = [...new Set(rawFiles.map(normalizePath).filter(Boolean))].sort();
-    const byBucket = new Map();
-    const addHit = (bucket, file, tag, significant) => {
-        const e = byBucket.get(bucket) ?? { files: [], tags: new Set(), significant: false };
-        e.files.push(file);
-        if (tag)
-            e.tags.add(tag);
-        e.significant = e.significant || significant;
-        byBucket.set(bucket, e);
-    };
-    const significantHits = [];
-    const sourceFiles = [];
-    const codeModules = new Set();
-    let touchedGenerated = false;
-    for (const f of files) {
-        const role = (0, repo_topology_1.roleOf)(f);
-        if (role === 'generated')
-            touchedGenerated = true;
-        if (TOPOLOGY_NONCODE_ROLES.has(role)) {
-            addHit(role, f, undefined, false);
-            continue;
-        }
-        const moduleId = (0, repo_topology_1.subsystemOf)(f, topology);
-        codeModules.add(moduleId);
-        if ((0, repo_topology_1.isSignificant)(f, topology)) {
-            const tag = (0, repo_topology_1.significantSecurityTagFor)(f) || (role === 'entrypoint' ? 'entrypoint' : 'core');
-            significantHits.push({ file: f, tag });
-            addHit(moduleId, f, tag, true);
+        else if (ch === '?') {
+            out += '[^/]';
         }
         else {
-            sourceFiles.push(f);
-            addHit(moduleId, f, undefined, false);
+            out += escapeRegexChar(ch);
         }
     }
-    const subsystems = [...byBucket.entries()]
-        .map(([subsystem, v]) => ({ subsystem, files: v.files.sort(), tags: [...v.tags].sort(), significant: v.significant }))
-        .sort((a, b) => a.subsystem.localeCompare(b.subsystem));
-    const blast = {
-        fileCount: files.length,
-        subsystems,
-        distinctSubsystemCount: subsystems.length,
-        sensitiveTags: [...new Set(significantHits.map((h) => h.tag))].sort(),
-        touchedGenerated,
-        importEdgeCrossings: parseImportEdgeCrossings(diffText),
-    };
-    const reasons = [];
-    let level = 'coherent';
-    const isLowSurface = LOW_SURFACE.has(declared.changeKind) && blast.fileCount <= LOW_SURFACE_MAX_FILES;
-    // A named security area is "declared"; an entrypoint/central-core hit cannot be
-    // named by a PR author, so it always counts as undeclared significance.
-    const undeclaredSig = significantHits.filter((h) => (h.tag === 'entrypoint' || h.tag === 'core') ? true : !declared.declaredSensitiveTags.includes(h.tag));
-    const undeclaredTags = [...new Set(undeclaredSig.map((h) => h.tag))].sort();
-    // HARD significance (security boundary, runtime entrypoint) → incoherent.
-    // SOFT significance (high-centrality 'core' module) → only review. Centrality
-    // subtly raises attention; it never produces the dramatic ⛔ on its own.
-    const hardHits = undeclaredSig.filter((h) => h.tag !== 'core');
-    const softHits = undeclaredSig.filter((h) => h.tag === 'core');
-    const hardTags = [...new Set(hardHits.map((h) => h.tag))].sort();
-    // RULE 1 — small low-surface change touching a hard boundary it never names.
-    if (isLowSurface && hardHits.length > 0) {
-        level = maxLevel(level, 'incoherent');
-        reasons.push({
-            code: 'low-surface-touches-significant',
-            message: `A ${declared.changeKind} change modifies operationally significant code (${hardTags.join(', ')}) the PR never mentions.`,
-            evidence: hardHits.map((h) => h.file),
-        });
+    return out;
+}
+/**
+ * Test whether a single file path matches a single supported CODEOWNERS pattern.
+ *
+ * The path argument must not have a leading slash (normalised by caller).
+ */
+function matchesPattern(filePath, pattern) {
+    if (unsupportedPatternReason(pattern))
+        return false;
+    const p = filePath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+    let pat = pattern.trim().replace(/\\/g, '/');
+    if (!p || !pat)
+        return false;
+    const rooted = pat.startsWith('/');
+    if (rooted)
+        pat = pat.slice(1);
+    const directoryOnly = pat.endsWith('/');
+    if (directoryOnly)
+        pat = pat.slice(0, -1);
+    if (!pat)
+        return false;
+    const containsSlash = pat.includes('/');
+    const prefix = rooted || containsSlash ? '^' : '(?:^|.*/)';
+    const suffix = directoryOnly ? '(?:/.*)?$' : '$';
+    const regex = new RegExp(prefix + globFragmentToRegex(pat) + suffix);
+    return regex.test(p);
+}
+function evaluateRules(effects, rules) {
+    const affectedZones = new Set();
+    const affectedOwners = new Set();
+    const unownedPaths = [];
+    for (const effect of effects) {
+        const path = effect.path.replace(/\\/g, '/').replace(/^\.\//, '');
+        let matchedRule = null;
+        for (const rule of rules) {
+            if (matchesPattern(path, rule.pattern))
+                matchedRule = rule;
+        }
+        if (matchedRule) {
+            affectedZones.add(matchedRule.pattern);
+            for (const owner of matchedRule.owners)
+                affectedOwners.add(owner);
+        }
+        else {
+            unownedPaths.push(path);
+        }
     }
-    // RULE 1b — central-module touch (import centrality): subtler, review-only.
-    if (!mech && isLowSurface && softHits.length > 0 && hardHits.length === 0) {
-        const centralMods = [...new Set(softHits.map((h) => (0, repo_topology_1.subsystemOf)(h.file, topology)))].sort();
-        level = maxLevel(level, 'review');
-        reasons.push({
-            code: 'low-surface-touches-central-module',
-            message: `A ${declared.changeKind} change touches high-centrality module(s) — ${centralMods.join(', ')} — that many other modules depend on.`,
-            evidence: softHits.map((h) => h.file),
-        });
-    }
-    // RULE 2 — new import edge into a security boundary.
-    const undeclaredEdges = blast.importEdgeCrossings.filter((e) => !declared.declaredSensitiveTags.includes(e.toTag));
-    if (undeclaredEdges.length > 0) {
-        level = maxLevel(level, isLowSurface ? 'incoherent' : 'review');
-        reasons.push({
-            code: 'import-edge-into-sensitive',
-            message: `New import edge(s) reach into ${[...new Set(undeclaredEdges.map((e) => e.toTag))].sort().join(', ')}.`,
-            evidence: undeclaredEdges.map((e) => `${e.fromFile} → ${e.importedModule}`),
-        });
-    }
-    // RULE 3 — docs change editing several ordinary source files.
-    if (!mech && declared.changeKind === 'docs' && sourceFiles.length >= DOCS_SOURCE_MIN && undeclaredSig.length === 0) {
-        level = maxLevel(level, 'review');
-        reasons.push({
-            code: 'docs-change-touches-source',
-            message: `A docs change also edits ${sourceFiles.length} source files.`,
-            evidence: sourceFiles,
-        });
-    }
-    // RULE 4 — generated-code spillover in a DOCS/TEST change only (regen
-    // accompanying a real code change is normal).
-    if (!mech && touchedGenerated && (declared.changeKind === 'docs' || declared.changeKind === 'test')) {
-        level = maxLevel(level, 'review');
-        reasons.push({
-            code: 'generated-code-touched',
-            message: `Generated code was modified in a ${declared.changeKind} change.`,
-            evidence: byBucket.get('generated')?.files ?? [],
-        });
-    }
-    // RULE 5 — wide blast radius across the repo's OWN modules.
-    if (!mech && codeModules.size >= WIDE_SPREAD_THRESHOLD &&
-        (isLowSurface || declared.changeKind === 'fix' || declared.changeKind === 'unknown')) {
-        level = maxLevel(level, 'review');
-        reasons.push({
-            code: 'wide-blast-radius',
-            message: `Touches ${codeModules.size} distinct modules — wide for a ${declared.changeKind} change.`,
-            evidence: [...codeModules].sort(),
-        });
-    }
-    const kindLabel = declared.changeKind === 'unknown' ? 'unlabeled' : declared.changeKind;
-    let headline;
-    if (level === 'incoherent') {
-        headline = `This PR reads as a ${kindLabel} change but modifies operationally significant code (${hardTags.join(', ')}).`;
-    }
-    else if (level === 'review') {
-        headline = `This ${kindLabel} change spans ${codeModules.size} module(s) — worth a glance to confirm it's intended.`;
-    }
-    else if (mech && mechanical) {
-        headline = `Recognised as a ${mechanical.mechanicalClass} change — a wide diff is expected here.`;
-    }
-    else {
-        headline = `Changes stay within the expected boundary for a ${kindLabel} change.`;
-    }
-    const scopeHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify({
-        kind: declared.changeKind, level, sig: undeclaredTags,
-        modules: [...codeModules].sort(), edges: blast.importEdgeCrossings.map((e) => e.toTag).sort(),
-        generated: touchedGenerated, profile: topology.profileHash, mechanical: mechanical?.mechanicalClass ?? null,
-    })).digest('hex').slice(0, 12);
     return {
-        level, declared, blastRadius: blast, reasons, headline, scopeHash,
-        ...(mech && mechanical ? { mechanical } : {}),
+        zonesCrossed: affectedZones.size,
+        ownersInvolved: [...affectedOwners].sort(),
+        unownedPaths,
+    };
+}
+function analyzeCodeowners(repoRoot, baseSha, effects) {
+    for (const candidate of CANDIDATE_PATHS) {
+        const loaded = loadCodeownersCandidate(repoRoot, baseSha, candidate);
+        if (loaded.kind === 'absent')
+            continue;
+        if (loaded.kind === 'degraded') {
+            return {
+                zonesCrossed: 0,
+                ownersInvolved: [],
+                unownedPaths: effects.map((e) => e.path.replace(/\\/g, '/').replace(/^\.\//, '')),
+                codeownersSourcePath: loaded.sourcePath,
+                status: 'degraded',
+                warnings: [loaded.warning],
+            };
+        }
+        const parsed = parseCodownersDetailed(loaded.text);
+        const evaluation = evaluateRules(effects, parsed.rules);
+        return {
+            ...evaluation,
+            codeownersSourcePath: loaded.sourcePath,
+            status: parsed.degraded ? 'degraded' : 'loaded',
+            warnings: parsed.warnings,
+        };
+    }
+    return {
+        zonesCrossed: 0,
+        ownersInvolved: [],
+        unownedPaths: [],
+        codeownersSourcePath: null,
+        status: 'absent',
+        warnings: [],
     };
 }
 
 
 /***/ }),
 
-/***/ 312:
+/***/ 2671:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Layer 1 — committed PR delta inventory.
+ *
+ * Runs `git diff --raw` between the validated base and head SHAs from the GitHub event.
+ * Returns path+metadata only — no file content, no diff hunks, no source bytes.
+ * Admission-support artifacts are excluded from evaluated source effects (same rule as
+ * Phase A captureCommittedDelta).
+ *
+ * Fail-closed contract: git diff failure is a SETUP ERROR, not an advisory finding.
+ * captureInventory() throws so the caller (index.ts) can call core.setFailed() and stop
+ * before emitting a misleading empty report. Advisory mode means findings do not block;
+ * it does not mean silently passing when analysis did not run.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isAdmissionSupportArtifact = isAdmissionSupportArtifact;
+exports.captureInventory = captureInventory;
+const child_process_1 = __nccwpck_require__(5317);
+/** Admission artifacts are provenance support records, never governed source effects. */
+function isAdmissionSupportArtifact(path) {
+    const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '');
+    return (normalized.startsWith('.neurcode/admission/') ||
+        normalized.startsWith('.neurcode-admission/'));
+}
+/**
+ * Run a git command and return stdout. Throws a descriptive setup error on failure.
+ * Only used for operations where failure means the action cannot proceed.
+ */
+function gitOrThrow(repoRoot, args, label) {
+    try {
+        return (0, child_process_1.execFileSync)('git', args, {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+            maxBuffer: 64 * 1024 * 1024,
+        });
+    }
+    catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`[neurcode] ${label} failed — setup error: ${detail}. ` +
+            'Ensure actions/checkout ran with fetch-depth: 0 and both base and head commits are present.');
+    }
+}
+function splitZ(output) {
+    const parts = output.split('\0');
+    if (parts.length && parts[parts.length - 1] === '')
+        parts.pop();
+    return parts;
+}
+function parseRawDiff(tokens) {
+    const records = [];
+    let i = 0;
+    while (i < tokens.length) {
+        const meta = tokens[i];
+        if (!meta.startsWith(':')) {
+            i += 1;
+            continue;
+        }
+        const fields = meta.slice(1).split(' ').filter(Boolean);
+        if (fields.length < 5) {
+            i += 1;
+            continue;
+        }
+        const [oldMode, newMode, , , status] = fields;
+        const statusLetter = (status || '').charAt(0).toUpperCase();
+        if (statusLetter === 'R' || statusLetter === 'C') {
+            const oldPath = tokens[i + 1];
+            const path = tokens[i + 2];
+            if (!path) {
+                i += 1;
+                continue;
+            }
+            records.push({ oldMode, newMode, status, path, oldPath });
+            i += 3;
+        }
+        else {
+            const path = tokens[i + 1];
+            if (!path) {
+                i += 1;
+                continue;
+            }
+            records.push({ oldMode, newMode, status, path });
+            i += 2;
+        }
+    }
+    return records;
+}
+function statusToKind(status, oldMode, newMode) {
+    const letter = status.charAt(0).toUpperCase();
+    if (letter === 'A')
+        return 'added';
+    if (letter === 'D')
+        return 'deleted';
+    if (letter === 'R')
+        return 'renamed';
+    if (letter === 'C')
+        return 'copied';
+    if (letter === 'T')
+        return 'typechanged';
+    if (oldMode !== newMode)
+        return 'typechanged';
+    return 'modified';
+}
+const CODEOWNERS_PATHS = new Set([
+    'CODEOWNERS',
+    '.github/CODEOWNERS',
+    'docs/CODEOWNERS',
+]);
+/**
+ * Capture the committed PR delta inventory.
+ * Throws a descriptive Error on any git failure (fail-closed).
+ */
+function captureInventory(repoRoot, baseSha, headSha) {
+    const output = gitOrThrow(repoRoot, [
+        'diff', '--raw', '--find-renames', '--abbrev=64', '-z', baseSha, headSha,
+    ], `git diff ${baseSha.slice(0, 12)}..${headSha.slice(0, 12)}`);
+    const tokens = splitZ(output);
+    const records = parseRawDiff(tokens);
+    const effects = [];
+    let codeownersChanged = false;
+    for (const rec of records) {
+        const effectPath = rec.path;
+        if (isAdmissionSupportArtifact(effectPath))
+            continue;
+        if (rec.oldPath && isAdmissionSupportArtifact(rec.oldPath))
+            continue;
+        const kind = statusToKind(rec.status, rec.oldMode, rec.newMode);
+        effects.push({ path: effectPath, kind, oldMode: rec.oldMode, newMode: rec.newMode });
+        if (CODEOWNERS_PATHS.has(effectPath))
+            codeownersChanged = true;
+        if (rec.oldPath && CODEOWNERS_PATHS.has(rec.oldPath))
+            codeownersChanged = true;
+    }
+    return { effects, codeownersChanged };
+}
+
+
+/***/ }),
+
+/***/ 3503:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
 
 /**
- * Structural coupling: ownership topology + operational-vs-structural divergence
- * =============================================================================
+ * Layer 1 — sensitive operational surface detection.
  *
- * Cartography already reinforces co-change corridors with static dependency
- * edges (corridor.structural) and surfaces latent structural coupling. This
- * module adds the OWNERSHIP dimension — parsing CODEOWNERS deterministically —
- * and detects when operational coupling crosses ownership boundaries
- * ("operational widening crosses ownership despite clean structural
- * compartmentalisation").
- *
- * Pure, deterministic, sparse. No embeddings, no LLM, no scoring.
+ * Path-pattern based only. No file content is ever read (guaranteed zero source leakage).
+ * Covers the surfaces most relevant to AI-agent governance: migrations, CI config,
+ * infrastructure, auth, generated code, lock files, and secrets config.
  */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseCodeowners = parseCodeowners;
-exports.ownerOf = ownerOf;
-exports.ownershipCrossings = ownershipCrossings;
-exports.structuralStats = structuralStats;
-/** Parse a CODEOWNERS file into ordered rules (later rules win, GitHub semantics). */
-function parseCodeowners(content) {
-    const rules = [];
-    for (const raw of content.split('\n')) {
-        const line = raw.replace(/#.*$/, '').trim();
-        if (!line)
-            continue;
-        const parts = line.split(/\s+/);
-        const glob = parts[0];
-        const owners = parts.slice(1).filter((o) => o.startsWith('@') || o.includes('@'));
-        if (glob && owners.length > 0)
-            rules.push({ glob, owners });
+exports.detectSensitiveSurfaces = detectSensitiveSurfaces;
+exports.sensitiveCategories = sensitiveCategories;
+const RULES = [
+    {
+        category: 'migrations',
+        patterns: [
+            /(?:^|\/)migrations?\//i,
+            /(?:^|\/)db\//i,
+            /\.migration\.[a-z]+$/i,
+            /\d{14}_.*\.(sql|ts|js|py|rb)$/i,
+            /(?:^|\/)alembic\//i,
+            /(?:^|\/)flyway\//i,
+            /(?:^|\/)liquibase\//i,
+        ],
+    },
+    {
+        category: 'CI',
+        patterns: [
+            /(?:^|\/)\.github\//,
+            /(?:^|\/)\.circleci\//,
+            /(?:^|\/)\.travis\.yml$/,
+            /(?:^|\/)\.gitlab-ci\.yml$/,
+            /(?:^|\/)\.buildkite\//,
+            /(?:^|\/)\.drone\.yml$/,
+            /(?:^|\/)Jenkinsfile$/,
+            /(?:^|\/)\.semaphore\//,
+        ],
+    },
+    {
+        category: 'infra',
+        patterns: [
+            /(?:^|\/)infra\//i,
+            /(?:^|\/)terraform\//i,
+            /\.tf$/,
+            /\.tfvars$/,
+            /(?:^|\/)k8s\//i,
+            /(?:^|\/)kubernetes\//i,
+            /(?:^|\/)helm\//i,
+            /(?:^|\/)docker-compose[^/]*\.ya?ml$/i,
+            /^Dockerfile(?:\.[^/]+)?$/,
+            /(?:^|\/)Dockerfile(?:\.[^/]+)?$/,
+            /(?:^|\/)\.kube\//,
+            /(?:^|\/)nginx[^/]*\.conf$/i,
+        ],
+    },
+    {
+        category: 'auth',
+        patterns: [
+            /(?:^|\/)auth[^/]*\//i,
+            /(?:^|\/)(?:jwt|oauth|oidc|saml|sso|sessions?)[^/]*\.[a-z]+$/i,
+            /(?:^|\/)middleware\/auth/i,
+            /(?:^|\/)guards?\//i,
+            /(?:^|\/)policies?\//i,
+        ],
+    },
+    {
+        category: 'generated',
+        patterns: [
+            /(?:^|\/)(?:generated?|gen|__generated__)\//i,
+            /\.g\.(?:ts|js|dart|go)$/i,
+            /(?:^|\/)prisma\/(?!schema\.prisma)/,
+            /schema\.graphql$/i,
+            /\.pb\.(?:ts|js|go)$/,
+        ],
+    },
+    {
+        category: 'lock_files',
+        patterns: [
+            /(?:^|\/)package-lock\.json$/,
+            /(?:^|\/)yarn\.lock$/,
+            /(?:^|\/)pnpm-lock\.yaml$/,
+            /(?:^|\/)Cargo\.lock$/,
+            /(?:^|\/)Gemfile\.lock$/,
+            /(?:^|\/)poetry\.lock$/,
+            /(?:^|\/)go\.sum$/,
+        ],
+    },
+    {
+        category: 'secrets_config',
+        patterns: [
+            /(?:^|\/)\.env(?:\.[^/]+)?$/,
+            /(?:^|\/)secrets?(?:\.ya?ml|\.json|\.toml)?$/i,
+            /(?:^|\/)vault\//i,
+            /(?:^|\/)\.sops\.ya?ml$/,
+        ],
+    },
+];
+function detectSensitiveSurfaces(effects) {
+    const hitMap = new Map();
+    for (const effect of effects) {
+        const path = effect.path.replace(/\\/g, '/').replace(/^\.\//, '');
+        for (const rule of RULES) {
+            if (rule.patterns.some((re) => re.test(path))) {
+                if (!hitMap.has(rule.category))
+                    hitMap.set(rule.category, new Set());
+                hitMap.get(rule.category).add(path);
+            }
+        }
     }
-    return rules;
+    return [...hitMap.entries()]
+        .map(([category, pathSet]) => ({ category, paths: [...pathSet].sort() }))
+        .sort((a, b) => a.category.localeCompare(b.category));
 }
-/** Owner(s) for a path — last matching rule wins (GitHub CODEOWNERS semantics). */
-function ownerOf(path, rules) {
-    let match = null;
-    for (const rule of rules) {
-        if (matchCodeownersGlob(path, rule.glob))
-            match = rule.owners;
-    }
-    return match ? match.slice().sort().join(',') : null;
-}
-// Minimal CODEOWNERS glob: leading '/', '*' (single segment), '**'/dir-prefix.
-function matchCodeownersGlob(path, glob) {
-    const p = path.replace(/^\/+/, '');
-    let g = glob.replace(/^\/+/, '');
-    if (g === '*' || g === '**')
-        return true;
-    if (g.endsWith('/'))
-        return p === g.slice(0, -1) || p.startsWith(g); // directory prefix
-    if (!g.includes('*'))
-        return p === g || p.startsWith(`${g}/`); // exact / dir
-    const re = new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '§').replace(/\*/g, '[^/]*').replace(/§/g, '.*')}(/.*)?$`);
-    return re.test(p);
-}
-/** Co-change corridors whose two modules belong to different owners. */
-function ownershipCrossings(map, rules) {
-    if (rules.length === 0)
-        return [];
-    const out = [];
-    for (const c of map.corridors) {
-        const ownerA = ownerOf(`${c.a}/`, rules);
-        const ownerB = ownerOf(`${c.b}/`, rules);
-        if (ownerA && ownerB && ownerA !== ownerB)
-            out.push({ a: c.a, b: c.b, ownerA, ownerB });
-    }
-    return out.sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
-}
-/** Sparse structural-coupling counts for a digest/report header. */
-function structuralStats(map) {
-    const reinforced = map.corridors.filter((c) => c.structural).length;
-    return { reinforced, latent: map.latentStructural.length, total: map.corridors.length };
+function sensitiveCategories(hits) {
+    return hits.map((h) => h.category).sort();
 }
 
 
 /***/ }),
 
-/***/ 5654:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseCliCompatibilityPayload = parseCliCompatibilityPayload;
-exports.parseApiHealthCompatibilityPayload = parseApiHealthCompatibilityPayload;
-exports.validateActionHandshake = validateActionHandshake;
-const contracts_1 = __nccwpck_require__(7239);
-function asRecord(value, label) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error(`${label}: expected object`);
-    }
-    return value;
-}
-function asString(record, key, label) {
-    const value = record[key];
-    if (typeof value !== 'string' || !value.trim()) {
-        throw new Error(`${label}: expected ${key}:string`);
-    }
-    return value.trim();
-}
-function asOptionalString(record, key, label) {
-    const value = record[key];
-    if (value === undefined)
-        return undefined;
-    if (typeof value !== 'string' || !value.trim()) {
-        throw new Error(`${label}: expected optional ${key}:string`);
-    }
-    return value.trim();
-}
-function asRuntimeComponent(value, label) {
-    if (value === 'cli' || value === 'action' || value === 'api') {
-        return value;
-    }
-    throw new Error(`${label}: expected component "cli" | "action" | "api"`);
-}
-function parseMinimumPeerVersions(value, label) {
-    if (value === undefined || value === null)
-        return {};
-    const record = asRecord(value, `${label}.minimumPeerVersions`);
-    const next = {};
-    for (const component of ['cli', 'action', 'api']) {
-        const item = record[component];
-        if (item === undefined)
-            continue;
-        if (typeof item !== 'string' || !item.trim()) {
-            throw new Error(`${label}.minimumPeerVersions: expected ${component}:string`);
-        }
-        next[component] = item.trim();
-    }
-    return next;
-}
-function parseDescriptor(value, label) {
-    const record = asRecord(value, label);
-    return {
-        contractId: asString(record, 'contractId', label),
-        runtimeContractVersion: asString(record, 'runtimeContractVersion', label),
-        cliJsonContractVersion: asString(record, 'cliJsonContractVersion', label),
-        manifestVersion: asOptionalString(record, 'manifestVersion', label),
-        component: asRuntimeComponent(asString(record, 'component', label), label),
-        componentVersion: asString(record, 'componentVersion', label),
-        minimumPeerVersions: parseMinimumPeerVersions(record.minimumPeerVersions, label),
-    };
-}
-function parseCliCompatibilityPayload(value) {
-    const parsed = (0, contracts_1.parseCliCompatJsonPayload)(value, 'action-cli-compat');
-    if (parsed.success !== true) {
-        throw new Error('action-cli-compat: success=false');
-    }
-    const descriptor = parseDescriptor(parsed.compatibility, 'action-cli-compat.compatibility');
-    return {
-        source: 'cli',
-        ...descriptor,
-    };
-}
-function parseApiHealthCompatibilityPayload(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return null;
-    }
-    const record = value;
-    if (!record.compatibility) {
-        return null;
-    }
-    const descriptor = parseDescriptor(record.compatibility, 'action-api-compat.compatibility');
-    return {
-        source: 'api',
-        ...descriptor,
-    };
-}
-function validateVersionMinimum(label, actual, required, errors) {
-    if (!required)
-        return;
-    const isCompatible = (0, contracts_1.isSemverAtLeast)(actual, required);
-    if (isCompatible === null) {
-        errors.push(`${label}: unable to compare versions (actual=${actual}, required=${required}).`);
-        return;
-    }
-    if (!isCompatible) {
-        errors.push(`${label}: actual=${actual} is below required=${required}.`);
-    }
-}
-function validateContractEnvelope(descriptor, expectedComponent, errors) {
-    if (descriptor.component !== expectedComponent) {
-        errors.push(`${descriptor.source} compatibility payload expected component=${expectedComponent} but received ${descriptor.component}.`);
-    }
-    if (descriptor.contractId !== contracts_1.RUNTIME_COMPATIBILITY_CONTRACT_ID) {
-        errors.push(`${descriptor.source} compatibility payload has unexpected contractId=${descriptor.contractId} (expected ${contracts_1.RUNTIME_COMPATIBILITY_CONTRACT_ID}).`);
-    }
-    if (descriptor.runtimeContractVersion !== contracts_1.RUNTIME_COMPATIBILITY_CONTRACT_VERSION) {
-        errors.push(`${descriptor.source} compatibility payload has runtimeContractVersion=${descriptor.runtimeContractVersion} (expected ${contracts_1.RUNTIME_COMPATIBILITY_CONTRACT_VERSION}).`);
-    }
-    if (descriptor.manifestVersion
-        && descriptor.manifestVersion !== contracts_1.RUNTIME_COMPATIBILITY_MANIFEST_VERSION) {
-        errors.push(`${descriptor.source} compatibility payload has manifestVersion=${descriptor.manifestVersion} (expected ${contracts_1.RUNTIME_COMPATIBILITY_MANIFEST_VERSION}).`);
-    }
-    if (descriptor.cliJsonContractVersion !== contracts_1.CLI_JSON_CONTRACT_VERSION) {
-        errors.push(`${descriptor.source} compatibility payload has cliJsonContractVersion=${descriptor.cliJsonContractVersion} (expected ${contracts_1.CLI_JSON_CONTRACT_VERSION}).`);
-    }
-}
-function validateActionHandshake(input) {
-    const errors = [];
-    const { actionVersion, cliCompatibility } = input;
-    const apiCompatibility = input.apiCompatibility || null;
-    const requireApiCompatibility = input.requireApiCompatibility === true;
-    validateContractEnvelope(cliCompatibility, 'cli', errors);
-    validateVersionMinimum('CLI version required by action', cliCompatibility.componentVersion, (0, contracts_1.getMinimumCompatiblePeerVersion)('action', 'cli'), errors);
-    validateVersionMinimum('Action version required by CLI payload', actionVersion, cliCompatibility.minimumPeerVersions.action, errors);
-    if (!apiCompatibility) {
-        if (requireApiCompatibility) {
-            errors.push('API compatibility payload missing while API compatibility handshake is required.');
-        }
-        return errors;
-    }
-    validateContractEnvelope(apiCompatibility, 'api', errors);
-    validateVersionMinimum('API version required by action', apiCompatibility.componentVersion, (0, contracts_1.getMinimumCompatiblePeerVersion)('action', 'api'), errors);
-    validateVersionMinimum('Action version required by API payload', actionVersion, apiCompatibility.minimumPeerVersions.action, errors);
-    validateVersionMinimum('CLI version required by API payload', cliCompatibility.componentVersion, apiCompatibility.minimumPeerVersions.cli, errors);
-    validateVersionMinimum('API version required by CLI payload', apiCompatibility.componentVersion, cliCompatibility.minimumPeerVersions.api, errors);
-    return errors;
-}
-
-
-/***/ }),
-
-/***/ 4288:
+/***/ 8223:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
 
+/**
+ * Layer 1 — top-level subsystem / directory reach.
+ *
+ * Groups changed paths by their first meaningful path segment. Pure function; no I/O.
+ */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isMissingPlanVerificationFailure = isMissingPlanVerificationFailure;
-exports.buildVerifyArgs = buildVerifyArgs;
-exports.resolveEnterpriseEnforcement = resolveEnterpriseEnforcement;
-exports.getVerifyFallbackDecision = getVerifyFallbackDecision;
-const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
-const MISSING_PLAN_VERIFY_PATTERNS = [
-    'plan id is required in strict mode',
-    'run "neurcode plan" first',
-    'pass --plan-id',
-    '"mode": "plan_required"',
-    '"mode":"plan_required"',
-    'missing plan context',
-    'plan context missing',
-    'no approved plan context',
-];
-function stripAnsi(value) {
-    return value.replace(ANSI_PATTERN, '');
+exports.deriveSubsystems = deriveSubsystems;
+exports.subsystemList = subsystemList;
+const ROOT_FILE_SUBSYSTEM = '(root)';
+function deriveSubsystems(effects) {
+    const map = {};
+    for (const entry of effects) {
+        const normalized = entry.path.replace(/\\/g, '/').replace(/^\.\//, '');
+        const slashIndex = normalized.indexOf('/');
+        const subsystem = slashIndex === -1 ? ROOT_FILE_SUBSYSTEM : normalized.slice(0, slashIndex);
+        map[subsystem] = (map[subsystem] ?? 0) + 1;
+    }
+    return map;
 }
-function isMissingPlanVerificationFailure(output) {
-    const normalized = stripAnsi(output).toLowerCase();
-    return MISSING_PLAN_VERIFY_PATTERNS.some((pattern) => normalized.includes(pattern));
+function subsystemList(map) {
+    return Object.keys(map).sort();
 }
-function buildVerifyArgs(input) {
-    const args = ['verify', '--json', '--base', input.baseRef];
-    if (input.policyOnly) {
-        args.push('--policy-only');
-    }
-    else if (input.planId) {
-        args.push('--plan-id', input.planId);
-    }
-    if (input.projectId)
-        args.push('--project-id', input.projectId);
-    if (input.compiledPolicyPath) {
-        args.push('--compiled-policy', input.compiledPolicyPath);
-        // Skip policy lock baseline check when a compiled policy artifact is provided.
-        // The compiled policy supersedes the lock file comparison; without this the lock
-        // mismatch (fresh CI compile vs committed lock fingerprint) causes an early exit
-        // before evaluateRules runs, preventing detection of actual policy violations.
-        args.push('--skip-policy-lock');
-    }
-    if (input.changeContractPath)
-        args.push('--change-contract', input.changeContractPath);
-    if (input.enforceChangeContract)
-        args.push('--enforce-change-contract');
-    if (input.strictArtifacts)
-        args.push('--strict-artifacts');
-    if (input.requireSignedArtifacts)
-        args.push('--require-signed-artifacts');
-    if (input.requirePlan)
-        args.push('--require-plan');
-    if (input.requireRuntimeGuard)
-        args.push('--require-runtime-guard');
-    if (input.runtimeGuardPath)
-        args.push('--runtime-guard', input.runtimeGuardPath);
-    if (input.requireIntentRuntime)
-        args.push('--require-intent-runtime');
-    if (input.record)
-        args.push('--record');
-    if (input.evidence)
-        args.push('--evidence');
-    return args;
+
+
+/***/ }),
+
+/***/ 1117:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Centralized sanitizers for attacker-controlled display values.
+ *
+ * All values that originate from the PR author — filenames, paths, subsystem names,
+ * artifact diagnostic strings, log lines, and Markdown output — must pass through
+ * one of these sanitizers before being written to logs, outputs, or step summaries.
+ *
+ * What is stripped / escaped:
+ *   - ASCII control bytes (0x00–0x1F) including CR, LF, TAB, ESC (0x1B).
+ *   - DEL (0x7F) and other C1 control characters (0x80–0x9F).
+ *   - Markdown structural delimiters: backtick runs, `**`, `__`, `[`, `]`, `(`, `)`.
+ *   - HTML-like payloads: `<`, `>` replaced with look-alikes.
+ *   - Overlong values are truncated with a `…` suffix.
+ *
+ * These functions are NOT reversible (they are for display only).
+ * They are NOT security boundaries against server-side injection — the step summary
+ * is rendered client-side in GitHub's sandbox. They prevent confusing or misleading
+ * output when adversarial filenames reach logs and Markdown.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.MAX_OUTPUT_VALUE_LEN = exports.MAX_MD_INLINE_LEN = exports.MAX_LOG_VALUE_LEN = void 0;
+exports.logSafe = logSafe;
+exports.mdSafe = mdSafe;
+exports.outputSafe = outputSafe;
+exports.outputSafeList = outputSafeList;
+// Maximum lengths for different surfaces.
+exports.MAX_LOG_VALUE_LEN = 300;
+exports.MAX_MD_INLINE_LEN = 200;
+exports.MAX_OUTPUT_VALUE_LEN = 500;
+// eslint-disable-next-line no-control-regex
+const CONTROL_BYTES_RE = /[\x00-\x1f\x7f-\x9f]/g;
+/**
+ * Safe for a single-line log entry (Actions log, core.info/warning).
+ * Strips control bytes (prevents ANSI escape injection) and truncates.
+ */
+function logSafe(value, maxLen = exports.MAX_LOG_VALUE_LEN) {
+    return value.replace(CONTROL_BYTES_RE, '').slice(0, maxLen);
 }
-function resolveEnterpriseEnforcement(input) {
-    const enforceChangeContract = typeof input.enforceChangeContract === 'boolean'
-        ? input.enforceChangeContract
-        : (input.enterpriseMode && !input.verifyPolicyOnly);
-    const enforceStrictVerification = typeof input.enforceStrictVerification === 'boolean'
-        ? input.enforceStrictVerification
-        : input.enterpriseMode;
-    const enforcePolicyExceptionWorkflow = typeof input.enforcePolicyExceptionWorkflow === 'boolean'
-        ? input.enforcePolicyExceptionWorkflow
-        : input.enterpriseMode;
-    return {
-        enforceChangeContract,
-        enforceStrictVerification,
-        enforcePolicyExceptionWorkflow,
-    };
+/**
+ * Safe for inline Markdown in a step summary.
+ * Strips control bytes, escapes HTML angle brackets, escapes common Markdown
+ * structural characters, and truncates.
+ */
+function mdSafe(value, maxLen = exports.MAX_MD_INLINE_LEN) {
+    return value
+        .replace(CONTROL_BYTES_RE, '')
+        .replace(/</g, '‹') // ‹ (single left angle quotation, visually close)
+        .replace(/>/g, '›') // › (single right angle quotation)
+        .replace(/`/g, 'ˋ') // ˋ (modifier letter grave accent)
+        .replace(/\*/g, '∗') // ∗ (asterisk operator)
+        .replace(/__/g, '\\_\\_')
+        .replace(/\[/g, '⁅') // ⁅ (left square bracket with quill)
+        .replace(/\]/g, '⁆') // ⁆ (right square bracket with quill)
+        .slice(0, maxLen);
 }
-function getVerifyFallbackDecision(input) {
-    if (input.verifyExitCode === 0) {
-        return { shouldRetryPolicyOnly: false, reason: 'verify_succeeded' };
-    }
-    if (input.policyOnlyRequested) {
-        return { shouldRetryPolicyOnly: false, reason: 'already_policy_only' };
-    }
-    if (input.allowFallbackPolicyOnly === false) {
-        return { shouldRetryPolicyOnly: false, reason: 'strict_mode_no_fallback' };
-    }
-    if (input.hasExplicitPlanId) {
-        return { shouldRetryPolicyOnly: false, reason: 'explicit_plan_id' };
-    }
-    if (isMissingPlanVerificationFailure(input.verifyOutput)) {
-        return { shouldRetryPolicyOnly: true, reason: 'missing_plan_context' };
-    }
-    return { shouldRetryPolicyOnly: false, reason: 'not_missing_plan_failure' };
+/**
+ * Safe for a GitHub Actions output value (single-line, no control bytes).
+ * Newlines are replaced with a space so multi-line injections are neutralised.
+ */
+function outputSafe(value, maxLen = exports.MAX_OUTPUT_VALUE_LEN) {
+    return value
+        .replace(CONTROL_BYTES_RE, ' ')
+        .replace(/[\r\n]+/g, ' ')
+        .trim()
+        .slice(0, maxLen);
+}
+/** Sanitize an array of strings into a comma-separated output-safe string. */
+function outputSafeList(values, maxItems = 32) {
+    return values
+        .slice(0, maxItems)
+        .map((v) => outputSafe(v))
+        .join(',');
 }
 
 
@@ -43474,6 +49542,14 @@ module.exports = require("node:events");
 
 /***/ }),
 
+/***/ 3024:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:fs");
+
+/***/ }),
+
 /***/ 7067:
 /***/ ((module) => {
 
@@ -43495,6 +49571,14 @@ module.exports = require("node:http2");
 
 "use strict";
 module.exports = require("node:net");
+
+/***/ }),
+
+/***/ 6760:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:path");
 
 /***/ }),
 
@@ -43622,7 +49706,7 @@ module.exports = require("util");
 /************************************************************************/
 /******/ 	// The module cache
 /******/ 	var __webpack_module_cache__ = {};
-/******/ 	
+/******/
 /******/ 	// The require function
 /******/ 	function __nccwpck_require__(moduleId) {
 /******/ 		// Check if module is in cache
@@ -43636,7 +49720,7 @@ module.exports = require("util");
 /******/ 			// no module.loaded needed
 /******/ 			exports: {}
 /******/ 		};
-/******/ 	
+/******/
 /******/ 		// Execute the module function
 /******/ 		var threw = true;
 /******/ 		try {
@@ -43645,24 +49729,23 @@ module.exports = require("util");
 /******/ 		} finally {
 /******/ 			if(threw) delete __webpack_module_cache__[moduleId];
 /******/ 		}
-/******/ 	
+/******/
 /******/ 		// Return the exports of the module
 /******/ 		return module.exports;
 /******/ 	}
-/******/ 	
+/******/
 /************************************************************************/
 /******/ 	/* webpack/runtime/compat */
-/******/ 	
+/******/
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
-/******/ 	
+/******/
 /************************************************************************/
-/******/ 	
+/******/
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
 /******/ 	var __webpack_exports__ = __nccwpck_require__(3887);
 /******/ 	module.exports = __webpack_exports__;
-/******/ 	
+/******/
 /******/ })()
 ;
-//# sourceMappingURL=index.js.map

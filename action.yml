@@ -1,388 +1,72 @@
-name: 'Neurcode — Repository Operational Memory'
-description: 'Deterministic repository operational memory and observability, as a GitHub Action. Sparse, advisory per-PR scope-coherence checks (does a change stay within a coherent operational boundary?) plus a replay-safe operational history — coupling lifecycle, pressure migration, release-over-release deltas. Mostly silent. No AI prose, no scores, no telemetry.'
+name: 'Neurcode — Runtime Admission Advisory'
+description: >
+  Two-layer advisory Action. Layer 1: deterministic PR effect inventory (changed-file
+  effects, subsystem reach, CODEOWNERS crossings, sensitive operational surfaces) — no
+  account, no API key, no local runtime required. Layer 2: optional self-attested
+  runtime admission provenance when .neurcode-admission/*.json is present. Self-attested
+  provenance is a claim, not cryptographic proof. Advisory-only by default — never blocks.
 author: 'Neurcode'
 branding:
-  icon: 'activity'
+  icon: 'shield'
   color: 'blue'
 
 inputs:
-  threshold:
-    description: 'Minimum passing grade (A, B, C, D, F). Default: C'
+  policy:
+    description: >
+      admission-gate policy. "advisory" (default) — step summary only, never fails the
+      job. "strict_self_attested" — experimental; may fail on incomplete/inconsistent
+      records (clearly labelled as NOT enterprise proof, NOT a trusted gate).
     required: false
-    default: 'C'
-  github_token:
-    description: 'GitHub Token for posting PR comments. Pass github.token from the workflow.'
-    required: false
-    default: ''
-  annotate:
-    description: 'Post inline annotations on the PR for each violation (file + line)'
-    required: false
-    default: 'true'
-  api_key:
-    description: 'Neurcode API Key for recording results to Neurcode Cloud'
-    required: false
-    default: ''
-  record:
-    description: 'Enable reporting verification results to Neurcode Cloud'
-    required: false
-    default: 'true'
-  working_directory:
-    description: 'Directory where to run the neurcode verify command'
-    required: false
-    default: '.'
-  base_ref:
-    description: 'Override base ref for verify diff (e.g., origin/main, HEAD~1)'
-    required: false
-    default: ''
-  plan_id:
-    description: 'Plan ID to verify against (optional, will use from config if not provided)'
-    required: false
-    default: ''
-  project_id:
-    description: 'The Neurcode Project ID (Optional if config file exists)'
-    required: false
-    default: ''
-  org_id:
-    description: 'Optional organization ID used to scope CI auth when login state is unavailable'
-    required: false
-    default: ''
-  neurcode_cli_version:
-    description: 'npm version specifier for @neurcode-ai/cli (e.g. "latest", "0.8.13", "^0.8")'
-    required: false
-    default: 'latest'
-  neurcode_cli_source:
-    description: 'CLI install source: npm (registry) or workspace (local packages/cli in current repo)'
-    required: false
-    default: 'npm'
-  neurcode_cli_workspace_path:
-    description: 'Workspace path used when neurcode_cli_source=workspace'
-    required: false
-    default: 'packages/cli'
-  verify_timeout_minutes:
-    description: 'Timeout for neurcode verify command in minutes (Linux/macOS runners)'
-    required: false
-    default: '8'
-  enforce_compatibility_handshake:
-    description: 'Fail fast when CLI/Action/API runtime compatibility contract handshake fails'
-    required: false
-    default: 'true'
-  require_api_compatibility_handshake:
-    description: 'Require API health endpoint to publish compatibility metadata when API URL is configured'
-    required: false
-    default: 'true'
-  compatibility_probe_timeout_minutes:
-    description: 'Timeout for compat probes (CLI compat command and API health) in minutes'
-    required: false
-    default: '2'
-  verify_policy_only:
-    description: 'Run neurcode verify in policy-only mode (skip plan/scope enforcement)'
+    default: 'advisory'
+
+  no_record_strict:
+    description: >
+      In strict_self_attested mode, fail when no .neurcode-admission/*.json record is
+      present. Default false — no_record is reported but does not block.
     required: false
     default: 'false'
-  enterprise_mode:
-    description: 'Enable enterprise-safe defaults (auto-enable strict verify + change-contract enforcement unless explicitly overridden)'
+
+  max_artifacts:
+    description: 'Maximum number of .neurcode-admission/*.json files to process.'
     required: false
-    default: 'true'
-  compiled_policy_path:
-    description: 'Compiled policy artifact path passed to neurcode verify'
+    default: '256'
+
+  max_aggregate_bytes:
+    description: 'Maximum aggregate byte size of all artifact files (bytes).'
     required: false
-    default: 'neurcode.policy.compiled.json'
-  change_contract_path:
-    description: 'Change contract path passed to neurcode verify'
-    required: false
-    default: '.neurcode/change-contract.json'
-  runtime_guard_path:
-    description: 'Runtime guard artifact path passed to neurcode verify'
-    required: false
-    default: '.neurcode/runtime-guard.json'
-  collect_evidence:
-    description: 'Write verification evidence artifacts to .neurcode/evidence/ for audit retention (equivalent to --evidence flag or NEURCODE_VERIFY_EVIDENCE=1 env var)'
-    required: false
-    default: 'false'
-  require_runtime_guard:
-    description: 'Require runtime guard artifact enforcement in neurcode verify (true|false; empty enables enterprise auto behavior)'
-    required: false
-    default: ''
-  require_intent_runtime:
-    description: 'Require the intent-governed runtime to be active (intent-pack present and applied). Fails the build if neurcode falls back to structural-only mode. Mirrors --require-intent-runtime / NEURCODE_REQUIRE_INTENT_RUNTIME=1.'
-    required: false
-    default: 'false'
-  enforce_change_contract:
-    description: 'Treat change contract drift as hard verification failure (set true/false to override enterprise auto behavior)'
-    required: false
-    default: ''
-  changed_files_only:
-    description: 'Only enforce violations detected in files changed by this PR/base diff'
-    required: false
-    default: 'false'
-  fail_on_violation:
-    description: 'Fail the build if violations are found'
-    required: false
-    default: 'true'
-  enforce_strict_verification:
-    description: 'Treat tier-limited INFO verification results as failure (set true/false to override enterprise auto behavior)'
-    required: false
-    default: ''
-  require_signed_artifacts:
-    description: 'Require cryptographically signed compiled-policy + change-contract artifacts (set true/false to override enterprise auto behavior)'
-    required: false
-    default: ''
-  allow_manual_approval_pending:
-    description: 'Allow runs to pass when governance decision requires manual approval (default false in enterprise mode)'
-    required: false
-    default: 'false'
-  enforce_policy_exception_workflow:
-    description: 'Fail when policy exceptions are blocked by approval governance (set true/false to override enterprise auto behavior)'
-    required: false
-    default: ''
-  auto_remediate:
-    description: 'When verify fails, run neurcode ship auto-remediation flow'
-    required: false
-    default: 'false'
-  remediation_goal:
-    description: 'Optional explicit goal passed to neurcode ship for auto-remediation'
-    required: false
-    default: ''
-  remediation_max_attempts:
-    description: 'Maximum ship remediation attempts when auto_remediate=true'
-    required: false
-    default: '2'
-  remediation_skip_tests:
-    description: 'Skip tests during remediation ship run'
-    required: false
-    default: 'true'
-  remediation_allow_dirty:
-    description: 'Allow dirty tree during remediation ship run'
-    required: false
-    default: 'true'
-  publish_merge_card:
-    description: 'Publish merge confidence card during remediation ship run'
-    required: false
-    default: 'true'
-  ship_test_command:
-    description: 'Optional test command override for neurcode ship remediation'
-    required: false
-    default: ''
-  ship_timeout_minutes:
-    description: 'Timeout for neurcode ship remediation command in minutes (Linux/macOS runners)'
-    required: false
-    default: '20'
-  ship_network_retries:
-    description: 'Additional retries for neurcode ship when transient network errors occur'
-    required: false
-    default: '1'
-  ship_network_retry_delay_seconds:
-    description: 'Delay between neurcode ship network retries in seconds'
-    required: false
-    default: '5'
-  verify_after_remediation:
-    description: 'Run neurcode verify again after auto-remediation succeeds'
-    required: false
-    default: 'true'
-  verify_after_remediation_timeout_minutes:
-    description: 'Timeout for post-remediation neurcode verify command in minutes'
-    required: false
-    default: '8'
-  remediation_commit:
-    description: 'When auto-remediation succeeds, create a commit with generated fixes (same-repo PRs only)'
-    required: false
-    default: 'false'
-  remediation_push:
-    description: 'Push remediation commit back to PR branch (requires write permissions and same-repo PR)'
-    required: false
-    default: 'false'
-  require_remediation_push_success:
-    description: 'Fail the action when remediation push is enabled but commit cannot be pushed'
-    required: false
-    default: 'false'
-  remediation_push_retries:
-    description: 'Additional retries for remediation push on non-fast-forward races'
-    required: false
-    default: '2'
-  remediation_push_retry_delay_seconds:
-    description: 'Delay between remediation push retries in seconds'
-    required: false
-    default: '2'
-  remediation_commit_message:
-    description: 'Commit message used when remediation_commit=true'
-    required: false
-    default: 'chore(neurcode): auto-remediate verify failures'
-  remediation_git_user_name:
-    description: 'Git user.name for remediation commits'
-    required: false
-    default: 'neurcode-bot'
-  remediation_git_user_email:
-    description: 'Git user.email for remediation commits'
-    required: false
-    default: 'neurcode-bot@users.noreply.github.com'
-  oss_mode:
-    description: 'Lightweight deterministic OSS gate: derive declared PR scope (title/body/labels/linked issues) vs actual blast radius and post a compact PR Scope Coherence report. Forces the local structural path (no cloud, no plan, no enterprise enforcement) and is advisory by default. Recommended for OSS maintainers and contributor PRs.'
-    required: false
-    default: 'false'
-  scope_coherence_fail:
-    description: 'In oss_mode, fail the check when scope is incoherent (a low-surface change — docs/test/chore — modifies sensitive code it never mentions). Default false (advisory) so the first install builds trust before it blocks.'
-    required: false
-    default: 'false'
-  comment_on:
-    description: 'When to post a PR comment in oss_mode: "flagged" (default — only review/incoherent PRs; coherent PRs stay silent and a prior comment is updated to resolved), "always", or "never" (CI outputs/step-summary only). Overridable per-repo via .neurcode/oss.json. High signal, low presence.'
-    required: false
-    default: 'flagged'
-  topology:
-    description: 'Derive the repository operational topology (module boundaries via package manifests, structural roles, significance) from the repo file tree, so the gate reasons about the project''s OWN modules rather than a hardcoded web-backend ontology. Language-agnostic (Rust/Dart/Go/Python/TS). Default true; set false to use the fixed taxonomy only.'
-    required: false
-    default: 'true'
-  mode:
-    description: 'Action mode: "gate" (default — per-PR scope-coherence gate), "report" (rolling-window Operational Evolution Report), "release-report" (Release Operational History — architectural transitions + migration epochs), "memory" (Operational Memory — delta-only, pull-first "git log for repository operational structure": coupling lifecycle, pressure migration, boundary drift across release boundaries; never restates standing state, never comments on PRs), "cartography" (Operational Cartography — pressure zones, regions, corridors, boundary porosity), "dynamics" (Operational Dynamics — momentum across release eras: intensifying / cooling / stabilized / dissipated / persistent), "digest" (Operational Digest — ONE coherent picture fused from drift + geography + momentum), or "pilot" (Trust & Survivability profile — silent-rate, flag-rate, FAIL-rarity, override-rate, and trust-decay trend from the ledger). Report/memory/cartography/dynamics/digest/pilot modes run on a schedule, no PR required.'
-    required: false
-    default: 'gate'
-  record_merged_at:
-    description: 'Optional ISO merge timestamp stamped onto the emitted operational_record (e.g. ${{ github.event.head_commit.timestamp }} in a push/merge workflow). Enables release-aware grouping by merge date.'
-    required: false
-    default: ''
-  report_window:
-    description: 'mode=report: number of most-recent ledger records in the current window (compared against the prior window of the same size).'
-    required: false
-    default: '60'
-  report_ledger_path:
-    description: 'mode=report: path to the append-only operational ledger (one operational_record JSON per line).'
-    required: false
-    default: '.neurcode/operational-ledger.jsonl'
-  report_output_dir:
-    description: 'mode=report: directory where the archived report markdown is written (<reportHash>.md + latest.md).'
-    required: false
-    default: '.neurcode/reports'
-  memory_min_window:
-    description: 'mode=memory: warm-up baseline — release boundaries with fewer than this many cumulative records are absorbed into the silent baseline (suppresses the mid-history cold-start flood). 0 = full day-zero replay.'
-    required: false
-    default: '40'
+    default: '16777216'
 
 outputs:
-  scope_coherence_verdict:
-    description: 'OSS mode: PR scope coherence verdict (coherent|review|incoherent)'
-  declared_change_kind:
-    description: 'OSS mode: change kind derived from PR title/body/labels (docs|test|chore|fix|refactor|feature|unknown)'
-  blast_radius_subsystems:
-    description: 'OSS mode: comma-separated subsystems the diff actually touched'
-  scope_incoherent:
-    description: 'OSS mode: true when the declared scope does not match the actual blast radius'
-  scope_hash:
-    description: 'OSS mode: deterministic short hash of the scope-coherence inputs/outputs (replay anchor)'
-  commented:
-    description: 'OSS mode: true when a PR comment was posted/updated this run (false on silent-success coherent PRs)'
-  convergence:
-    description: 'OSS mode: per-PR operational lifecycle across pushes (clean | converged | fix-loop | persistent | unresolved)'
-  survivability:
-    description: 'pilot mode: trust profile (healthy | watch | at-risk)'
-  silent_rate:
-    description: 'pilot mode: percent of merged PRs that were coherent (no comment)'
-  scope_topology_profile:
-    description: 'OSS mode: deterministic hash of the derived repository topology profile (replay anchor for the module map)'
-  mechanical_class:
-    description: 'OSS mode: recognised mechanical/bulk PR class (revert|release|dependency-bump|generated-refresh|snapshot-refresh|ci-migration|formatting|codemod), or empty'
-  narrative_summary:
-    description: 'OSS mode: deterministic one-line operational narrative describing the PR''s operational shape'
-  operational_record:
-    description: 'OSS mode: a deterministic per-PR operational record (JSON line) for the longitudinal ledger (.neurcode/operational-ledger.jsonl). Re-derivable / replay-safe.'
-  report_status:
-    description: 'mode=report: generated | no_ledger | insufficient_history'
-  report_hash:
-    description: 'mode=report: deterministic content hash of the generated report (archival/replay anchor)'
-  report_path:
-    description: 'mode=report: path to the archived report markdown'
-  operational_events:
-    description: 'mode=memory: number of operational evolution events in the accumulated memory (0 = no operational evolution recorded — the calm, correct default)'
-  compatibility_handshake:
-    description: 'compatibility handshake status (passed|skipped)'
-  compatibility_contract_version:
-    description: 'runtime compatibility contract version enforced by this action'
-  compatibility_action_version:
-    description: 'resolved action version used in compatibility checks'
-  compatibility_cli_version:
-    description: 'resolved CLI version from neurcode compat handshake'
-  compatibility_api_version:
-    description: 'resolved API version from health compatibility payload'
-  compatibility_manifest_version:
-    description: 'runtime compatibility manifest version resolved during handshake'
-  runtime_compatibility_issues:
-    description: 'number of runtime compatibility handshake findings emitted as action annotations'
-  verdict:
-    description: 'neurcode verify verdict'
-  verify_mode:
-    description: 'verification mode used by action (plan_aware|plan_enforced_explicit|policy_only|policy_only_fallback)'
-  policy_only_fallback_used:
-    description: 'true when action retried verify in policy-only mode due to missing plan context'
-  enterprise_mode_active:
-    description: 'true when enterprise_mode was enabled for this run'
-  enterprise_enforced_change_contract:
-    description: 'effective enforce_change_contract value after enterprise defaults were applied'
-  enterprise_enforced_strict_verification:
-    description: 'effective enforce_strict_verification value after enterprise defaults were applied'
-  enterprise_enforced_signed_artifacts:
-    description: 'effective require_signed_artifacts value after enterprise defaults were applied'
-  enterprise_enforced_runtime_guard:
-    description: 'effective require_runtime_guard value after enterprise defaults were applied'
-  enterprise_enforced_policy_exception_workflow:
-    description: 'effective enforce_policy_exception_workflow value after enterprise defaults were applied'
-  grade:
-    description: 'neurcode verify grade'
-  score:
-    description: 'neurcode verify score'
-  violations:
-    description: 'total violation count'
-  risk_level:
-    description: 'blast radius risk level'
-  suspicious_change_flagged:
-    description: 'whether suspicious change detector was triggered'
-  governance_decision:
-    description: 'governance decision matrix outcome'
-  average_relevance_score:
-    description: 'average per-file AI relevance score'
-  ai_change_log_integrity_valid:
-    description: 'true when signed/tamper checks passed for AI change log'
-  ai_change_log_signed:
-    description: 'true when AI change log is cryptographically signed'
-  org_manual_approval_required:
-    description: 'true when org governance requires manual approvals'
-  org_minimum_manual_approvals:
-    description: 'minimum distinct manual approvers required by org governance'
-  manual_approval_gate_blocked:
-    description: 'true when run failed only because manual governance approval is still pending'
-  policy_exceptions_blocked:
-    description: 'count of policy exception matches blocked by approval governance'
-  policy_exceptions_suppressed:
-    description: 'count of policy violations suppressed by active exceptions'
-  policy_exceptions_matched:
-    description: 'count of exception IDs matched during verify'
-  policy_exceptions_source_mode:
-    description: 'source mode for exceptions (local|org|org_fallback_local)'
-  policy_exception_workflow_blocked:
-    description: 'true when run failed because blocked policy exceptions exist under enforced workflow rules'
-  policy_compilation_fingerprint:
-    description: 'compiled policy fingerprint used during verify'
-  policy_compilation_rule_count:
-    description: 'deterministic rule count in compiled policy'
-  change_contract_exists:
-    description: 'true when a change contract artifact was present'
-  change_contract_valid:
-    description: 'true when evaluated change contract passed'
-  change_contract_enforced:
-    description: 'true when change contract drift was configured as hard-fail'
-  change_contract_id:
-    description: 'content-derived identifier of the active change contract'
-  runtime_guard_required:
-    description: 'true when verify required runtime guard enforcement for this run'
-  runtime_guard_passed:
-    description: 'true when runtime guard evaluation passed'
-  runtime_guard_path:
-    description: 'runtime guard artifact path used during verify'
-  ai_debt_score:
-    description: 'AI debt budget score (0-100) from neurcode verify'
-  ai_debt_passed:
-    description: 'true when AI debt budget gate passed for this run'
-  ai_debt_mode:
-    description: 'effective AI debt mode (off|advisory|enforce)'
-  ai_debt_violations:
-    description: 'count of AI debt budget violations detected'
+  # ── Layer 1: standalone effect inventory ─────────────────────────────────
+  effect_count:
+    description: 'Number of files in the committed PR delta (admission support artifacts excluded).'
+  subsystems:
+    description: 'Comma-separated list of top-level subsystems/directories touched.'
+  sensitive_surfaces:
+    description: 'Comma-separated sensitive surface categories detected (e.g. migrations,CI).'
+  codeowners_zones_crossed:
+    description: 'Number of distinct CODEOWNERS ownership zones crossed by this PR.'
+  codeowners_changed:
+    description: 'true when CODEOWNERS itself appears in the PR delta.'
+
+  # ── Layer 2: runtime-aware admission ─────────────────────────────────────
+  admission_verdict:
+    description: >
+      Admission verdict: self_attested_complete | self_attested_incomplete |
+      self_attested_inconsistent | no_record.
+  covered_paths_count:
+    description: 'Number of changed paths with strict-admissible governance coverage.'
+  uncovered_paths_count:
+    description: 'Number of changed paths without admission coverage.'
+  record_count:
+    description: 'Total .neurcode-admission/*.json files discovered.'
+  usable_record_count:
+    description: 'Records that passed bounded parsing and internal consistency checks.'
+
+  # ── Policy outcome ────────────────────────────────────────────────────────
+  action_blocked:
+    description: 'true only when policy=strict_self_attested and admission failed. Always false in advisory mode.'
 
 runs:
-  using: 'node24'
+  using: 'node20'
   main: 'dist/index.js'
