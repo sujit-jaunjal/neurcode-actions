@@ -1,10 +1,9 @@
-name: 'Neurcode — Runtime Admission Advisory'
+name: 'Neurcode - Runtime Admission Advisory'
 description: >
-  Two-layer advisory Action. Layer 1: deterministic PR effect inventory (changed-file
-  effects, subsystem reach, CODEOWNERS crossings, sensitive operational surfaces) — no
-  account, no API key, no local runtime required. Layer 2: optional self-attested
-  runtime admission provenance when .neurcode-admission/*.json is present. Self-attested
-  provenance is a claim, not cryptographic proof. Advisory-only by default — never blocks.
+  Zero-account, source-free PR triage report for ownership, sensitive surfaces,
+  subsystem reach, and optional self-attested runtime admission evidence. No account,
+  API key, source upload, telemetry, or local runtime required. Self-attested
+  provenance is a claim, not cryptographic proof. Advisory-only by default - never blocks.
 author: 'Neurcode'
 branding:
   icon: 'shield'
@@ -13,8 +12,8 @@ branding:
 inputs:
   policy:
     description: >
-      admission-gate policy. "advisory" (default) — step summary only, never fails the
-      job. "strict_self_attested" — experimental; may fail on incomplete/inconsistent
+      admission-gate policy. "advisory" (default) - step summary only, never fails the
+      job. "strict_self_attested" - experimental; may fail on incomplete/inconsistent
       records (clearly labelled as NOT enterprise proof, NOT a trusted gate).
     required: false
     default: 'advisory'
@@ -22,7 +21,7 @@ inputs:
   no_record_strict:
     description: >
       In strict_self_attested mode, fail when no .neurcode-admission/*.json record is
-      present. Default false — no_record is reported but does not block.
+      present. Default false - no_record is reported but does not block.
     required: false
     default: 'false'
 
@@ -44,10 +43,16 @@ outputs:
     description: 'Comma-separated list of top-level subsystems/directories touched.'
   sensitive_surfaces:
     description: 'Comma-separated sensitive surface categories detected (e.g. migrations,CI).'
+  sensitive_surface_count:
+    description: 'Number of distinct sensitive surface categories detected.'
   codeowners_zones_crossed:
     description: 'Number of distinct CODEOWNERS ownership zones crossed by this PR.'
   codeowners_changed:
     description: 'true when CODEOWNERS itself appears in the PR delta.'
+  review_attention:
+    description: 'Deterministic routing summary: simple, manual_routing, or needs_attention.'
+  maintainer_questions_count:
+    description: 'Number of deterministic maintainer questions generated in the step summary.'
 
   # ── Layer 2: runtime-aware admission ─────────────────────────────────────
   admission_verdict:

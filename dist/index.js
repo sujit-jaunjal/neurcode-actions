@@ -41808,10 +41808,10 @@ function buildAgentInvocationSummary(session) {
                     ? 'Have the agent call neurcode_agent_edit_before before its first write.'
                     : pendingPlanAmendments > 0
                         ? 'Review and accept or reject the pending re-plan proposal.'
-                        : blockEvents.length > approvalEvents.length
-                            ? 'Approve or deny the blocked exact path.'
-                            : status === 'finished'
-                                ? 'Review the replayable source-free evidence.'
+                        : status === 'finished'
+                            ? 'Review the replayable source-free evidence.'
+                            : blockEvents.length > approvalEvents.length
+                                ? 'Approve or deny the blocked exact path.'
                                 : 'Continue enforcing pre-write checks for every edit.';
     return {
         schemaVersion: exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION,
@@ -42452,43 +42452,85 @@ const CAPABILITIES = [
     {
         adapter: 'claude-code-hooks',
         enforcementLevel: 'hard_deny',
+        controlLevel: 'hard_block_capable',
+        compatibilityMode: 'hard_pre_write_enforcement',
         automatic: true,
         events: ['session.start', 'plan.capture', 'edit.before', 'session.finish'],
+        enforceable: ['pre-write boundary deny', 'pre-write intent and plan checks', 'exact-path approvals'],
+        advisoryOnly: ['post-session structural consequence interpretation'],
+        supervisorSupported: false,
         description: 'Claude Code lifecycle hooks automatically run the local runtime before writes land.',
+    },
+    {
+        adapter: 'copilot-hooks',
+        enforcementLevel: 'hard_deny',
+        controlLevel: 'hard_block_capable',
+        compatibilityMode: 'hard_pre_write_enforcement',
+        automatic: true,
+        events: ['session.start', 'plan.capture', 'edit.before', 'session.finish'],
+        enforceable: ['pre-tool boundary deny when Copilot hook discovery is active', 'exact-path approvals'],
+        advisoryOnly: ['hosts without Copilot hook discovery fall back to supervision/evidence'],
+        supervisorSupported: true,
+        description: 'GitHub Copilot hooks run the local runtime around agent tool use when Copilot hook discovery is active for the repo.',
     },
     {
         adapter: 'generic-mcp',
         enforcementLevel: 'cooperative',
+        controlLevel: 'supervised_advisory_capable',
+        compatibilityMode: 'cooperative_check',
         automatic: false,
         events: [...ALL_RUNTIME_EVENTS],
+        enforceable: ['runtime decision returned to cooperating agent', 'exact-path approvals when the agent calls the runtime'],
+        advisoryOnly: ['host-level write denial', 'edits made without runtime calls'],
+        supervisorSupported: true,
         description: 'Portable MCP ingress for agents that voluntarily call the runtime before edits.',
     },
     {
         adapter: 'codex-mcp',
         enforcementLevel: 'cooperative',
+        controlLevel: 'supervised_advisory_capable',
+        compatibilityMode: 'supervisor_diff_watch',
         automatic: false,
         events: [...ALL_RUNTIME_EVENTS],
+        enforceable: ['cooperative edit.before checks when Codex calls the runtime', 'pre-commit supervisor/diff-watch warnings'],
+        advisoryOnly: ['host-level hard pre-write denial inside Codex', 'edits made outside the runtime adapter'],
+        supervisorSupported: true,
         description: 'Codex MCP integration. Governance is enforced when the agent calls the local runtime ingress.',
     },
     {
         adapter: 'cursor-mcp',
         enforcementLevel: 'cooperative',
+        controlLevel: 'supervised_advisory_capable',
+        compatibilityMode: 'supervisor_diff_watch',
         automatic: false,
         events: [...ALL_RUNTIME_EVENTS],
+        enforceable: ['cooperative edit.before checks when Cursor calls the runtime', 'pre-commit supervisor/diff-watch warnings'],
+        advisoryOnly: ['host-level hard pre-write denial inside Cursor', 'edits made outside the runtime adapter'],
+        supervisorSupported: true,
         description: 'Cursor MCP integration. Governance is enforced when the agent calls the local runtime ingress.',
     },
     {
         adapter: 'vscode-extension',
         enforcementLevel: 'observe_only',
+        controlLevel: 'evidence_only_capable',
+        compatibilityMode: 'evidence_only',
         automatic: false,
         events: [...ALL_RUNTIME_EVENTS],
+        enforceable: ['live visibility', 'source-free evidence capture'],
+        advisoryOnly: ['pre-write denial', 'agent tool-use enforcement'],
+        supervisorSupported: true,
         description: 'IDE companion ingress for live visibility and post-write containment where pre-write interception is unavailable.',
     },
     {
         adapter: 'github-action',
         enforcementLevel: 'post_change_backstop',
+        controlLevel: 'evidence_only_capable',
+        compatibilityMode: 'evidence_only',
         automatic: true,
         events: ['edit.after', 'session.finish'],
+        enforceable: ['post-change admission/backstop checks'],
+        advisoryOnly: ['in-flow write denial'],
+        supervisorSupported: false,
         description: 'Optional repository backstop after changes exist; never represented as in-flow hard enforcement.',
     },
 ];
@@ -42567,13 +42609,20 @@ function listAgentRuntimeAdapterCapabilities() {
     return CAPABILITIES.map((capability) => ({
         ...capability,
         events: [...capability.events],
+        enforceable: [...capability.enforceable],
+        advisoryOnly: [...capability.advisoryOnly],
     }));
 }
 function getAgentRuntimeAdapterCapability(adapter) {
     const capability = CAPABILITIES.find((item) => item.adapter === adapter);
     if (!capability)
         throw new Error(`unknown runtime adapter: ${adapter}`);
-    return { ...capability, events: [...capability.events] };
+    return {
+        ...capability,
+        events: [...capability.events],
+        enforceable: [...capability.enforceable],
+        advisoryOnly: [...capability.advisoryOnly],
+    };
 }
 function normalizeAgentRuntimeEvent(value) {
     const record = asRecord(value);
@@ -42647,6 +42696,593 @@ function normalizeAgentRuntimeEvent(value) {
     };
 }
 //# sourceMappingURL=agent-runtime-adapter.js.map
+
+/***/ }),
+
+/***/ 3270:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AI_CHANGE_RECORD_TYPE = exports.AI_CHANGE_RECORD_SCHEMA_VERSION = void 0;
+exports.aiChangeRecordPath = aiChangeRecordPath;
+exports.buildAIChangeRecord = buildAIChangeRecord;
+exports.writeAIChangeRecord = writeAIChangeRecord;
+const node_crypto_1 = __nccwpck_require__(7598);
+const node_fs_1 = __nccwpck_require__(3024);
+const node_path_1 = __nccwpck_require__(6760);
+const architecture_obligations_1 = __nccwpck_require__(568);
+exports.AI_CHANGE_RECORD_SCHEMA_VERSION = 'neurcode.governed-session-record.v1';
+exports.AI_CHANGE_RECORD_TYPE = 'ai-change-accountability-record';
+function stableStringify(value) {
+    if (Array.isArray(value))
+        return `[${value.map(stableStringify).join(',')}]`;
+    if (value && typeof value === 'object') {
+        const entries = Object.entries(value)
+            .sort(([a], [b]) => a.localeCompare(b));
+        return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+function stableHash(value) {
+    return (0, node_crypto_1.createHash)('sha256').update(stableStringify(value)).digest('hex').slice(0, 24);
+}
+function eventTime(event) {
+    const parsed = Date.parse(event.ts);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+function sessionStartedAt(session) {
+    return session.events.find((event) => event.type === 'session_start')?.ts ?? null;
+}
+function unique(values) {
+    const out = [];
+    const seen = new Set();
+    for (const raw of values) {
+        const value = String(raw ?? '').trim();
+        if (!value || seen.has(value))
+            continue;
+        seen.add(value);
+        out.push(value);
+    }
+    return out;
+}
+function arrayOfStrings(value) {
+    return Array.isArray(value) ? unique(value.filter((item) => typeof item === 'string')) : [];
+}
+function approvalContext(event) {
+    const detail = event.detail && typeof event.detail === 'object' ? event.detail : {};
+    const raw = detail['approvalContext'];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return { owners: [], suggestedApprovalPath: null };
+    }
+    const context = raw;
+    return {
+        owners: arrayOfStrings(context['owners']),
+        suggestedApprovalPath: typeof context['suggestedApprovalPath'] === 'string'
+            ? context['suggestedApprovalPath']
+            : null,
+    };
+}
+function buildTrajectory(events) {
+    const byPath = new Map();
+    for (const event of events) {
+        if (event.type !== 'check_ok' && event.type !== 'check_warn' && event.type !== 'check_block')
+            continue;
+        if (!event.filePath)
+            continue;
+        const existing = byPath.get(event.filePath);
+        const context = approvalContext(event);
+        const verdict = event.verdict || event.type.replace('check_', '');
+        if (!existing) {
+            byPath.set(event.filePath, {
+                filePath: event.filePath,
+                verdicts: [verdict],
+                checks: 1,
+                firstSeenAt: event.ts,
+                lastSeenAt: event.ts,
+                owners: context.owners,
+                suggestedApprovalPath: context.suggestedApprovalPath,
+            });
+            continue;
+        }
+        existing.verdicts = unique([...existing.verdicts, verdict]);
+        existing.checks += 1;
+        existing.lastSeenAt = event.ts;
+        existing.owners = unique([...existing.owners, ...context.owners]);
+        existing.suggestedApprovalPath ||= context.suggestedApprovalPath;
+    }
+    return Array.from(byPath.values()).sort((a, b) => {
+        const aTime = a.firstSeenAt ? Date.parse(a.firstSeenAt) : 0;
+        const bTime = b.firstSeenAt ? Date.parse(b.firstSeenAt) : 0;
+        return aTime - bTime || a.filePath.localeCompare(b.filePath);
+    });
+}
+function planTimeline(revisions) {
+    return (revisions ?? []).map((revision) => ({
+        revision: revision.revision,
+        kind: revision.kind,
+        summary: revision.plan.summary || null,
+        capturedAt: revision.capturedAt,
+        reason: revision.reason || null,
+        expectedFiles: unique(revision.plan.expectedFiles),
+        expectedGlobs: unique(revision.plan.expectedGlobs),
+        constraints: unique(revision.plan.constraints),
+        risks: unique(revision.plan.risks),
+    }));
+}
+function approvalStatus(grant, nowIso) {
+    if (grant.revokedAt)
+        return 'revoked';
+    if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.parse(nowIso))
+        return 'expired';
+    return 'active';
+}
+function approvalEntries(grants, nowIso) {
+    return (grants ?? []).map((grant) => ({
+        path: grant.path,
+        status: approvalStatus(grant, nowIso),
+        source: grant.source,
+        approvedAt: grant.approvedAt,
+        expiresAt: grant.expiresAt ?? null,
+        revokedAt: grant.revokedAt ?? null,
+        approvedBy: grant.approvedBy ?? null,
+        reason: grant.reason,
+        requestId: grant.requestId ?? null,
+    })).sort((a, b) => {
+        const aTime = Date.parse(a.approvedAt);
+        const bTime = Date.parse(b.approvedAt);
+        return aTime - bTime || a.path.localeCompare(b.path);
+    });
+}
+function plural(count, singular, pluralText = `${singular}s`) {
+    return `${count} ${count === 1 ? singular : pluralText}`;
+}
+function asRecord(value) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : null;
+}
+function asString(value) {
+    return typeof value === 'string' ? value : null;
+}
+function asNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+function asBoolean(value) {
+    return value === true;
+}
+function asStringArray(value) {
+    return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : [];
+}
+function latestStructuralUnderstanding(events) {
+    const event = [...events].reverse().find((candidate) => candidate.type === 'structural_understanding');
+    const detail = asRecord(event?.detail);
+    if (!detail)
+        return null;
+    const analysis = asRecord(detail.analysis) ?? {};
+    const changedSymbols = Array.isArray(detail.changedSymbols)
+        ? detail.changedSymbols.flatMap((item) => {
+            const row = asRecord(item);
+            if (!row)
+                return [];
+            const file = asString(row.file);
+            const name = asString(row.name);
+            const kind = asString(row.kind);
+            const action = asString(row.action);
+            return file && name && kind && action ? [{ file, name, kind, action }] : [];
+        })
+        : [];
+    const topReferences = Array.isArray(detail.topReferences)
+        ? detail.topReferences.flatMap((item) => {
+            const row = asRecord(item);
+            if (!row)
+                return [];
+            const targetFile = asString(row.targetFile);
+            const targetSymbol = asString(row.targetSymbol);
+            const referencingFile = asString(row.referencingFile);
+            const line = asNumber(row.line);
+            return targetFile && targetSymbol && referencingFile && line > 0
+                ? [{
+                        targetFile,
+                        targetSymbol,
+                        referencingFile,
+                        referencingSymbol: asString(row.referencingSymbol),
+                        line,
+                        isTestFile: asBoolean(row.isTestFile),
+                    }]
+                : [];
+        })
+        : [];
+    const suppressedArtifacts = Array.isArray(detail.suppressedArtifacts)
+        ? detail.suppressedArtifacts.flatMap((item) => {
+            const row = asRecord(item);
+            if (!row)
+                return [];
+            const path = asString(row.path);
+            const reasonCode = asString(row.reasonCode);
+            return path && reasonCode ? [{ path, reasonCode }] : [];
+        })
+        : [];
+    const digest = asRecord(detail.digest);
+    const digestSummary = digest ? asRecord(digest.summary) : null;
+    const digestHidden = digest ? asRecord(digest.hidden) : null;
+    return {
+        schemaVersion: asString(detail.schemaVersion) ?? 'unknown',
+        artifactHash: asString(detail.artifactHash),
+        artifactPath: asString(detail.artifactPath),
+        analyzed: asBoolean(analysis.analyzed),
+        reason: asString(analysis.reason),
+        changedFileCount: asNumber(analysis.changedFileCount),
+        changedSymbolCount: asNumber(analysis.changedSymbolCount),
+        referenceCount: asNumber(analysis.referenceCount),
+        testReferenceCount: asNumber(analysis.testReferenceCount),
+        changedSymbols,
+        topReferences,
+        suppressedArtifacts,
+        consequenceUnderstanding: detail.consequenceUnderstanding ?? null,
+        digest: digest
+            ? {
+                summary: digestSummary,
+                hidden: digestHidden,
+                topSymbols: Array.isArray(digest.topSymbols) ? digest.topSymbols : [],
+                topConsequences: Array.isArray(digest.topConsequences) ? digest.topConsequences : [],
+                topReferences: Array.isArray(digest.topReferences) ? digest.topReferences : [],
+                limitations: asStringArray(digest.limitations),
+            }
+            : null,
+        planAlignment: detail.planAlignment ?? null,
+        boundaryImpact: Array.isArray(detail.boundaryImpact) ? detail.boundaryImpact : [],
+    };
+}
+function structuralImpactRows(understanding) {
+    const consequence = asRecord(understanding?.consequenceUnderstanding);
+    const rows = Array.isArray(consequence?.topImpacts) ? consequence.topImpacts : [];
+    return rows.flatMap((item) => {
+        const row = asRecord(item);
+        if (!row)
+            return [];
+        const file = asString(row.file);
+        const symbol = asString(row.symbol);
+        const summary = asString(row.summary);
+        if (!file || !symbol || !summary)
+            return [];
+        return [{
+                file,
+                symbol,
+                summary,
+                productionFiles: asStringArray(row.productionFiles).slice(0, 8),
+                externalProductionConsumerCount: asNumber(row.externalProductionConsumerCount),
+                changedProductionConsumerCount: asNumber(row.changedProductionConsumerCount),
+                sensitiveConsumerCount: asNumber(row.sensitiveConsumerCount),
+                approvalRequiredConsumerCount: asNumber(row.approvalRequiredConsumerCount),
+                runtimeGovernanceConsumerCount: asNumber(row.runtimeGovernanceConsumerCount),
+                highFanout: asBoolean(row.highFanout),
+                architectureRelevant: asBoolean(row.architectureRelevant),
+            }];
+    }).slice(0, 5);
+}
+function reviewBriefSection(input) {
+    return {
+        ...input,
+        facts: unique(input.facts).slice(0, 8),
+        reviewFocus: unique(input.reviewFocus).slice(0, 8),
+    };
+}
+function buildReviewBrief(input) {
+    const impacts = structuralImpactRows(input.understanding.latest);
+    const checkedPaths = input.trajectory.map((item) => item.filePath);
+    const blockedPathRows = input.trajectory
+        .filter((item) => item.verdicts.includes('block'))
+        .map((item) => ({
+        filePath: item.filePath,
+        approvalPath: item.suggestedApprovalPath || item.filePath,
+        verdicts: item.verdicts,
+    }));
+    const blockedPaths = unique(blockedPathRows.map((item) => item.approvalPath));
+    const approvedPaths = input.approvals
+        .filter((item) => item.status === 'active')
+        .map((item) => item.path);
+    const containedBlockedPaths = input.session.status === 'finished'
+        ? unique(blockedPathRows
+            .filter((item) => !approvedPaths.includes(item.approvalPath) &&
+            !item.verdicts.some((verdict) => verdict === 'ok' || verdict === 'warn'))
+            .map((item) => item.approvalPath))
+        : [];
+    const unresolvedBlockedPaths = blockedPaths.filter((path) => !approvedPaths.includes(path) &&
+        !containedBlockedPaths.includes(path));
+    const blockingObligations = input.architecture.obligations
+        .filter((item) => item.status === 'pending' && item.effectiveMode === 'block');
+    const sensitiveImpactCount = impacts.filter((item) => item.sensitiveConsumerCount > 0 ||
+        item.approvalRequiredConsumerCount > 0 ||
+        item.runtimeGovernanceConsumerCount > 0 ||
+        item.highFanout ||
+        item.architectureRelevant).length;
+    const escapingImpactCount = impacts.filter((item) => item.externalProductionConsumerCount > 0).length;
+    const impactFocus = unique(impacts.flatMap((item) => [
+        ...item.productionFiles,
+        item.file,
+    ]));
+    const reviewFocus = unique([
+        ...unresolvedBlockedPaths,
+        ...blockedPaths,
+        ...impactFocus,
+        ...input.trajectory.filter((item) => item.verdicts.includes('warn')).map((item) => item.filePath),
+    ]).slice(0, 10);
+    let verdict = 'ready_to_review';
+    if (!input.replayHash) {
+        verdict = 'evidence_incomplete';
+    }
+    else if (unresolvedBlockedPaths.length > 0 || blockingObligations.length > 0) {
+        verdict = 'blocked_unresolved';
+    }
+    else if (input.session.counts.warn > 0 ||
+        input.session.counts.block > 0 ||
+        sensitiveImpactCount > 0 ||
+        escapingImpactCount > 0 ||
+        input.plan.pendingAmendments.length > 0) {
+        verdict = 'needs_human_inspection';
+    }
+    const riskLabels = unique([
+        verdict,
+        input.session.counts.block > 0 ? 'boundary_block_observed' : null,
+        input.session.counts.warn > 0 ? 'warning_observed' : null,
+        containedBlockedPaths.length > 0 ? 'contained_boundary_denial' : null,
+        escapingImpactCount > 0 ? 'outside_diff_consumers' : null,
+        sensitiveImpactCount > 0 ? 'sensitive_or_runtime_consumers' : null,
+        input.plan.pendingAmendments.length > 0 ? 'pending_replan' : null,
+        blockingObligations.length > 0 ? 'blocking_architecture_obligation' : null,
+    ]);
+    const headline = verdict === 'ready_to_review'
+        ? 'Ready for senior review'
+        : verdict === 'needs_human_inspection'
+            ? 'Human inspection recommended before accepting'
+            : verdict === 'blocked_unresolved'
+                ? 'Blocked items remain unresolved'
+                : 'Evidence is incomplete until the session finishes';
+    const sections = [
+        reviewBriefSection({
+            id: 'change_thesis',
+            title: 'Change thesis',
+            status: input.intent.contract || input.plan.activeSummary ? 'pass' : 'pending',
+            summary: input.intent.contract?.summary || input.plan.activeSummary || input.session.goal || 'No intent or accepted plan summary was captured.',
+            facts: [
+                input.intent.contract?.primaryAction ? `intent action: ${input.intent.contract.primaryAction}` : 'intent action: unknown',
+                `scope mode: ${input.session.scopeMode}`,
+                input.plan.activeRevision ? `plan revision: ${input.plan.activeRevision}` : 'plan revision: none',
+                input.plan.pendingAmendments.length > 0 ? `${plural(input.plan.pendingAmendments.length, 'pending amendment')}` : 'no pending amendments',
+            ],
+            reviewFocus: input.intent.expectedPathGlobs,
+            provenance: input.intent.contract ? 'advisory' : 'deterministic',
+        }),
+        reviewBriefSection({
+            id: 'what_changed',
+            title: 'What changed',
+            status: input.session.counts.block > 0 || input.session.counts.warn > 0 ? 'warn' : 'pass',
+            summary: `${plural(input.trajectory.length, 'checked path')} across ${plural(input.session.counts.ok + input.session.counts.warn + input.session.counts.block, 'governed edit check')}.`,
+            facts: [
+                `${plural(input.session.counts.ok, 'ok verdict')}`,
+                `${plural(input.session.counts.warn, 'warning')}`,
+                `${plural(input.session.counts.block, 'block')}`,
+                input.understanding.latest
+                    ? `${plural(input.understanding.latest.changedSymbolCount, 'changed symbol')}, ${plural(input.understanding.latest.referenceCount, 'reference')}`
+                    : 'no structural understanding artifact attached',
+            ],
+            reviewFocus: checkedPaths,
+            provenance: 'deterministic',
+        }),
+        reviewBriefSection({
+            id: 'what_could_break',
+            title: 'What could break',
+            status: escapingImpactCount > 0 || sensitiveImpactCount > 0 ? 'warn' : impacts.length > 0 ? 'pass' : 'pending',
+            summary: impacts.length > 0
+                ? `${plural(impacts.length, 'ranked structural impact')} found; top impact: ${impacts[0].file}#${impacts[0].symbol}.`
+                : 'No ranked structural impacts were attached to this record.',
+            facts: impacts.length > 0
+                ? impacts.slice(0, 4).map((item) => item.summary)
+                : ['structural consequence facts unavailable or empty'],
+            reviewFocus: impactFocus,
+            provenance: 'deterministic',
+        }),
+        reviewBriefSection({
+            id: 'governance_events',
+            title: 'Governance events',
+            status: unresolvedBlockedPaths.length > 0 ? 'block' : input.approvals.length > 0 || input.session.counts.block > 0 ? 'warn' : 'pass',
+            summary: `${plural(input.session.counts.block, 'blocked write')} and ${plural(input.approvals.length, 'approval lifecycle entry', 'approval lifecycle entries')} are recorded.`,
+            facts: [
+                unresolvedBlockedPaths.length > 0
+                    ? `${plural(unresolvedBlockedPaths.length, 'blocked path')} without active approval`
+                    : 'no unresolved blocked paths',
+                containedBlockedPaths.length > 0
+                    ? `${plural(containedBlockedPaths.length, 'contained boundary denial')}`
+                    : 'no contained boundary denials',
+                `${plural(input.approvals.filter((item) => item.status === 'active').length, 'active approval')}`,
+                `${plural(input.approvals.filter((item) => item.status === 'revoked').length, 'revoked approval')}`,
+                `${plural(blockingObligations.length, 'blocking architecture obligation')}`,
+            ],
+            reviewFocus: unique([...blockedPaths, ...approvedPaths]),
+            provenance: 'deterministic',
+        }),
+        reviewBriefSection({
+            id: 'final_verdict',
+            title: 'Final verdict',
+            status: verdict === 'ready_to_review' ? 'pass' : verdict === 'blocked_unresolved' ? 'block' : 'warn',
+            summary: headline,
+            facts: riskLabels,
+            reviewFocus,
+            provenance: 'deterministic',
+        }),
+    ];
+    return {
+        schemaVersion: 'neurcode.review-brief.v1',
+        verdict,
+        headline,
+        summary: `${headline}. Review focus: ${reviewFocus.length > 0 ? reviewFocus.slice(0, 4).join(', ') : 'none'}.`,
+        riskLabels,
+        reviewFocus,
+        sections,
+        generatedFrom: [
+            'session contract',
+            'checked-edit trajectory',
+            'approval lifecycle',
+            'architecture obligations',
+            'local structural understanding',
+            'replay hash',
+        ],
+        limitations: [
+            'No source code, diff hunks, patch content, or shell command bodies are included.',
+            'Intent and plan summaries are advisory; verdict and review focus are deterministic record facts.',
+            'Static structural understanding is TypeScript-focused and does not prove runtime behavior.',
+        ],
+    };
+}
+function aiChangeRecordPath(projectRoot, sessionId) {
+    return (0, node_path_1.join)(projectRoot, '.neurcode', 'sessions', `${sessionId}.change-record.json`);
+}
+function buildAIChangeRecord(session, options = {}) {
+    const generatedAt = options.generatedAt ?? new Date().toISOString();
+    const checkCounts = {
+        ok: session.events.filter((event) => event.type === 'check_ok').length,
+        warn: session.events.filter((event) => event.type === 'check_warn').length,
+        block: session.events.filter((event) => event.type === 'check_block').length,
+        approval: session.events.filter((event) => event.type === 'approval_decision').length,
+        planEvents: session.events.filter((event) => event.type === 'plan_captured' ||
+            event.type === 'plan_amended' ||
+            event.type === 'plan_amendment_proposed' ||
+            event.type === 'plan_amendment_decision').length,
+        events: session.events.length,
+    };
+    const obligations = session.contract.architectureObligations ?? [];
+    const intentContract = session.contract.intentContract ?? null;
+    const activePlan = session.contract.agentPlan ?? null;
+    const coreWithoutReviewBrief = {
+        schemaVersion: exports.AI_CHANGE_RECORD_SCHEMA_VERSION,
+        recordType: exports.AI_CHANGE_RECORD_TYPE,
+        displayName: 'AI Change Record',
+        generatedAt,
+        privacy: {
+            sourceUploaded: false,
+            sourceFree: true,
+            omittedFields: ['source code', 'diff hunks', 'patch content', 'shell command bodies'],
+        },
+        session: {
+            sessionId: session.sessionId,
+            repoName: session.repoName,
+            status: session.status,
+            goal: session.contract.goal,
+            scopeMode: session.contract.scopeMode,
+            profileHash: session.profileHash,
+            startedAt: sessionStartedAt(session),
+            finishedAt: session.finishedAt ?? null,
+            counts: checkCounts,
+        },
+        intent: {
+            contract: intentContract,
+            expectedPathGlobs: unique(intentContract?.target.expectedPathGlobs ?? session.contract.allowedGlobs),
+            riskNotes: unique(intentContract?.riskNotes ?? []),
+        },
+        plan: {
+            activeRevision: session.contract.agentPlanRevision ?? (activePlan ? 1 : null),
+            activeSummary: activePlan?.summary ?? null,
+            timeline: planTimeline(session.contract.agentPlanRevisions),
+            pendingAmendments: (session.contract.planAmendmentProposals ?? [])
+                .filter((proposal) => proposal.status === 'pending')
+                .map((proposal) => ({
+                proposalId: proposal.proposalId,
+                previousRevision: proposal.previousRevision,
+                riskLevel: proposal.risk.level,
+                requiresHumanApproval: proposal.risk.requiresHumanApproval,
+                addedFiles: unique(proposal.risk.addedFiles),
+                addedGlobs: unique(proposal.risk.addedGlobs),
+                reasons: unique(proposal.risk.reasons),
+                createdAt: proposal.createdAt,
+            })),
+        },
+        scope: {
+            allowedGlobs: unique(session.contract.allowedGlobs),
+            approvalRequiredGlobs: unique(session.contract.approvalRequiredGlobs),
+            approvedPaths: unique(session.contract.approvedPaths),
+        },
+        trajectory: buildTrajectory(session.events),
+        architecture: {
+            summary: (0, architecture_obligations_1.summarizeArchitectureObligations)(obligations),
+            obligations: obligations.map((obligation) => ({
+                id: obligation.id,
+                title: obligation.title,
+                severity: obligation.severity,
+                status: obligation.status,
+                effectiveMode: obligation.effectiveMode ?? 'warn',
+                relatedPaths: unique([
+                    obligation.requiredPath,
+                    ...obligation.observedEvidence.map((item) => item.path),
+                ]),
+            })),
+        },
+        approvals: approvalEntries(session.contract.approvalGrants, generatedAt),
+        understanding: {
+            latest: latestStructuralUnderstanding(session.events),
+        },
+        integrity: {
+            replayHash: session.replayHash ?? null,
+            replayHashStatus: session.replayHash ? 'present' : 'pending-session-finish',
+            deterministicFacts: [
+                'session contract',
+                'intent contract',
+                'agent plan revisions',
+                'checked-edit trajectory',
+                'approval lifecycle',
+                'architecture obligations',
+                'local structural understanding',
+                'replay hash',
+            ],
+            advisoryFacts: [
+                'intent summary',
+                'plan coherence explanations',
+                'architecture obligation explanations',
+            ],
+        },
+    };
+    const core = {
+        ...coreWithoutReviewBrief,
+        reviewBrief: buildReviewBrief({
+            session: coreWithoutReviewBrief.session,
+            intent: coreWithoutReviewBrief.intent,
+            plan: coreWithoutReviewBrief.plan,
+            trajectory: coreWithoutReviewBrief.trajectory,
+            architecture: coreWithoutReviewBrief.architecture,
+            approvals: coreWithoutReviewBrief.approvals,
+            understanding: coreWithoutReviewBrief.understanding,
+            replayHash: coreWithoutReviewBrief.integrity.replayHash,
+        }),
+    };
+    const recordHash = stableHash({
+        ...core,
+        generatedAt: null,
+        integrity: {
+            ...core.integrity,
+            recordHash: null,
+        },
+    });
+    return {
+        ...core,
+        integrity: {
+            ...core.integrity,
+            recordHash,
+        },
+    };
+}
+function writeAIChangeRecord(projectRoot, session, options = {}) {
+    const path = aiChangeRecordPath(projectRoot, session.sessionId);
+    const dir = (0, node_path_1.join)(projectRoot, '.neurcode', 'sessions');
+    if (!(0, node_fs_1.existsSync)(dir))
+        (0, node_fs_1.mkdirSync)(dir, { recursive: true });
+    const record = buildAIChangeRecord(session, options);
+    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+    (0, node_fs_1.writeFileSync)(tmp, JSON.stringify(record, null, 2) + '\n', 'utf8');
+    (0, node_fs_1.renameSync)(tmp, path);
+    return { record, path };
+}
+//# sourceMappingURL=ai-change-record.js.map
 
 /***/ }),
 
@@ -43343,6 +43979,10 @@ function planText(plan) {
         ...plan.expectedGlobs,
     ].join('\n');
 }
+function isDemoRehearsalMarkerIntent(text) {
+    return (/\bfixtures\/demo-svc\b/i.test(text) &&
+        /\b(marker|rehearsal|demo)\b/i.test(text));
+}
 function isTestPath(filePath) {
     return (/(^|\/)(tests?|specs?)(\/|$)/i.test(filePath) ||
         /(?:^|[._-])(test|spec)\.[a-z0-9]+$/i.test(filePath) ||
@@ -43573,10 +44213,10 @@ function deriveArchitectureObligations(input) {
     const intentIds = new Set((input.intentContract?.obligations ?? []).map((item) => item.id).filter(Boolean));
     const domains = new Set(input.intentContract?.target?.domainKeywords ?? []);
     const drafts = [];
-    const reliabilityTriggered = /\b(retry|retries|backoff|timeout|idempoten|duplicate side effect)\b/i.test(combinedText) ||
+    const reliabilityTriggered = !isDemoRehearsalMarkerIntent(combinedText) && (/\b(retry|retries|backoff|timeout|idempoten|duplicate side effect)\b/i.test(combinedText) ||
         domains.has('reliability') ||
         intentIds.has('preserve-idempotency') ||
-        intentIds.has('cover-retry-path');
+        intentIds.has('cover-retry-path'));
     if (reliabilityTriggered) {
         const retryTest = trajectoryPaths.find(isTestPath);
         drafts.push({
@@ -43658,7 +44298,9 @@ function deriveArchitectureObligations(input) {
     }
     // V2: architecture-graph-derived structural obligations (auth/payments/
     // public-api/migration/downstream-impact) for the modules currently in play.
-    drafts.push(...deriveGraphDrafts(input, events, approvedPaths, acceptedPlanText));
+    if (!isDemoRehearsalMarkerIntent(combinedText)) {
+        drafts.push(...deriveGraphDrafts(input, events, approvedPaths, acceptedPlanText));
+    }
     return finalize(drafts, input.previous ?? [], now, policy, input.waivers ?? []);
 }
 function summarizeArchitectureObligations(obligations = []) {
@@ -44422,8 +45064,8 @@ function compileDeterministicConstraints(input) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.findModuleForPath = exports.extractImportSpecifiers = exports.deriveGraphObligationSeeds = exports.dependentsOf = exports.dependenciesOf = exports.buildArchitectureGraph = exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION = exports.summarizeArchitectureObligations = exports.normalizeArchitectureObligationPolicy = exports.isArchitectureObligationWaiverActive = exports.evaluateArchitectureEdit = exports.evaluateArchitectureObligationFeedback = exports.effectiveArchitectureObligationMode = exports.deriveArchitectureObligations = exports.activeArchitectureObligationWaivers = exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = exports.buildAgentGuardPostureSummary = exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION = exports.buildAgentInvocationSummary = exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION = exports.sessionPath = exports.sessionsDir = exports.replaySession = exports.finishSession = exports.buildPlanTimeline = exports.activeAgentPlanRevision = exports.evaluateSessionPlanCoherence = exports.classifyAgentPlanAmendment = exports.decideAgentPlanAmendment = exports.amendAgentPlan = exports.captureAgentPlan = exports.attachAgentPlan = exports.evaluatePlanCoherencePolicy = exports.evaluateIntentCoherence = exports.refreshArchitectureObligations = exports.waiveArchitectureObligation = exports.expireArchitectureObligationWaivers = exports.expireSessionApprovals = exports.activeApprovalPaths = exports.revokeSessionApproval = exports.approveSession = exports.appendEvent = exports.loadSession = exports.loadActiveSession = exports.createSession = exports.ownersForPath = exports.DEFAULT_PLAN_COHERENCE_MODE = exports.checkFileBoundary = exports.buildRepoGovernanceProfile = void 0;
-exports.normalizeAgentRuntimeEvent = exports.listAgentRuntimeAdapterCapabilities = exports.getAgentRuntimeAdapterCapability = exports.AGENT_RUNTIME_DECISION_SCHEMA_VERSION = exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION = exports.sanitizePlanCoherence = exports.sanitizeAgentPlan = exports.isTestOrUtilityPath = exports.planImpliesSupportWork = exports.evaluatePlanCoherence = exports.parsePlanSteps = exports.extractExpectedTargetsFromText = exports.extractAgentPlan = exports.AGENT_PLAN_SCHEMA_VERSION = exports.validateSelfAttestedRecordConsistency = exports.unionCoverageManifests = exports.unionCoverageEntries = exports.sortDeltaEntries = exports.sortCoverageEntries = exports.readSelfAttestedAdmissionRecordFromText = exports.readSelfAttestedAdmissionRecord = exports.normalizeDeltaEntries = exports.deriveCoverageEntries = exports.computeDeltaHash = exports.computeCoverageSetHash = exports.buildCoverageManifest = exports.compileDeterministicConstraints = exports.resolveImportSpecifier = exports.modulesInPlay = exports.moduleIdForPath = exports.isModuleTestSatisfiable = void 0;
+exports.buildArchitectureGraph = exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION = exports.summarizeArchitectureObligations = exports.normalizeArchitectureObligationPolicy = exports.isArchitectureObligationWaiverActive = exports.evaluateArchitectureEdit = exports.evaluateArchitectureObligationFeedback = exports.effectiveArchitectureObligationMode = exports.deriveArchitectureObligations = exports.activeArchitectureObligationWaivers = exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = exports.buildAgentGuardPostureSummary = exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION = exports.buildAgentInvocationSummary = exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION = exports.writeAIChangeRecord = exports.buildAIChangeRecord = exports.aiChangeRecordPath = exports.AI_CHANGE_RECORD_TYPE = exports.AI_CHANGE_RECORD_SCHEMA_VERSION = exports.sessionPath = exports.sessionsDir = exports.replaySession = exports.finishSession = exports.buildPlanTimeline = exports.activeAgentPlanRevision = exports.evaluateSessionPlanCoherence = exports.classifyAgentPlanAmendment = exports.decideAgentPlanAmendment = exports.amendAgentPlan = exports.captureAgentPlan = exports.attachAgentPlan = exports.evaluatePlanCoherencePolicy = exports.evaluateIntentCoherence = exports.refreshArchitectureObligations = exports.waiveArchitectureObligation = exports.expireArchitectureObligationWaivers = exports.expireSessionApprovals = exports.activeApprovalPaths = exports.revokeSessionApproval = exports.approveSession = exports.appendEvent = exports.loadSession = exports.loadActiveSession = exports.createSession = exports.ownersForPath = exports.DEFAULT_PLAN_COHERENCE_MODE = exports.checkFileBoundary = exports.buildRepoGovernanceProfile = void 0;
+exports.normalizeAgentRuntimeEvent = exports.listAgentRuntimeAdapterCapabilities = exports.getAgentRuntimeAdapterCapability = exports.AGENT_RUNTIME_DECISION_SCHEMA_VERSION = exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION = exports.sanitizePlanCoherence = exports.sanitizeAgentPlan = exports.isTestOrUtilityPath = exports.planImpliesSupportWork = exports.evaluatePlanCoherence = exports.parsePlanSteps = exports.extractExpectedTargetsFromText = exports.extractAgentPlan = exports.AGENT_PLAN_SCHEMA_VERSION = exports.validateSelfAttestedRecordConsistency = exports.unionCoverageManifests = exports.unionCoverageEntries = exports.sortDeltaEntries = exports.sortCoverageEntries = exports.readSelfAttestedAdmissionRecordFromText = exports.readSelfAttestedAdmissionRecord = exports.normalizeDeltaEntries = exports.deriveCoverageEntries = exports.computeDeltaHash = exports.computeCoverageSetHash = exports.buildCoverageManifest = exports.compileDeterministicConstraints = exports.resolveImportSpecifier = exports.modulesInPlay = exports.moduleIdForPath = exports.isModuleTestSatisfiable = exports.findModuleForPath = exports.extractImportSpecifiers = exports.deriveGraphObligationSeeds = exports.dependentsOf = exports.dependenciesOf = void 0;
 exports.extractPlannedFilePaths = extractPlannedFilePaths;
 exports.resolvePlanVerdict = resolvePlanVerdict;
 exports.buildPlanVerificationMessage = buildPlanVerificationMessage;
@@ -44461,6 +45103,12 @@ Object.defineProperty(exports, "finishSession", ({ enumerable: true, get: functi
 Object.defineProperty(exports, "replaySession", ({ enumerable: true, get: function () { return session_1.replaySession; } }));
 Object.defineProperty(exports, "sessionsDir", ({ enumerable: true, get: function () { return session_1.sessionsDir; } }));
 Object.defineProperty(exports, "sessionPath", ({ enumerable: true, get: function () { return session_1.sessionPath; } }));
+var ai_change_record_1 = __nccwpck_require__(3270);
+Object.defineProperty(exports, "AI_CHANGE_RECORD_SCHEMA_VERSION", ({ enumerable: true, get: function () { return ai_change_record_1.AI_CHANGE_RECORD_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "AI_CHANGE_RECORD_TYPE", ({ enumerable: true, get: function () { return ai_change_record_1.AI_CHANGE_RECORD_TYPE; } }));
+Object.defineProperty(exports, "aiChangeRecordPath", ({ enumerable: true, get: function () { return ai_change_record_1.aiChangeRecordPath; } }));
+Object.defineProperty(exports, "buildAIChangeRecord", ({ enumerable: true, get: function () { return ai_change_record_1.buildAIChangeRecord; } }));
+Object.defineProperty(exports, "writeAIChangeRecord", ({ enumerable: true, get: function () { return ai_change_record_1.writeAIChangeRecord; } }));
 var agent_invocation_observability_1 = __nccwpck_require__(1349);
 Object.defineProperty(exports, "AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION", ({ enumerable: true, get: function () { return agent_invocation_observability_1.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION; } }));
 Object.defineProperty(exports, "buildAgentInvocationSummary", ({ enumerable: true, get: function () { return agent_invocation_observability_1.buildAgentInvocationSummary; } }));
@@ -45488,6 +46136,7 @@ const micromatch_1 = __importDefault(__nccwpck_require__(9555));
 const profile_1 = __nccwpck_require__(6106);
 const agent_plan_1 = __nccwpck_require__(9864);
 const architecture_obligations_1 = __nccwpck_require__(568);
+const ai_change_record_1 = __nccwpck_require__(3270);
 exports.DEFAULT_APPROVAL_TTL_MS = 60 * 60 * 1000;
 exports.DEFAULT_OBLIGATION_WAIVER_TTL_MS = 60 * 60 * 1000;
 // ── Path helpers ──────────────────────────────────────────────────────────────
@@ -46158,6 +46807,7 @@ function finishSession(projectRoot, sessionId, options = {}) {
         },
     });
     (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
+    (0, ai_change_record_1.writeAIChangeRecord)(projectRoot, session);
     const ptr = activePointerPath(projectRoot);
     if ((0, node_fs_1.existsSync)(ptr)) {
         (0, node_fs_1.writeFileSync)(ptr, JSON.stringify({ sessionId: null }, null, 2) + '\n', 'utf8');
@@ -46308,6 +46958,9 @@ function domainKeywordsForGoal(lower) {
 }
 function supportGlobsForIntent(goal, profile) {
     const lower = goal.toLowerCase();
+    if (hasExclusiveScopeCue(lower) && extractPathTokens(goal).length > 0) {
+        return [];
+    }
     const globs = [
         'tests/**',
         'test/**',
@@ -46325,6 +46978,19 @@ function supportGlobsForIntent(goal, profile) {
         globs.push('config/**', '*.config.*');
     }
     return unique(globs);
+}
+function hasExclusiveScopeCue(lowerGoal) {
+    return /\bonly\b/.test(lowerGoal)
+        || /\bexact(?:ly)?\b/.test(lowerGoal)
+        || /\bsingle[- ]file\b/.test(lowerGoal)
+        || /\bno other files?\b/.test(lowerGoal)
+        || /\bdo not touch\b/.test(lowerGoal)
+        || /\bdon't touch\b/.test(lowerGoal)
+        || /\bwithout touching\b/.test(lowerGoal);
+}
+function isFileScopeToken(token) {
+    const lastSeg = token.replace(/^\//, '').split('/').at(-1) ?? '';
+    return lastSeg.includes('.');
 }
 function intentObligations(goal, action, domains, scopeMode) {
     const lower = goal.toLowerCase();
@@ -47349,13 +48015,15 @@ function deriveAllowedGlobs(goal, profile) {
     // the exact file the user named.
     const pathTokens = extractPathTokens(goal);
     if (pathTokens.length > 0) {
+        const exclusiveExplicitScope = hasExclusiveScopeCue(lower);
         const expanded = pathTokens.map((t) => {
             const normalised = t.replace(/^\//, '');
-            const lastSeg = normalised.split('/').at(-1) ?? '';
-            const isFile = lastSeg.includes('.');
-            return isFile ? normalised : normalised.replace(/\/$/, '') + '/**';
+            return isFileScopeToken(normalised) ? normalised : normalised.replace(/\/$/, '') + '/**';
         });
-        const globs = excludeApprovalRequired(expandNestedSourceGlobs([...expanded, ...safeSupportGlobs]));
+        const globs = excludeApprovalRequired(expandNestedSourceGlobs([
+            ...expanded,
+            ...(exclusiveExplicitScope ? [] : safeSupportGlobs),
+        ]));
         if (globs.length > 0)
             return { allowedGlobs: globs, scopeMode: 'explicit' };
     }
@@ -48054,13 +48722,13 @@ function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.decidePolicyOutcome = decidePolicyOutcome;
 function decidePolicyOutcome(verdict, policy, noRecordStrict) {
-    const advisoryLabel = 'advisory · non-blocking';
-    const strictLabel = 'strict_self_attested (EXPERIMENTAL — self-attested claim, not enterprise proof)';
+    const advisoryLabel = 'advisory - non-blocking';
+    const strictLabel = 'strict_self_attested (EXPERIMENTAL - self-attested claim, not enterprise proof)';
     if (policy === 'advisory') {
         return { shouldFail: false, policyLabel: advisoryLabel };
     }
     // strict_self_attested
-    const strictWarning = '⚠ strict_self_attested mode is experimental. Self-attested records are claims by the same ' +
+    const strictWarning = 'strict_self_attested mode is experimental. Self-attested records are claims by the same ' +
         'principal who authored the diff. This is NOT cryptographic proof that governance ran, and is ' +
         'NOT a replacement for enterprise-grade signed receipts (Phase C).';
     let shouldFail = false;
@@ -48437,7 +49105,7 @@ async function run() {
     const policyDecision = (0, policy_1.decidePolicyOutcome)(admission.finalVerdict, inputs.policy, inputs.noRecordStrict);
     // ── 6. Emit outputs ────────────────────────────────────────────────────────
     (0, outputs_1.emitOutputs)({
-        effectCount: inventory.effects.length,
+        effects: inventory.effects,
         subsystems,
         sensitiveHits,
         codeowners,
@@ -48523,13 +49191,27 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.emitOutputs = emitOutputs;
 const core = __importStar(__nccwpck_require__(4442));
 const sanitize_1 = __nccwpck_require__(1117);
+const report_model_1 = __nccwpck_require__(5244);
 function emitOutputs(opts) {
-    const { effectCount, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, actionBlocked } = opts;
-    core.setOutput('effect_count', String(effectCount));
+    const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, actionBlocked } = opts;
+    const reportFacts = {
+        effects,
+        subsystems,
+        sensitiveHits,
+        codeowners,
+        codeownersChanged,
+        admission,
+    };
+    const attention = (0, report_model_1.deriveReviewAttention)(reportFacts);
+    const maintainerQuestions = (0, report_model_1.buildMaintainerQuestions)(reportFacts);
+    core.setOutput('effect_count', String(effects.length));
     core.setOutput('subsystems', (0, sanitize_1.outputSafeList)(Object.keys(subsystems).sort()));
     core.setOutput('sensitive_surfaces', (0, sanitize_1.outputSafeList)(sensitiveHits.map((h) => h.category)));
+    core.setOutput('sensitive_surface_count', String((0, report_model_1.sensitiveSurfaceCount)(sensitiveHits)));
     core.setOutput('codeowners_zones_crossed', String(codeowners.zonesCrossed));
     core.setOutput('codeowners_changed', String(codeownersChanged));
+    core.setOutput('review_attention', (0, sanitize_1.outputSafe)(attention.level));
+    core.setOutput('maintainer_questions_count', String(maintainerQuestions.length));
     // admission_verdict is one of the fixed Phase A strings — safe to emit directly.
     core.setOutput('admission_verdict', admission.finalVerdict);
     core.setOutput('covered_paths_count', String(admission.coveredPaths.length));
@@ -48537,6 +49219,190 @@ function emitOutputs(opts) {
     core.setOutput('record_count', String(admission.totalRecordCount));
     core.setOutput('usable_record_count', String(admission.usableRecordCount));
     core.setOutput('action_blocked', String(actionBlocked));
+}
+
+
+/***/ }),
+
+/***/ 5244:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sensitiveCategoryLabel = sensitiveCategoryLabel;
+exports.orderedSensitiveHits = orderedSensitiveHits;
+exports.orderedSubsystemEntries = orderedSubsystemEntries;
+exports.sensitiveSurfaceCount = sensitiveSurfaceCount;
+exports.explainAdmissionVerdict = explainAdmissionVerdict;
+exports.deriveReviewAttention = deriveReviewAttention;
+exports.buildMaintainerQuestions = buildMaintainerQuestions;
+const CATEGORY_ORDER = [
+    'auth',
+    'billing_payment',
+    'migrations',
+    'CI',
+    'infra',
+    'secrets_config',
+    'dependencies',
+    'lock_files',
+    'generated',
+];
+const CATEGORY_LABELS = {
+    auth: 'auth',
+    billing_payment: 'billing/payment',
+    migrations: 'database/migrations',
+    CI: 'CI/workflow',
+    infra: 'infrastructure/deploy',
+    secrets_config: 'secrets/config',
+    dependencies: 'dependency manifests',
+    lock_files: 'lockfiles',
+    generated: 'generated files',
+};
+function sensitiveCategoryLabel(category) {
+    return CATEGORY_LABELS[category] ?? category;
+}
+function orderedSensitiveHits(hits) {
+    const order = new Map(CATEGORY_ORDER.map((category, index) => [category, index]));
+    return [...hits].sort((a, b) => {
+        const ai = order.get(a.category) ?? Number.MAX_SAFE_INTEGER;
+        const bi = order.get(b.category) ?? Number.MAX_SAFE_INTEGER;
+        if (ai !== bi)
+            return ai - bi;
+        return a.category.localeCompare(b.category);
+    });
+}
+function orderedSubsystemEntries(subsystems) {
+    return Object.entries(subsystems).sort((a, b) => {
+        if (b[1] !== a[1])
+            return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+    });
+}
+function sensitiveSurfaceCount(hits) {
+    return new Set(hits.map((hit) => hit.category)).size;
+}
+function hasCategory(hits, category) {
+    return hits.some((hit) => hit.category === category);
+}
+function codeownersStatus(codeowners) {
+    return codeowners.status ?? (codeowners.codeownersSourcePath ? 'loaded' : 'absent');
+}
+function isLowRiskDocsOnly(facts) {
+    if (facts.effects.length === 0 || facts.sensitiveHits.length > 0)
+        return false;
+    return facts.effects.every((effect) => {
+        const path = effect.path.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+        return (path.startsWith('docs/') ||
+            path.startsWith('documentation/') ||
+            path.endsWith('.md') ||
+            path.endsWith('.mdx') ||
+            path.endsWith('.rst') ||
+            path === 'readme' ||
+            path.startsWith('readme.'));
+    });
+}
+function explainAdmissionVerdict(admission) {
+    switch (admission.finalVerdict) {
+        case 'no_record':
+            return 'No self-attested runtime admission record was found. Ordinary PRs can have no record; for agent-generated PRs, ask for source-free admission evidence.';
+        case 'self_attested_complete':
+            return 'Usable self-attested records claim coverage for every changed path. This is a claim, not cryptographic proof or enterprise signed evidence.';
+        case 'self_attested_incomplete':
+            return 'Usable self-attested records claim coverage for only part of the changed path set.';
+        case 'self_attested_inconsistent':
+            return 'Discovered records were malformed or inconsistent with the committed git metadata and should be treated as unusable self-attested evidence.';
+        default:
+            return `${admission.finalVerdict} is an unrecognized admission verdict.`;
+    }
+}
+function deriveReviewAttention(facts) {
+    const reasons = [];
+    const status = codeownersStatus(facts.codeowners);
+    const lowRiskDocsOnly = isLowRiskDocsOnly(facts);
+    if (status === 'degraded')
+        reasons.push('CODEOWNERS analysis is degraded');
+    if (facts.codeownersChanged)
+        reasons.push('CODEOWNERS changed');
+    if (facts.codeowners.zonesCrossed > 1)
+        reasons.push('multiple CODEOWNERS zones crossed');
+    if (facts.sensitiveHits.length > 0)
+        reasons.push('sensitive surfaces touched');
+    if (Object.keys(facts.subsystems).length > 3)
+        reasons.push('broad subsystem reach');
+    if (facts.admission.finalVerdict === 'self_attested_incomplete')
+        reasons.push('admission record is incomplete');
+    if (facts.admission.finalVerdict === 'self_attested_inconsistent')
+        reasons.push('admission record is inconsistent');
+    if (reasons.length > 0)
+        return { level: 'needs_attention', reasons };
+    if (status === 'absent' && facts.effects.length > 0 && !lowRiskDocsOnly) {
+        return { level: 'manual_routing', reasons: ['no CODEOWNERS file found in the base commit'] };
+    }
+    return { level: 'simple', reasons: [] };
+}
+function buildMaintainerQuestions(facts) {
+    const questions = [];
+    const status = codeownersStatus(facts.codeowners);
+    const subsystemCount = Object.keys(facts.subsystems).length;
+    const lowRiskDocsOnly = isLowRiskDocsOnly(facts);
+    if (facts.codeowners.zonesCrossed > 1) {
+        questions.push(`This PR crosses ${facts.codeowners.zonesCrossed} CODEOWNERS zones. Are all owners represented in review?`);
+    }
+    if (facts.codeownersChanged) {
+        questions.push('CODEOWNERS changed in this PR. Should ownership-rule changes be reviewed separately?');
+    }
+    if (status === 'absent' && facts.effects.length > 0 && !lowRiskDocsOnly) {
+        questions.push('No CODEOWNERS file was found in the base commit. Who should be explicitly routed for this review?');
+    }
+    if (status === 'degraded') {
+        questions.push('CODEOWNERS analysis is degraded because some rules were skipped or bounded. Should routing be checked manually?');
+    }
+    if (subsystemCount > 3) {
+        questions.push(`This PR touches ${subsystemCount} subsystems. Should review be split or routed to subsystem owners?`);
+    }
+    if (hasCategory(facts.sensitiveHits, 'CI')) {
+        questions.push('This PR touches CI or workflow files. Should workflow changes be reviewed separately?');
+    }
+    if (hasCategory(facts.sensitiveHits, 'migrations')) {
+        const migrationPaths = new Set(facts.sensitiveHits
+            .filter((hit) => hit.category === 'migrations')
+            .flatMap((hit) => hit.paths));
+        if (facts.effects.some((effect) => !migrationPaths.has(effect.path))) {
+            questions.push('This PR touches migrations and other paths. Is rollout/rollback review needed?');
+        }
+        else {
+            questions.push('This PR touches database or migration paths. Is rollout/rollback review needed?');
+        }
+    }
+    if (hasCategory(facts.sensitiveHits, 'auth')) {
+        questions.push('This PR touches auth paths. Should an auth owner review the changed behavior?');
+    }
+    if (hasCategory(facts.sensitiveHits, 'billing_payment')) {
+        questions.push('This PR touches billing/payment paths. Should a billing owner review the changed behavior?');
+    }
+    if (hasCategory(facts.sensitiveHits, 'infra')) {
+        questions.push('This PR touches infrastructure or deploy paths. Should deploy impact be reviewed separately?');
+    }
+    if (hasCategory(facts.sensitiveHits, 'secrets_config')) {
+        questions.push('This PR touches secrets/config paths. Should secret handling or environment impact be reviewed?');
+    }
+    if (hasCategory(facts.sensitiveHits, 'dependencies') || hasCategory(facts.sensitiveHits, 'lock_files')) {
+        questions.push('This PR touches dependency manifests or lockfiles. Are dependency changes intentional and reviewed together?');
+    }
+    if (hasCategory(facts.sensitiveHits, 'generated')) {
+        questions.push('This PR touches generated files. Were the corresponding source, schema, or generator changes reviewed?');
+    }
+    if (facts.admission.finalVerdict === 'no_record' && facts.effects.length > 0 && !lowRiskDocsOnly) {
+        questions.push('No runtime admission record is attached. If this PR was generated by an agent, ask for source-free admission evidence.');
+    }
+    if (facts.admission.finalVerdict === 'self_attested_incomplete') {
+        questions.push(`Self-attested admission records leave ${facts.admission.uncoveredPaths.length} changed paths uncovered. Should the author explain or regenerate the record?`);
+    }
+    if (facts.admission.finalVerdict === 'self_attested_inconsistent') {
+        questions.push('Self-attested admission records are inconsistent with the committed delta. Should they be regenerated or treated as unavailable?');
+    }
+    return questions;
 }
 
 
@@ -48592,123 +49458,253 @@ exports.writeSummary = writeSummary;
 const core = __importStar(__nccwpck_require__(4442));
 const contracts_1 = __nccwpck_require__(7239);
 const sanitize_1 = __nccwpck_require__(1117);
-const MAX_PATHS_INLINE = 20;
+const report_model_1 = __nccwpck_require__(5244);
+const MAX_PATHS_INLINE = 6;
 const MAX_SUBSYSTEMS_INLINE = 8;
+const MAX_OWNERS_INLINE = 8;
+const MAX_QUESTIONS_INLINE = 8;
+const MAX_WARNINGS_INLINE = 5;
+const MAX_RECORD_ISSUES_INLINE = 5;
 function pluralize(n, singular, plural) {
     return `${n} ${n === 1 ? singular : (plural ?? singular + 's')}`;
 }
-function verdictBadge(verdict) {
+function verdictLabel(verdict) {
     switch (verdict) {
-        case 'self_attested_complete': return '✅ self_attested_complete';
-        case 'self_attested_incomplete': return '⚠️ self_attested_incomplete';
-        case 'self_attested_inconsistent': return '❌ self_attested_inconsistent';
-        case 'no_record': return '○ no_record';
+        case 'self_attested_complete': return 'self_attested_complete';
+        case 'self_attested_incomplete': return 'self_attested_incomplete';
+        case 'self_attested_inconsistent': return 'self_attested_inconsistent';
+        case 'no_record': return 'no_record';
         default: return (0, sanitize_1.mdSafe)(verdict);
     }
 }
+function inlineList(values, max, maxLen = 120) {
+    if (values.length === 0)
+        return 'None';
+    const shown = values.slice(0, max).map((value) => (0, sanitize_1.mdSafe)(value, maxLen));
+    const extra = values.length - shown.length;
+    return shown.join(', ') + (extra > 0 ? ` +${extra} more` : '');
+}
 /** Render a list of paths inline, sanitized, truncated. */
 function pathList(paths, max = MAX_PATHS_INLINE) {
-    const shown = paths.slice(0, max).map((p) => (0, sanitize_1.mdSafe)(p, 150));
-    const extra = paths.length - shown.length;
-    return shown.join(', ') + (extra > 0 ? ` +${extra} more` : '');
+    return inlineList(paths, max, 150);
+}
+function countByKind(effects) {
+    const counts = new Map();
+    for (const effect of effects)
+        counts.set(effect.kind, (counts.get(effect.kind) ?? 0) + 1);
+    const orderedKinds = [
+        'added', 'modified', 'deleted', 'renamed', 'copied', 'typechanged',
+    ];
+    const parts = orderedKinds
+        .filter((kind) => (counts.get(kind) ?? 0) > 0)
+        .map((kind) => `${counts.get(kind)} ${kind}`);
+    return `${pluralize(effects.length, 'file')} changed${parts.length > 0 ? `: ${parts.join(', ')}` : ''}`;
+}
+function subsystemSummary(subsystems) {
+    const entries = (0, report_model_1.orderedSubsystemEntries)(subsystems);
+    if (entries.length === 0)
+        return 'None';
+    const shown = entries
+        .slice(0, MAX_SUBSYSTEMS_INLINE)
+        .map(([name, count]) => `${(0, sanitize_1.mdSafe)(name)} (${count})`);
+    const extra = entries.length - shown.length;
+    return `${pluralize(entries.length, 'subsystem')} - ${shown.join(', ')}${extra > 0 ? ` +${extra} more` : ''}`;
+}
+function sensitiveSummary(hits) {
+    const ordered = (0, report_model_1.orderedSensitiveHits)(hits);
+    if (ordered.length === 0)
+        return 'None detected by path/category rules';
+    const labels = ordered.map((hit) => `${(0, sanitize_1.mdSafe)((0, report_model_1.sensitiveCategoryLabel)(hit.category))} (${hit.paths.length})`);
+    return `${pluralize((0, report_model_1.sensitiveSurfaceCount)(ordered), 'category', 'categories')} - ${labels.join(', ')}`;
+}
+function codeownersStatus(codeowners) {
+    return codeowners.status ?? (codeowners.codeownersSourcePath ? 'loaded' : 'absent');
+}
+function codeownersTopSummary(codeowners) {
+    const status = codeownersStatus(codeowners);
+    if (status === 'absent')
+        return 'No CODEOWNERS found in base commit';
+    const source = codeowners.codeownersSourcePath ? ` from ${(0, sanitize_1.mdSafe)(codeowners.codeownersSourcePath)}` : '';
+    const degraded = status === 'degraded' ? ' (degraded)' : '';
+    return `${pluralize(codeowners.zonesCrossed, 'zone')} crossed${source}${degraded}`;
+}
+function admissionTopSummary(admission) {
+    switch (admission.finalVerdict) {
+        case 'no_record':
+            return 'no_record - no self-attested record attached';
+        case 'self_attested_complete':
+            return 'self_attested_complete - complete self-attested coverage claim';
+        case 'self_attested_incomplete':
+            return `self_attested_incomplete - ${pluralize(admission.uncoveredPaths.length, 'path')} uncovered`;
+        case 'self_attested_inconsistent':
+            return 'self_attested_inconsistent - records unusable or inconsistent';
+        default:
+            return (0, sanitize_1.mdSafe)(admission.finalVerdict);
+    }
+}
+function reviewAttentionText(level, reasons) {
+    if (level === 'simple')
+        return 'Simple - no deterministic routing flags detected';
+    if (level === 'manual_routing')
+        return `Manual routing - ${inlineList(reasons, 3, 140)}`;
+    return `Needs attention - ${inlineList(reasons, 4, 140)}`;
+}
+function pushRows(lines, rows) {
+    lines.push('| Signal | Deterministic result |');
+    lines.push('|---|---|');
+    for (const [label, value] of rows) {
+        lines.push(`| ${(0, sanitize_1.mdSafe)(label)} | ${value} |`);
+    }
 }
 function renderStepSummary(opts) {
     const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, policyDecision, } = opts;
     const lines = [];
-    // ── header ──────────────────────────────────────────────────────────────────
-    lines.push(`### Neurcode — Runtime Admission Advisory · ${(0, sanitize_1.mdSafe)(policyDecision.policyLabel, 120)}`);
+    const facts = { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission };
+    const attention = (0, report_model_1.deriveReviewAttention)(facts);
+    const questions = (0, report_model_1.buildMaintainerQuestions)(facts);
+    lines.push('### Neurcode Runtime Admission Advisory');
     lines.push('');
-    // ── Layer 1: effect inventory ────────────────────────────────────────────────
-    const addedCount = effects.filter((e) => e.kind === 'added').length;
-    const deletedCount = effects.filter((e) => e.kind === 'deleted').length;
-    const modifiedCount = effects.length - addedCount - deletedCount;
-    const subsystemNames = Object.keys(subsystems).sort();
-    const effectParts = [
-        pluralize(effects.length, 'file'),
-        addedCount > 0 ? `${addedCount} added` : null,
-        modifiedCount > 0 ? `${modifiedCount} modified` : null,
-        deletedCount > 0 ? `${deletedCount} deleted` : null,
-    ].filter(Boolean).join(', ');
-    const subsystemPart = subsystemNames.length > 0
-        ? `${pluralize(subsystemNames.length, 'subsystem')} — ` +
-            subsystemNames.slice(0, MAX_SUBSYSTEMS_INLINE).map((s) => (0, sanitize_1.mdSafe)(s)).join(', ') +
-            (subsystemNames.length > MAX_SUBSYSTEMS_INLINE ? ` +${subsystemNames.length - MAX_SUBSYSTEMS_INLINE} more` : '')
-        : '(root only)';
-    lines.push(`**Effects:** ${effectParts} across ${subsystemPart}`);
-    // CODEOWNERS
-    const codeownersStatus = codeowners.status ?? (codeowners.codeownersSourcePath ? 'loaded' : 'absent');
+    lines.push(`Policy: **${(0, sanitize_1.mdSafe)(policyDecision.policyLabel, 160)}**`);
+    lines.push('');
+    lines.push('#### Maintainer read this first');
+    pushRows(lines, [
+        ['Changed files', countByKind(effects)],
+        ['Subsystems touched', subsystemSummary(subsystems)],
+        ['Sensitive surfaces touched', sensitiveSummary(sensitiveHits)],
+        ['CODEOWNERS zones crossed', codeownersTopSummary(codeowners)],
+        ['Admission record status', admissionTopSummary(admission)],
+        ['Review routing', reviewAttentionText(attention.level, attention.reasons)],
+    ]);
+    lines.push('');
+    lines.push('#### Review routing');
+    const status = codeownersStatus(codeowners);
     const codeownersWarnings = codeowners.warnings ?? [];
-    if (codeownersStatus === 'degraded') {
-        lines.push(codeowners.zonesCrossed > 0
-            ? `**CODEOWNERS:** analysis degraded; ${pluralize(codeowners.zonesCrossed, 'supported ownership zone')} crossed`
-            : '**CODEOWNERS:** analysis degraded; no supported ownership zones crossed');
-        for (const warning of codeownersWarnings.slice(0, 4)) {
-            lines.push(`  - ${(0, sanitize_1.mdSafe)(warning, 220)}`);
-        }
+    const zoneHits = codeowners.zoneHits ?? [];
+    if (status === 'absent') {
+        lines.push('No CODEOWNERS file was found in the base commit. Review routing cannot be derived from CODEOWNERS metadata.');
     }
-    else if (codeowners.codeownersSourcePath) {
-        lines.push(codeowners.zonesCrossed > 0
-            ? `**CODEOWNERS:** ${pluralize(codeowners.zonesCrossed, 'ownership zone')} crossed`
-            : '**CODEOWNERS:** no ownership zones crossed');
+    else if (status === 'degraded') {
+        const source = codeowners.codeownersSourcePath ? ` from \`${(0, sanitize_1.mdSafe)(codeowners.codeownersSourcePath)}\`` : '';
+        lines.push(`CODEOWNERS analysis is degraded${source}. Supported rules were used when available; skipped rules are listed below.`);
     }
     else {
-        lines.push('**CODEOWNERS:** not present in base commit');
+        const source = codeowners.codeownersSourcePath ? `\`${(0, sanitize_1.mdSafe)(codeowners.codeownersSourcePath)}\`` : 'the base commit';
+        lines.push(`CODEOWNERS loaded from ${source}.`);
     }
     if (codeownersChanged) {
-        lines.push('> ⚠ **CODEOWNERS itself was modified in this PR** — treat as a sensitive operational change.');
-    }
-    // Sensitive surfaces
-    if (sensitiveHits.length > 0) {
-        const cats = sensitiveHits.map((h) => `${(0, sanitize_1.mdSafe)(h.category)} (${h.paths.length})`).join(', ');
-        lines.push(`**Sensitive surfaces:** ${cats}`);
-        for (const hit of sensitiveHits) {
-            const shown = hit.paths.slice(0, 6).map((p) => (0, sanitize_1.mdSafe)(p, 120));
-            const extra = hit.paths.length - shown.length;
-            lines.push(`  - *${(0, sanitize_1.mdSafe)(hit.category)}:* ${shown.join(', ')}${extra > 0 ? ` +${extra} more` : ''}`);
-        }
-    }
-    else {
-        lines.push('**Sensitive surfaces:** none detected');
+        lines.push('');
+        lines.push('> CODEOWNERS itself changed in this PR. Treat review routing changes as operationally important.');
     }
     lines.push('');
-    // ── Layer 2: admission ───────────────────────────────────────────────────────
-    lines.push('**Runtime admission:** ' + verdictBadge(admission.finalVerdict));
+    lines.push('| Item | Result |');
+    lines.push('|---|---|');
+    lines.push(`| Zones crossed | ${pluralize(codeowners.zonesCrossed, 'zone')} |`);
+    lines.push(`| Owners involved | ${inlineList(codeowners.ownersInvolved ?? [], MAX_OWNERS_INLINE, 120)} |`);
+    lines.push(`| Unowned changed paths | ${pathList((codeowners.unownedPaths ?? []).sort())} |`);
+    if (zoneHits.length > 0) {
+        lines.push('');
+        lines.push('| CODEOWNERS area | Owners |');
+        lines.push('|---|---|');
+        for (const zone of zoneHits.slice(0, MAX_PATHS_INLINE)) {
+            lines.push(`| ${(0, sanitize_1.mdSafe)(zone.pattern, 140)} | ${inlineList(zone.owners, MAX_OWNERS_INLINE, 120)} |`);
+        }
+        const extra = zoneHits.length - Math.min(zoneHits.length, MAX_PATHS_INLINE);
+        if (extra > 0)
+            lines.push(`| +${extra} more | |`);
+    }
+    else {
+        lines.push('');
+        lines.push('No supported CODEOWNERS areas matched the changed paths.');
+    }
+    if (codeownersWarnings.length > 0) {
+        lines.push('');
+        lines.push(`CODEOWNERS diagnostics (${codeownersWarnings.length}):`);
+        for (const warning of codeownersWarnings.slice(0, MAX_WARNINGS_INLINE)) {
+            lines.push(`- ${(0, sanitize_1.mdSafe)(warning, 260)}`);
+        }
+        const extra = codeownersWarnings.length - Math.min(codeownersWarnings.length, MAX_WARNINGS_INLINE);
+        if (extra > 0)
+            lines.push(`- +${extra} more`);
+    }
+    lines.push('');
+    lines.push('#### Sensitive surfaces');
+    if (sensitiveHits.length === 0) {
+        lines.push('None detected by deterministic path/category rules.');
+    }
+    else {
+        lines.push('| Category | Changed paths |');
+        lines.push('|---|---|');
+        for (const hit of (0, report_model_1.orderedSensitiveHits)(sensitiveHits)) {
+            lines.push(`| ${(0, sanitize_1.mdSafe)((0, report_model_1.sensitiveCategoryLabel)(hit.category))} | ${pathList(hit.paths)} |`);
+        }
+    }
+    lines.push('');
+    lines.push('#### Subsystem reach');
+    const subsystemEntries = (0, report_model_1.orderedSubsystemEntries)(subsystems);
+    if (subsystemEntries.length === 0) {
+        lines.push('No changed source paths after excluding admission support artifacts.');
+    }
+    else {
+        lines.push('| Subsystem | Changed files |');
+        lines.push('|---|---:|');
+        for (const [name, count] of subsystemEntries.slice(0, MAX_SUBSYSTEMS_INLINE)) {
+            lines.push(`| ${(0, sanitize_1.mdSafe)(name)} | ${count} |`);
+        }
+        const extra = subsystemEntries.length - Math.min(subsystemEntries.length, MAX_SUBSYSTEMS_INLINE);
+        if (extra > 0)
+            lines.push(`| +${extra} more | |`);
+    }
+    lines.push('');
+    lines.push('#### Runtime admission provenance');
+    lines.push('| Field | Result |');
+    lines.push('|---|---|');
+    lines.push(`| Verdict | ${verdictLabel(admission.finalVerdict)} |`);
+    lines.push(`| Records | ${admission.usableRecordCount} usable of ${admission.totalRecordCount} discovered |`);
+    lines.push(`| Covered paths | ${admission.coveredPaths.length} |`);
+    lines.push(`| Uncovered paths | ${admission.uncoveredPaths.length} |`);
+    lines.push('');
+    lines.push((0, report_model_1.explainAdmissionVerdict)(admission));
     if (admission.finalVerdict === 'no_record') {
-        lines.push('  → No `.neurcode-admission/*.json` present in this PR\'s head tree. ' +
-            'Install the local Neurcode runtime to generate self-attested admission records.');
-        // Always surface discovery diagnostics, even on no_record.
         if (admission.discoveryDiagnostics.length > 0) {
-            lines.push(`  Discovery warnings (${admission.discoveryDiagnostics.length}):`);
-            for (const d of admission.discoveryDiagnostics.slice(0, 8)) {
-                lines.push(`  - \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 200)}`);
+            lines.push('');
+            lines.push(`Discovery diagnostics (${admission.discoveryDiagnostics.length}):`);
+            for (const d of admission.discoveryDiagnostics.slice(0, MAX_WARNINGS_INLINE)) {
+                lines.push(`- \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 220)}`);
             }
+            const extra = admission.discoveryDiagnostics.length - Math.min(admission.discoveryDiagnostics.length, MAX_WARNINGS_INLINE);
+            if (extra > 0)
+                lines.push(`- +${extra} more`);
         }
     }
     else {
-        const usable = admission.usableRecordCount;
-        const total = admission.totalRecordCount;
-        lines.push(`  Records: ${usable} usable of ${total} discovered`);
         if (admission.coveredPaths.length > 0) {
-            lines.push(`  Covered (${admission.coveredPaths.length}): ${pathList(admission.coveredPaths)}`);
+            lines.push('');
+            lines.push(`Covered paths (${admission.coveredPaths.length}): ${pathList(admission.coveredPaths)}`);
         }
         if (admission.uncoveredPaths.length > 0) {
-            lines.push(`  **Uncovered (${admission.uncoveredPaths.length}):** ${pathList(admission.uncoveredPaths)}`);
+            lines.push(`Uncovered paths (${admission.uncoveredPaths.length}): ${pathList(admission.uncoveredPaths)}`);
         }
         const badRecords = admission.perRecord.filter((r) => !r.usable);
         if (badRecords.length > 0) {
-            lines.push(`  Record issues (${badRecords.length}):`);
-            for (const rec of badRecords) {
-                lines.push(`  - \`${(0, sanitize_1.mdSafe)(rec.filename)}\` → ${(0, sanitize_1.mdSafe)(rec.verdict)}: ${(0, sanitize_1.mdSafe)(rec.reasons[0] ?? '', 200)}`);
+            lines.push('');
+            lines.push(`Record issues (${badRecords.length}):`);
+            for (const rec of badRecords.slice(0, MAX_RECORD_ISSUES_INLINE)) {
+                lines.push(`- \`${(0, sanitize_1.mdSafe)(rec.filename)}\` -> ${(0, sanitize_1.mdSafe)(rec.verdict)}: ${(0, sanitize_1.mdSafe)(rec.reasons[0] ?? '', 220)}`);
             }
+            const extra = badRecords.length - Math.min(badRecords.length, MAX_RECORD_ISSUES_INLINE);
+            if (extra > 0)
+                lines.push(`- +${extra} more`);
         }
-        // Discovery diagnostics — always surface them.
         if (admission.discoveryDiagnostics.length > 0) {
-            lines.push(`  Discovery warnings (${admission.discoveryDiagnostics.length}):`);
-            for (const d of admission.discoveryDiagnostics.slice(0, 8)) {
-                lines.push(`  - \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 200)}`);
+            lines.push('');
+            lines.push(`Discovery diagnostics (${admission.discoveryDiagnostics.length}):`);
+            for (const d of admission.discoveryDiagnostics.slice(0, MAX_WARNINGS_INLINE)) {
+                lines.push(`- \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 220)}`);
             }
+            const extra = admission.discoveryDiagnostics.length - Math.min(admission.discoveryDiagnostics.length, MAX_WARNINGS_INLINE);
+            if (extra > 0)
+                lines.push(`- +${extra} more`);
         }
-        // Honesty disclaimer — always present when records exist.
         lines.push('');
         lines.push(`> *${contracts_1.SELF_ATTESTED_ADMISSION_DISCLAIMER}*`);
     }
@@ -48718,8 +49714,27 @@ function renderStepSummary(opts) {
         lines.push(`> ${(0, sanitize_1.mdSafe)(policyDecision.strictWarning, 500)}`);
     }
     lines.push('');
+    lines.push('#### Suggested maintainer questions');
+    if (questions.length === 0) {
+        lines.push('No deterministic maintainer questions were generated from these facts.');
+    }
+    else {
+        for (const question of questions.slice(0, MAX_QUESTIONS_INLINE)) {
+            lines.push(`- ${(0, sanitize_1.mdSafe)(question, 260)}`);
+        }
+        const extra = questions.length - Math.min(questions.length, MAX_QUESTIONS_INLINE);
+        if (extra > 0)
+            lines.push(`- +${extra} more`);
+    }
+    lines.push('');
+    lines.push('#### Trust boundary');
+    lines.push('- Source-free: uses changed paths, git modes, blob object IDs, CODEOWNERS metadata, file categories, and deterministic hashes.');
+    lines.push('- No telemetry and no source upload.');
+    lines.push('- Advisory by default. `strict_self_attested` is experimental and self-attested.');
+    lines.push('- Self-attested records are claims, not cryptographic proof or enterprise signed receipts.');
+    lines.push('');
     lines.push('---');
-    lines.push('*[Neurcode Runtime Admission Advisory](https://github.com/sujit-jaunjal/neurcode-actions) · advisory-only · no telemetry · no source upload*');
+    lines.push('*[Neurcode Runtime Admission Advisory](https://github.com/sujit-jaunjal/neurcode-actions) - advisory-only - no telemetry - no source upload*');
     return lines.join('\n');
 }
 async function writeSummary(content) {
@@ -48973,7 +49988,7 @@ function matchesPattern(filePath, pattern) {
     return regex.test(p);
 }
 function evaluateRules(effects, rules) {
-    const affectedZones = new Set();
+    const affectedZones = new Map();
     const affectedOwners = new Set();
     const unownedPaths = [];
     for (const effect of effects) {
@@ -48984,7 +49999,12 @@ function evaluateRules(effects, rules) {
                 matchedRule = rule;
         }
         if (matchedRule) {
-            affectedZones.add(matchedRule.pattern);
+            if (!affectedZones.has(matchedRule.pattern)) {
+                affectedZones.set(matchedRule.pattern, new Set());
+            }
+            const owners = affectedZones.get(matchedRule.pattern);
+            for (const owner of matchedRule.owners)
+                owners.add(owner);
             for (const owner of matchedRule.owners)
                 affectedOwners.add(owner);
         }
@@ -48992,8 +50012,12 @@ function evaluateRules(effects, rules) {
             unownedPaths.push(path);
         }
     }
+    const zoneHits = [...affectedZones.entries()]
+        .map(([pattern, owners]) => ({ pattern, owners: [...owners].sort() }))
+        .sort((a, b) => a.pattern.localeCompare(b.pattern));
     return {
-        zonesCrossed: affectedZones.size,
+        zonesCrossed: zoneHits.length,
+        zoneHits,
         ownersInvolved: [...affectedOwners].sort(),
         unownedPaths,
     };
@@ -49006,6 +50030,7 @@ function analyzeCodeowners(repoRoot, baseSha, effects) {
         if (loaded.kind === 'degraded') {
             return {
                 zonesCrossed: 0,
+                zoneHits: [],
                 ownersInvolved: [],
                 unownedPaths: effects.map((e) => e.path.replace(/\\/g, '/').replace(/^\.\//, '')),
                 codeownersSourcePath: loaded.sourcePath,
@@ -49024,6 +50049,7 @@ function analyzeCodeowners(repoRoot, baseSha, effects) {
     }
     return {
         zonesCrossed: 0,
+        zoneHits: [],
         ownersInvolved: [],
         unownedPaths: [],
         codeownersSourcePath: null,
@@ -49247,6 +50273,14 @@ const RULES = [
         ],
     },
     {
+        category: 'billing_payment',
+        patterns: [
+            /(?:^|\/)(?:billing|billings|payments?|checkout|invoices?|subscriptions?|pricing)\//i,
+            /(?:^|\/)(?:stripe|paypal|adyen|braintree|square|chargebee|recurly)[^/]*\.[a-z]+$/i,
+            /(?:^|\/)(?:billing|payments?|checkout|invoices?|subscriptions?)[^/]*\.[a-z]+$/i,
+        ],
+    },
+    {
         category: 'generated',
         patterns: [
             /(?:^|\/)(?:generated?|gen|__generated__)\//i,
@@ -49254,6 +50288,20 @@ const RULES = [
             /(?:^|\/)prisma\/(?!schema\.prisma)/,
             /schema\.graphql$/i,
             /\.pb\.(?:ts|js|go)$/,
+        ],
+    },
+    {
+        category: 'dependencies',
+        patterns: [
+            /(?:^|\/)package\.json$/,
+            /(?:^|\/)pyproject\.toml$/,
+            /(?:^|\/)requirements(?:-[^/]+)?\.txt$/,
+            /(?:^|\/)Cargo\.toml$/,
+            /(?:^|\/)Gemfile$/,
+            /(?:^|\/)go\.mod$/,
+            /(?:^|\/)pom\.xml$/,
+            /(?:^|\/)build\.gradle(?:\.kts)?$/,
+            /(?:^|\/)composer\.json$/,
         ],
     },
     {
@@ -49387,6 +50435,7 @@ function mdSafe(value, maxLen = exports.MAX_MD_INLINE_LEN) {
         .replace(/>/g, '›') // › (single right angle quotation)
         .replace(/`/g, 'ˋ') // ˋ (modifier letter grave accent)
         .replace(/\*/g, '∗') // ∗ (asterisk operator)
+        .replace(/\|/g, '\\|')
         .replace(/__/g, '\\_\\_')
         .replace(/\[/g, '⁅') // ⁅ (left square bracket with quill)
         .replace(/\]/g, '⁆') // ⁆ (right square bracket with quill)

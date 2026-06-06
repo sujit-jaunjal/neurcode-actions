@@ -1,4 +1,4 @@
-# Minimal example — Neurcode Runtime Admission Advisory
+# Minimal example - Neurcode Runtime Admission Advisory
 # One workflow file. No account, API key, or local runtime required.
 # Layer 2 (admission provenance) activates automatically when .neurcode-admission/*.json is present.
 
@@ -8,7 +8,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read   # git metadata only — no source upload, no write access needed
+  contents: read   # git metadata only - no source upload, no write access needed
 
 jobs:
   admission-advisory:
@@ -34,6 +34,9 @@ jobs:
           echo "effects: ${{ steps.admission.outputs.effect_count }}"
           echo "subsystems: ${{ steps.admission.outputs.subsystems }}"
           echo "sensitive: ${{ steps.admission.outputs.sensitive_surfaces }}"
+          echo "sensitive count: ${{ steps.admission.outputs.sensitive_surface_count }}"
+          echo "review attention: ${{ steps.admission.outputs.review_attention }}"
+          echo "maintainer questions: ${{ steps.admission.outputs.maintainer_questions_count }}"
           echo "admission: ${{ steps.admission.outputs.admission_verdict }}"
           echo "covered: ${{ steps.admission.outputs.covered_paths_count }}"
           echo "uncovered: ${{ steps.admission.outputs.uncovered_paths_count }}"

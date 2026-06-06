@@ -1,31 +1,29 @@
-# Neurcode — Runtime Admission Advisory
+# Neurcode Runtime Admission Advisory
 
-**Deterministic PR effect inventory and optional runtime admission provenance. One workflow file. No account, API key, or local runtime required.**
+**A zero-account, source-free PR triage report for ownership, sensitive surfaces, and runtime admission evidence.**
+
+Install one workflow file. The Action produces a concise GitHub Step Summary that helps maintainers route review attention faster for AI-assisted or ordinary pull requests.
+
+No Neurcode account. No API key. No source upload. No telemetry. No local runtime required.
 
 [![Bundle Integrity](https://img.shields.io/badge/bundle-integrity%20verified-blue)](./PROVENANCE.json)
 
 ---
 
-## What it does
+## What It Reports
 
-**Layer 1 (always runs — no runtime required):**
-- Changed-file effect inventory (paths + change kinds)
-- Top-level subsystem and directory reach
-- CODEOWNERS boundary crossings (read from base commit, never the PR head; unsupported CODEOWNERS syntax is reported as degraded analysis)
-- Sensitive operational surfaces: migrations, CI config, infra, auth, generated code, lock files, secrets config
-- All path-metadata only — no source content, no diff text, no AI analysis, no telemetry
+- Changed-file inventory from committed git metadata.
+- Top-level subsystem reach.
+- CODEOWNERS zones and owner tokens crossed, read from the base commit.
+- Sensitive path categories: auth, billing/payment, database/migrations, CI/workflow, infrastructure/deploy, secrets/config, dependency manifests, lockfiles, generated files.
+- Optional `.neurcode-admission/*.json` self-attested runtime admission status.
+- Suggested maintainer questions generated from deterministic facts.
 
-**Layer 2 (activates when `.neurcode-admission/*.json` is present):**
-- Bounded discovery and parsing of self-attested runtime admission records
-- Multi-record union: no single record needs to cover the entire PR
-- Reports: `self_attested_complete` · `self_attested_incomplete` · `self_attested_inconsistent` · `no_record`
-- Covered and uncovered paths only — no source leakage
-
-**Self-attested provenance is a claim, not cryptographic proof.** Advisory-only by default — never blocks merge.
+The report is advisory by default. It does not replace review, infer AI intent, or claim security vulnerabilities.
 
 ---
 
-## Quick start
+## Quick Start
 
 ```yaml
 # .github/workflows/neurcode-admission.yml
@@ -34,104 +32,113 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 permissions:
-  contents: read   # git metadata only, no source upload
+  contents: read
 jobs:
   admission-advisory:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0          # both base and head SHAs must be present
+          fetch-depth: 0
       - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.1
 ```
 
----
-
-## Adoption ladder
-
-| Step | What you get |
-|---|---|
-| **This action (standalone)** | Deterministic PR inventory, CODEOWNERS analysis, sensitive surface detection |
-| **+ local Neurcode runtime** | `neurcode admission export` attaches source-free self-attested admission records to your PRs (Layer 2 activates) |
-| **+ Enterprise hosted** *(Phase C)* | Backend-anchored signed receipts — cryptographic proof that governance ran |
+Layer 1 runs standalone on every PR. Layer 2 activates only when `.neurcode-admission/*.json` records are present.
 
 ---
 
-## Inputs
+## Step Summary
 
-| Input | Default | Description |
-|---|---|---|
-| `policy` | `advisory` | `advisory` (never fails) or `strict_self_attested` (experimental) |
-| `no_record_strict` | `false` | In strict mode, fail when no admission record exists |
-| `max_artifacts` | `256` | Maximum `.neurcode-admission/*.json` files to process |
-| `max_aggregate_bytes` | `16777216` | Maximum aggregate bytes for all artifacts |
+The Step Summary includes:
 
-Base and head SHAs are resolved from `github.event.pull_request`. There are no override inputs in V1.
+- **Maintainer read this first**: changed file count, subsystems touched, sensitive surfaces, CODEOWNERS status, admission status, and review routing cue.
+- **Review routing**: CODEOWNERS source, matched areas, owners, unowned changed paths, absent/degraded state.
+- **Sensitive surfaces**: deterministic path/category hits only.
+- **Subsystem reach**: ranked top-level directories.
+- **Runtime admission provenance**: `no_record`, `self_attested_complete`, `self_attested_incomplete`, or `self_attested_inconsistent`, with plain-English explanation.
+- **Suggested maintainer questions**: deterministic questions such as "This PR crosses 3 CODEOWNERS zones. Are all owners represented in review?"
+- **Trust boundary**: source-free, no telemetry, advisory by default, self-attested records are not cryptographic proof.
+
+Long lists are capped with `+N more`. Ordering is stable.
+
+---
 
 ## Outputs
 
 | Output | Description |
 |---|---|
-| `effect_count` | Files in the committed delta |
-| `subsystems` | Comma-separated top-level directories |
-| `sensitive_surfaces` | Sensitive surface categories detected |
-| `codeowners_zones_crossed` | Distinct ownership zones crossed |
-| `codeowners_changed` | `true` if CODEOWNERS appears in the delta |
-| `admission_verdict` | `self_attested_complete` · `self_attested_incomplete` · `self_attested_inconsistent` · `no_record` |
-| `covered_paths_count` | Paths with admission coverage |
-| `uncovered_paths_count` | Paths without coverage |
-| `record_count` | Artifacts discovered |
-| `usable_record_count` | Artifacts passing validation |
-| `action_blocked` | `true` only in strict mode when admission failed |
+| `effect_count` | Files in the committed delta. |
+| `subsystems` | Comma-separated top-level directories. |
+| `sensitive_surfaces` | Sensitive surface categories detected. |
+| `sensitive_surface_count` | Number of distinct sensitive surface categories. |
+| `codeowners_zones_crossed` | Distinct ownership zones crossed. |
+| `codeowners_changed` | `true` if CODEOWNERS appears in the delta. |
+| `review_attention` | `simple`, `manual_routing`, or `needs_attention`. |
+| `maintainer_questions_count` | Number of deterministic maintainer questions generated. |
+| `admission_verdict` | `self_attested_complete`, `self_attested_incomplete`, `self_attested_inconsistent`, or `no_record`. |
+| `covered_paths_count` | Paths with admission coverage. |
+| `uncovered_paths_count` | Paths without admission coverage. |
+| `record_count` | Artifacts discovered. |
+| `usable_record_count` | Artifacts passing validation. |
+| `action_blocked` | `true` only in strict mode when admission failed. |
 
 ---
 
-## Trust boundary
+## Runtime Admission Provenance
 
-- **Fork-safe**: no secrets required on `pull_request` events. Rejects `pull_request_target`.
-- **Source-free**: paths, modes, and git blob hashes only. No file content, no diff text.
-- **Artifact hardening**: artifacts are read from the immutable PR head Git tree via `git ls-tree` + `git cat-file`, not from the mutable checkout worktree. Symlink entries (mode `120000`) are explicitly rejected. Direct-child blobs only; bounded filename validation; per-file (8 MB) and aggregate byte ceilings.
-- **CODEOWNERS**: always read from the **base commit**, never the attacker-controlled PR head. The Action implements a bounded GitHub-compatible subset; unsupported syntax (`!`, `[ ]`, escaped leading `#`) is skipped with bounded diagnostics instead of being misinterpreted.
-- **Self-attested ≠ proof**: the diff author is also the artifact author and can fabricate matching object IDs. Cryptographic proof requires a backend-anchored signed receipt (Phase C, not available in this release).
+Self-attested records are optional source-free JSON artifacts under `.neurcode-admission/*.json`.
+
+They can help an author state that a local runtime admission process ran, but they are claims by the same principal who authored the diff. They are not cryptographic proof and not enterprise signed receipts.
 
 ---
 
-## Strict self-attested mode (experimental)
+## Strict Self-Attested Mode
 
 ```yaml
 - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.1
   with:
-    policy: strict_self_attested   # may fail on incomplete/inconsistent
-    no_record_strict: 'false'      # set true to also fail on no_record
+    policy: strict_self_attested
+    no_record_strict: 'false'
 ```
 
-⚠ **Experimental, labeled throughout.** This mode blocks on self-reported inconsistency, not on independent verification. It is NOT a replacement for enterprise-grade branch protection. Trusted enforcement requires signed receipts (Phase C).
+Experimental. This can fail on incomplete or inconsistent self-attested records. It is not a trusted branch-protection gate.
 
 ---
 
-## Local runtime export
+## Trust Boundary
 
-When the local Neurcode runtime governs an AI coding session, it writes a gitignored record under `.neurcode/admission/`. To attach that source-free record to the PR:
+- Fork-safe: no secrets required on `pull_request` events. Rejects `pull_request_target`.
+- Source-free: paths, modes, blob object IDs, CODEOWNERS metadata, file categories, and deterministic hashes only.
+- No file contents, diff hunks, prompts, patches, secrets, or telemetry.
+- Artifact discovery reads immutable PR-head git objects via `git ls-tree` and `git cat-file`, not the mutable checkout worktree.
+- CODEOWNERS is read from the base commit, never the PR head.
+- Unsupported CODEOWNERS syntax is reported as degraded analysis instead of guessed.
+- Self-attested records are claims, not proof.
+
+---
+
+## Evaluation Harness
+
+The source-free evaluation harness is included under `evaluation/`.
 
 ```bash
-neurcode admission export
-git add .neurcode-admission/
+node evaluation/oss-report-harness.mjs
 ```
 
-Use `neurcode admission export <session-id>` for an explicit session. The record contains git metadata and deterministic hashes only: paths, modes, object IDs, replay/profile hashes, and the self-attested disclaimer. It does not contain source code, diff text, prompts, patches, or secrets.
+It runs controlled OSS-style scenarios, scores the report as ACTIONABLE, OBVIOUS, or NOISE, and writes `evaluation/latest-report.md`. Use `--real-repo-url <url>` for optional temp-clone rehearsal.
 
 ---
 
-## Bundle provenance
+## Bundle Provenance
 
-See [`PROVENANCE.json`](./PROVENANCE.json) for the source commit SHA and SHA-256 of the committed `dist/index.js`. The public repo's CI verifies bundle integrity (checksum match), but does **not** rebuild from source — the monorepo source is private. Signed build attestations are Phase C.
-
----
-
-## Existing v0.2.4 installation path
-
-`sujit-jaunjal/neurcode-actions@v0.2.4` (Repository Operational Memory) remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.1` is an additive release-candidate for human review before promotion.
+See [`PROVENANCE.json`](./PROVENANCE.json) for the source commit SHA and SHA-256 of the committed `dist/index.js`. The public repo's CI verifies bundle integrity by checksum match. Signed build attestations are not part of this release.
 
 ---
 
-*No telemetry · No source upload · No AI prose · Same verdict on every machine*
+## Existing v0.2.4 Installation Path
+
+`sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.1` is an additive release candidate for human review before promotion.
+
+---
+
+*No telemetry. No source upload. No AI inference. Same verdict on every machine.*
