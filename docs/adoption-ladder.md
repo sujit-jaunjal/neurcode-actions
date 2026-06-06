@@ -13,7 +13,7 @@
 - No account, API key, CLI, or local tooling required.
 
 ```yaml
-- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.1
+- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
 ```
 
 ---

@@ -1,9 +1,19 @@
 # Changelog
 
-## [Unreleased / v0.3.0-rc.1] - Release Candidate
+## [Unreleased / v0.3.0-rc.2] - Release Candidate
 
 > **RC - for human review, not for production promotion yet.**
 > Preserves `v0.2.4` (Repository Operational Memory) as the existing stable public release.
+
+### Fixed
+- Reduced docs-only noise by restricting auth-sensitive filename matching to code files, so documentation paths such as OAuth/JWT guides do not trigger auth review attention by filename alone.
+- Added `uv.lock` to lockfile detection.
+
+---
+
+## [v0.3.0-rc.1] - Release Candidate
+
+> Superseded by `v0.3.0-rc.2` for external maintainer rehearsal.
 
 ### Added
 - **Maintainer Report V2**: compact PR triage summary for changed files, subsystem reach, sensitive surfaces, CODEOWNERS routing, admission provenance, deterministic maintainer questions, and trust boundary.

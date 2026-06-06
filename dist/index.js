@@ -50266,7 +50266,7 @@ const RULES = [
         category: 'auth',
         patterns: [
             /(?:^|\/)auth[^/]*\//i,
-            /(?:^|\/)(?:jwt|oauth|oidc|saml|sso|sessions?)[^/]*\.[a-z]+$/i,
+            /(?:^|\/)(?:jwt|oauth|oidc|saml|sso|sessions?)[^/]*\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|java|kt|cs|php|rs|swift|dart)$/i,
             /(?:^|\/)middleware\/auth/i,
             /(?:^|\/)guards?\//i,
             /(?:^|\/)policies?\//i,
@@ -50313,6 +50313,7 @@ const RULES = [
             /(?:^|\/)Cargo\.lock$/,
             /(?:^|\/)Gemfile\.lock$/,
             /(?:^|\/)poetry\.lock$/,
+            /(?:^|\/)uv\.lock$/,
             /(?:^|\/)go\.sum$/,
         ],
     },

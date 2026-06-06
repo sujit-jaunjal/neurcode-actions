@@ -20,7 +20,7 @@ jobs:
 
       - name: Runtime Admission Advisory
         id: admission
-        uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.1
+        uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
         # All inputs are optional. Base/head SHAs are resolved from the PR event; no overrides.
         # with:
         #   policy: advisory                # advisory (default) or strict_self_attested (experimental)

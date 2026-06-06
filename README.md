@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.1
+      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
 ```
 
 Layer 1 runs standalone on every PR. Layer 2 activates only when `.neurcode-admission/*.json` records are present.
@@ -95,7 +95,7 @@ They can help an author state that a local runtime admission process ran, but th
 ## Strict Self-Attested Mode
 
 ```yaml
-- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.1
+- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
   with:
     policy: strict_self_attested
     no_record_strict: 'false'
@@ -137,7 +137,7 @@ See [`PROVENANCE.json`](./PROVENANCE.json) for the source commit SHA and SHA-256
 
 ## Existing v0.2.4 Installation Path
 
-`sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.1` is an additive release candidate for human review before promotion.
+`sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.2` is an additive release candidate for human review before promotion.
 
 ---
 
