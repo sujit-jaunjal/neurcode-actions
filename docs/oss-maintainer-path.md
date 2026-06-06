@@ -36,7 +36,7 @@ On each pull request, the Action writes a GitHub Step Summary with:
 - CODEOWNERS zones crossed and owners involved, read from the base commit.
 - Clear no-CODEOWNERS and degraded-CODEOWNERS states.
 - Deterministic sensitive path categories: CI/workflow, dependency manifests, lockfiles, auth, billing/payment, database/migrations, secrets/config, infrastructure/deploy, and generated files.
-- Runtime admission status, usually `no_record` unless the PR includes `.neurcode-admission/*.json`.
+- Runtime admission context, usually "No runtime admission record found. This report is PR metadata only." unless the PR includes `.neurcode-admission/*.json`.
 - Suggested maintainer questions generated only from deterministic facts.
 - A trust boundary that states source-free, no telemetry, advisory by default, and self-attested records are not cryptographic proof.
 
@@ -70,10 +70,18 @@ The Action helps after code reaches a PR. Neurcode runtime governance helps befo
 | Mode | PR report status | Meaning |
 |---|---|---|
 | Action alone | `no_record` | No self-attested runtime admission record was attached. Ordinary PRs can still benefit from review routing. |
-| Action plus runtime export | `self_attested_complete`, `self_attested_incomplete`, or `self_attested_inconsistent` | The PR includes source-free self-attested runtime admission context. Treat it as a claim, not proof. |
-| Full platform | Runtime evidence in the dashboard plus optional PR admission context | Live agent governance with intent/plan records, ownership boundaries, exact-path approvals, and source-free review workflow. |
+| Action plus runtime export | `self_attested_complete`, `self_attested_incomplete`, or `self_attested_inconsistent` plus a Runtime admission context section | The PR includes source-free runtime context from a governed local session: trust level, host, blocked/approved/denied counts, approval-required surfaces, and receipt/integrity status. |
+| Full platform | Runtime evidence in the dashboard plus optional PR admission context | Live agent governance with source-free intent summaries, ownership boundaries, exact-path approvals, dashboard workflow, and backend receipts where configured. |
 
-Signed/backend-anchored receipts are future enterprise evidence. They are not part of this RC Action.
+Trust level is explicit. `self_attested` is a claim by the PR author, not proof. `backend_signed` appears only when signed receipt metadata is attached and should be verified before enterprise use.
+
+To attach runtime context after a governed local session:
+
+```bash
+neurcode session export-admission
+neurcode session export-admission <sessionId> --receipt receipt.json  # optional backend receipt summary
+git add .neurcode-admission/*.json
+```
 
 ## RC Status
 

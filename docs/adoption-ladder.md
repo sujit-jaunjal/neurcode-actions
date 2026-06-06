@@ -50,7 +50,8 @@ jobs:
 When a governed local runtime session produces source-free admission context, the author can export selected records into `.neurcode-admission/*.json` and commit them with the PR.
 
 ```bash
-neurcode admission export
+neurcode session export-admission
+# or: neurcode session export-admission <sessionId>
 git add .neurcode-admission/
 ```
 
@@ -60,9 +61,11 @@ git add .neurcode-admission/
 - `self_attested_incomplete`: usable records claim coverage for only part of the changed path set.
 - `self_attested_inconsistent`: records are malformed or inconsistent with committed git metadata.
 - Covered and uncovered path counts.
+- A **Runtime admission context** section with trust level, session count, governed agent host, blocked/approved/denied counts, approval-required surfaces, and receipt/integrity status.
+- A clear fallback when no record exists: "No runtime admission record found. This report is PR metadata only."
 - Deterministic questions about incomplete or inconsistent records.
 
-**Trust boundary:** these records are self-attested claims by the PR author. They can be useful review context, but they are not cryptographic proof and not enterprise signed receipts.
+**Trust boundary:** trust level is explicit. `self_attested` records are claims by the PR author. `unsigned_local` records are local metadata without a stronger claim. `backend_signed` appears only when signed receipt metadata is attached with `neurcode session export-admission <sessionId> --receipt receipt.json` and should be verified before enterprise use.
 
 ## Step 3 - Full Neurcode Runtime Governance Platform
 
@@ -74,14 +77,15 @@ The platform governs before code lands:
 - Intent and plan records.
 - CODEOWNERS and boundary awareness.
 - Exact-path approvals for sensitive or owner-controlled writes.
-- Source-free evidence for dashboard review workflow.
+- Source-free evidence for dashboard operator workflow.
 - Structural understanding of what changed and what depends on it.
+- Runtime admission records that can bridge governed sessions into the PR Action report.
 
 This is the paid/enterprise product path. It is different from the free Action: the Action reports on PRs after code exists; the runtime platform supervises the work while it is being attempted.
 
-## Future Enterprise Evidence
+## Enterprise Evidence
 
-Backend-anchored signed receipts are future enterprise evidence. They are not part of the current OSS Action. The current Action can validate self-attested records, but it must not be treated as cryptographic proof or a trusted branch-protection control.
+Backend-anchored signed receipts are the stronger evidence path. The current Action can display backend-signed receipt metadata when attached, but it remains advisory and must not be treated as a trusted branch-protection control unless your organization separately verifies and enforces that policy.
 
 ## Which Step Should I Try?
 

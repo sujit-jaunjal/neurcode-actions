@@ -1,9 +1,10 @@
 name: 'Neurcode - Runtime Admission Advisory'
 description: >
   Zero-account, source-free PR triage report for ownership, sensitive surfaces,
-  subsystem reach, and optional self-attested runtime admission evidence. No account,
+  subsystem reach, and optional runtime admission evidence. No account,
   API key, source upload, telemetry, or local runtime required. Self-attested
-  provenance is a claim, not cryptographic proof. Advisory-only by default - never blocks.
+  provenance is a claim, backend-signed context must be verified, and the Action is
+  advisory-only by default - never blocks.
 author: 'Neurcode'
 branding:
   icon: 'shield'
@@ -67,6 +68,18 @@ outputs:
     description: 'Total .neurcode-admission/*.json files discovered.'
   usable_record_count:
     description: 'Records that passed bounded parsing and internal consistency checks.'
+  runtime_admission_found:
+    description: 'true when .neurcode-admission metadata was present in the PR head tree.'
+  runtime_admission_trust_level:
+    description: 'Runtime context trust level: none | unsigned_local | self_attested | backend_signed | mixed.'
+  runtime_admission_session_count:
+    description: 'Number of governed runtime sessions represented by usable admission records.'
+  runtime_blocked_paths_count:
+    description: 'Source-free count of paths blocked during represented runtime sessions.'
+  runtime_approved_paths_count:
+    description: 'Source-free count of exact paths approved during represented runtime sessions.'
+  runtime_denied_paths_count:
+    description: 'Source-free count of denied paths in represented runtime sessions.'
 
   # ── Policy outcome ────────────────────────────────────────────────────────
   action_blocked:

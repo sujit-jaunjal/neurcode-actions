@@ -25,7 +25,7 @@ You get useful signal immediately without a Neurcode account:
 - Subsystems touched, ranked by changed-file count.
 - Deterministic sensitive path categories such as CI/workflow, dependency manifests, lockfiles, auth, billing/payment, database/migrations, secrets/config, infrastructure/deploy, and generated files.
 - Docs-only or low-routing PRs that stay quiet when no deterministic routing flag fires.
-- Optional runtime admission status when `.neurcode-admission/*.json` records are committed.
+- Optional runtime admission context when `.neurcode-admission/*.json` records are committed: trust level, governed host, blocked/approved/denied counts, approval-required surfaces, and receipt/integrity status.
 
 This is a PR triage report. It is not an AI security scanner, not vulnerability detection, and not a review replacement.
 
@@ -37,7 +37,7 @@ This is a PR triage report. It is not an AI security scanner, not vulnerability 
 - Top-level subsystem reach.
 - CODEOWNERS zones and owner tokens crossed, read from the base commit.
 - Sensitive path categories: auth, billing/payment, database/migrations, CI/workflow, infrastructure/deploy, secrets/config, dependency manifests, lockfiles, generated files.
-- Optional `.neurcode-admission/*.json` self-attested runtime admission status.
+- Optional `.neurcode-admission/*.json` runtime admission context.
 - Suggested maintainer questions generated from deterministic facts.
 
 The report is advisory by default. It does not replace review, infer AI intent, or claim security vulnerabilities.
@@ -75,10 +75,33 @@ The Action is the free OSS wedge. The runtime platform is the before-code-lands 
 | Path | What maintainers see in the PR | What it means |
 |---|---|---|
 | Action alone | Review routing, sensitive path categories, CODEOWNERS crossings, subsystem reach, `admission_verdict: no_record`. | No runtime record was attached. Ordinary PRs can be reviewed normally. |
-| Action + runtime admission record | The same report plus `self_attested_complete`, `self_attested_incomplete`, or `self_attested_inconsistent`. | The PR author attached source-free self-attested evidence that local runtime governance was used. |
-| Full Neurcode runtime platform | Runtime session records, intent/plan context, exact-path approvals, boundary events, and dashboard review workflow before the PR arrives. | Live agent governance. Stronger backend-anchored receipts are future enterprise evidence, not current OSS Action proof. |
+| Action + runtime admission record | The same report plus runtime admission context and `self_attested_complete`, `self_attested_incomplete`, or `self_attested_inconsistent`. | The PR author attached source-free metadata from a governed local runtime session. Trust level is explicit: `self_attested`, `unsigned_local`, or `backend_signed` when signed receipt metadata is attached. |
+| Full Neurcode runtime platform | Runtime session records, source-free intent summaries, exact-path approvals, boundary events, dashboard workflow, and backend receipts where configured before the PR arrives. | Live agent governance. Backend-signed receipts are stronger than self-attested records, but still must be verified. |
 
 Self-attested records are claims by the PR author. They are useful context, but not cryptographic proof and not enterprise signed receipts.
+
+---
+
+## Export Runtime Context Into A PR
+
+After a governed local AI coding session:
+
+```bash
+# Export the current/latest governed session into a deterministic PR artifact.
+neurcode session export-admission
+
+# Or choose a specific session.
+neurcode session export-admission <sessionId>
+
+# If you have a backend receipt JSON, attach source-free receipt metadata.
+neurcode session export-admission <sessionId> --receipt receipt.json
+
+# Commit the source-free artifact with the PR.
+git add .neurcode-admission/*.json
+git commit -m "Add Neurcode runtime admission context"
+```
+
+The Action discovers `.neurcode-admission/<sessionId>.json` from the PR head git tree and renders a **Runtime admission context** section. The artifact must not contain source code, diff hunks, patch bodies, shell command bodies, secrets, raw prompts, or full receipt signatures. Backend receipt summaries include only source-free receipt ID, key ID, replay hash, signature status, verification status, signed timestamp, and verifier hint.
 
 ---
 
@@ -90,7 +113,7 @@ Self-attested records are claims by the PR author. They are useful context, but 
 | What is runtime governance? | Neurcode's before-code-lands control layer for AI coding sessions: intent/plan records, ownership boundaries, exact-path approvals, and source-free evidence. |
 | Do I need an account? | No for the Action. Yes for the hosted runtime platform and dashboard workflow. |
 | What data leaves my repo? | The Action does not upload source, diff hunks, prompts, patches, secrets, or telemetry. It runs in GitHub Actions and writes a Step Summary plus outputs. |
-| What does the paid platform add? | Live agent governance before writes land, exact-path approvals, source-free runtime evidence, dashboard review workflow, and future stronger enterprise receipts. |
+| What does the paid platform add? | Live agent governance before writes land, exact-path approvals, source-free runtime evidence, dashboard review workflow, and backend receipt verification when configured. |
 | How do I start as an OSS maintainer? | Install the RC3 workflow on one repo or one PR and score whether the summary is actionable, obvious, or noisy. |
 | How do I start as an enterprise team? | Use the Action for PR rehearsal, then evaluate the runtime platform on one AI coding workflow where path ownership or sensitive boundaries matter. |
 | Is RC3 stable? | No. `v0.3.0-rc.3` is the current rehearsal ref. `v0.2.4` remains the existing stable public release. |
@@ -105,6 +128,7 @@ The Step Summary includes:
 - **Review routing**: CODEOWNERS source, matched areas, owners, unowned changed paths, absent/degraded state.
 - **Sensitive surfaces**: deterministic path/category hits only.
 - **Subsystem reach**: ranked top-level directories.
+- **Runtime admission context**: whether a record was found, trust level, session count, governed host, blocked/approved/denied counts, approval-required surfaces, and receipt/integrity status. If no record exists, it says: "No runtime admission record found. This report is PR metadata only."
 - **Runtime admission provenance**: `no_record`, `self_attested_complete`, `self_attested_incomplete`, or `self_attested_inconsistent`, with plain-English explanation.
 - **Suggested maintainer questions**: deterministic questions such as "This PR crosses 3 CODEOWNERS zones. Are all owners represented in review?"
 - **Trust boundary**: source-free, no telemetry, advisory by default, self-attested records are not cryptographic proof.
@@ -130,6 +154,12 @@ Long lists are capped with `+N more`. Ordering is stable.
 | `uncovered_paths_count` | Paths without admission coverage. |
 | `record_count` | Artifacts discovered. |
 | `usable_record_count` | Artifacts passing validation. |
+| `runtime_admission_found` | `true` when `.neurcode-admission` metadata was present. |
+| `runtime_admission_trust_level` | `none`, `unsigned_local`, `self_attested`, `backend_signed`, or `mixed`. |
+| `runtime_admission_session_count` | Governed runtime sessions represented by usable admission records. |
+| `runtime_blocked_paths_count` | Paths blocked during represented runtime sessions. |
+| `runtime_approved_paths_count` | Exact paths approved during represented runtime sessions. |
+| `runtime_denied_paths_count` | Denied paths in represented runtime sessions. |
 | `action_blocked` | `true` only in strict mode when admission failed. |
 
 ---
@@ -183,7 +213,7 @@ See [`PROVENANCE.json`](./PROVENANCE.json) for the source commit SHA and SHA-256
 
 ## Existing v0.2.4 Installation Path
 
-`sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.3` is an additive release candidate for human review before promotion.
+`sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. `v0.3.0-rc.3` remains the current published rehearsal ref; this branch is the `v0.3.0-rc.4` candidate for runtime admission bridge behavior.
 
 ---
 

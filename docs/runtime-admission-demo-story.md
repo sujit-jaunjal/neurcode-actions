@@ -36,11 +36,24 @@ Policy: **advisory - non-blocking**
 | Sensitive surfaces touched | 1 category - billing/payment (1) |
 | CODEOWNERS zones crossed | 2 zones crossed from .github/CODEOWNERS |
 | Admission record status | self_attested_complete - complete self-attested coverage claim |
+| Runtime admission context | self_attested - 1 session from claude-code |
 | Review routing | Needs attention - multiple CODEOWNERS zones crossed, sensitive surfaces touched |
+
+#### Runtime admission context
+| Field | Source-free result |
+|---|---|
+| Runtime admission found | yes |
+| Trust level | self_attested |
+| Sessions | 1 |
+| Governed agent host | claude-code |
+| Blocked / approved / denied paths | 1 / 1 / 0 |
+| Approval-required surfaces | 1 - src/billing/** |
+| Receipt / integrity status | local_self_attested; replay present |
 
 #### Suggested maintainer questions
 - This PR crosses 2 CODEOWNERS zones. Are all owners represented in review?
 - This PR touches billing or payment paths. Should a billing owner review the changed behavior?
+- Runtime governance recorded 1 blocked path(s). Were the final approvals and remaining boundaries reviewed?
 
 #### Runtime admission provenance
 Usable self-attested records claim coverage for every changed path. This is a claim, not cryptographic proof or enterprise signed evidence.
@@ -63,6 +76,7 @@ The maintainer gets a compact PR summary:
 - A self-attested runtime admission record claims all changed paths were covered.
 - The report asks whether the relevant owners are represented in review.
 - The report repeats that the record is self-attested and not cryptographic proof.
+- If no `.neurcode-admission/*.json` file exists, the report says: "No runtime admission record found. This report is PR metadata only."
 
 The maintainer still reviews the PR normally. The Action helps route attention; it does not decide whether the change is safe.
 
@@ -75,9 +89,9 @@ The operator sees the before-PR runtime context:
 - The attempted billing-path write.
 - The exact path that was blocked.
 - The operator decision for that one path.
-- The source-free session evidence exported for PR review.
+- The source-free session evidence exported for PR review as `.neurcode-admission/<sessionId>.json`.
 
-In the full platform, this becomes part of the dashboard review workflow. Signed/backend-anchored receipts are future enterprise evidence and are not claimed by the current OSS Action.
+In the full platform, this becomes part of the dashboard review workflow. Backend-anchored receipts can be attached as source-free receipt summaries when available; the Action displays that context but remains advisory unless your organization verifies and enforces it separately.
 
 ## Copyable One-Liner
 

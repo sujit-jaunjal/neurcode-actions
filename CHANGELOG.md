@@ -1,6 +1,21 @@
 # Changelog
 
-## [Unreleased / v0.3.0-rc.3] - Release Candidate
+## [Unreleased / v0.3.0-rc.4] - Release Candidate
+
+> **RC - for human review, not for production promotion yet.**
+> Preserves `v0.2.4` (Repository Operational Memory) as the existing stable public release.
+
+### Added
+- Runtime admission context section now reads optional `.neurcode-admission/*.json` records and reports trust level, governed host, blocked/approved/denied counts, approval-required surfaces, receipt integrity, and source-free maintainer questions.
+- Backend receipt summaries can be attached to admission exports with `neurcode session export-admission <sessionId> --receipt receipt.json`. The Action displays receipt ID, key ID, verification status, signed timestamp, and verifier hint without embedding source or full receipt signatures.
+
+### Preserved
+- `v0.3.0-rc.3` remains the current published rehearsal ref until RC4 is tagged.
+- The Action remains advisory by default and does not claim hard enforcement or proof from self-attested records.
+
+---
+
+## [v0.3.0-rc.3] - Release Candidate
 
 > **RC - for human review, not for production promotion yet.**
 > Preserves `v0.2.4` (Repository Operational Memory) as the existing stable public release.

@@ -39856,14 +39856,20 @@ exports.ADMISSION_SOURCE_LIKE_KEYS = new Set([
     'file_content',
     'sourceText',
     'source_text',
+    'sourceCode',
+    'source_code',
     'source',
     'body',
     'text',
     'diff',
     'diffText',
     'diff_text',
+    'diffHunk',
+    'diffHunks',
     'patch',
     'patchText',
+    'patchBody',
+    'patch_body',
     'hunk',
     'hunks',
     'excerpt',
@@ -39872,6 +39878,15 @@ exports.ADMISSION_SOURCE_LIKE_KEYS = new Set([
     'after',
     'blobContent',
     'contents',
+    'prompt',
+    'rawPrompt',
+    'raw_prompt',
+    'promptWithSource',
+    'prompt_with_source',
+    'commandBody',
+    'command_body',
+    'shellCommand',
+    'shell_command',
     'secret',
     'secrets',
     'token',
@@ -39886,6 +39901,19 @@ class AdmissionSourceLeakError extends Error {
     }
 }
 exports.AdmissionSourceLeakError = AdmissionSourceLeakError;
+function isSourceLikeAdmissionKey(key) {
+    if (exports.ADMISSION_SOURCE_LIKE_KEYS.has(key))
+        return true;
+    const normalized = key.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const compact = normalized.replace(/_/g, '');
+    for (const blocked of exports.ADMISSION_SOURCE_LIKE_KEYS) {
+        const blockedNormalized = blocked.toLowerCase().replace(/[^a-z0-9_]/g, '');
+        if (normalized === blockedNormalized || compact === blockedNormalized.replace(/_/g, '')) {
+            return true;
+        }
+    }
+    return false;
+}
 /**
  * Walk a value and throw AdmissionSourceLeakError if any object key is a
  * source-like key. Arrays and nested objects are walked recursively.
@@ -39898,7 +39926,7 @@ function assertSourceFreeAdmissionValue(value, path = 'admission') {
     if (!value || typeof value !== 'object')
         return;
     for (const [key, child] of Object.entries(value)) {
-        if (exports.ADMISSION_SOURCE_LIKE_KEYS.has(key)) {
+        if (isSourceLikeAdmissionKey(key)) {
             throw new AdmissionSourceLeakError(`${path}.${key}`);
         }
         assertSourceFreeAdmissionValue(child, `${path}.${key}`);
@@ -41377,6 +41405,139 @@ function validateSessionRef(value) {
         return false;
     return true;
 }
+function validateBoundedStringArray(value, maxItems, maxLength) {
+    return Array.isArray(value)
+        && value.length <= maxItems
+        && value.every((entry) => isBoundedString(entry, maxLength));
+}
+function validateNonNegativeInteger(value) {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+function validateRuntimeAdmissionTrustLevel(value) {
+    return value === 'unsigned_local' || value === 'self_attested' || value === 'backend_signed';
+}
+function validateRuntimeAdmissionReceiptSummary(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return false;
+    const r = value;
+    if (typeof r.present !== 'boolean')
+        return false;
+    if (!validateRuntimeAdmissionTrustLevel(r.trustLevel))
+        return false;
+    if (r.receiptId !== undefined && !isBoundedString(r.receiptId, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (r.keyId !== undefined && r.keyId !== null && !isBoundedString(r.keyId, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (r.replayHash !== undefined && r.replayHash !== null && !isBoundedString(r.replayHash, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (r.signatureStatus !== undefined && r.signatureStatus !== null && !isBoundedString(r.signatureStatus, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (r.verificationStatus !== undefined && r.verificationStatus !== null && !isBoundedString(r.verificationStatus, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (r.signedAt !== undefined && r.signedAt !== null && !(isBoundedString(r.signedAt, 64) && Number.isFinite(Date.parse(r.signedAt))))
+        return false;
+    if (r.verifier !== undefined && r.verifier !== null && !isBoundedString(r.verifier, 512))
+        return false;
+    return true;
+}
+function validateRuntimeAdmissionContext(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return false;
+    const ctx = value;
+    if (ctx.schemaVersion !== 'neurcode.runtime-admission-context.v1')
+        return false;
+    if (!validateRuntimeAdmissionTrustLevel(ctx.trustLevel))
+        return false;
+    if (!(isBoundedString(ctx.createdAt, 64) && Number.isFinite(Date.parse(ctx.createdAt))))
+        return false;
+    if (!(isBoundedString(ctx.sessionId, exports.MAX_ADMISSION_ID_LENGTH) && ctx.sessionId.length > 0))
+        return false;
+    if (!(isBoundedString(ctx.sessionStatus, exports.MAX_ADMISSION_ID_LENGTH) && ctx.sessionStatus.length > 0))
+        return false;
+    if (ctx.intentSummary !== null && ctx.intentSummary !== undefined && !isBoundedString(ctx.intentSummary, 512))
+        return false;
+    if (ctx.scopeMode !== null && ctx.scopeMode !== undefined && !isBoundedString(ctx.scopeMode, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    const agentHost = ctx.agentHost;
+    if (!agentHost || typeof agentHost !== 'object' || Array.isArray(agentHost))
+        return false;
+    const host = agentHost;
+    if (host.adapter !== null && host.adapter !== undefined && !isBoundedString(host.adapter, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (host.enforcementLevel !== null && host.enforcementLevel !== undefined && !isBoundedString(host.enforcementLevel, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (host.controlLevel !== null && host.controlLevel !== undefined && !isBoundedString(host.controlLevel, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (host.automatic !== undefined && typeof host.automatic !== 'boolean')
+        return false;
+    const counts = ctx.counts;
+    if (!counts || typeof counts !== 'object' || Array.isArray(counts))
+        return false;
+    for (const key of [
+        'changedPaths',
+        'blockedPaths',
+        'suggestedApprovalPaths',
+        'approvedExactPaths',
+        'deniedPaths',
+        'approvalRequiredSurfaces',
+        'owners',
+        'preWriteChecks',
+        'allowedChecks',
+        'warningChecks',
+    ]) {
+        if (!validateNonNegativeInteger(counts[key]))
+            return false;
+    }
+    const paths = ctx.paths;
+    if (!paths || typeof paths !== 'object' || Array.isArray(paths))
+        return false;
+    for (const key of ['changed', 'blocked', 'suggestedApproval', 'approvedExact', 'denied', 'approvalRequiredSurfaces']) {
+        if (!validateBoundedStringArray(paths[key], exports.MAX_ADMISSION_COVERAGE_ENTRIES, exports.MAX_ADMISSION_PATH_LENGTH))
+            return false;
+    }
+    if (!Array.isArray(ctx.owners) || ctx.owners.length > exports.MAX_ADMISSION_SESSION_REFS)
+        return false;
+    for (const owner of ctx.owners) {
+        if (!owner || typeof owner !== 'object' || Array.isArray(owner))
+            return false;
+        const item = owner;
+        if (!(isBoundedString(item.owner, exports.MAX_ADMISSION_ID_LENGTH) && item.owner.length > 0))
+            return false;
+        if (!validateNonNegativeInteger(item.count))
+            return false;
+    }
+    const guard = ctx.guard;
+    if (!guard || typeof guard !== 'object' || Array.isArray(guard))
+        return false;
+    const g = guard;
+    if (!(isBoundedString(g.status, exports.MAX_ADMISSION_ID_LENGTH) && g.status.length > 0))
+        return false;
+    for (const key of ['verifiedPrewrite', 'deniedButChanged', 'unverifiedWrites', 'observedAfterOnly']) {
+        if (!validateNonNegativeInteger(g[key]))
+            return false;
+    }
+    const integrity = ctx.integrity;
+    if (!integrity || typeof integrity !== 'object' || Array.isArray(integrity))
+        return false;
+    const i = integrity;
+    if (i.sourceFree !== true)
+        return false;
+    if (i.replayHash !== null && i.replayHash !== undefined && !isBoundedString(i.replayHash, exports.MAX_ADMISSION_ID_LENGTH))
+        return false;
+    if (i.replayHashStatus !== 'present' && i.replayHashStatus !== 'missing')
+        return false;
+    if (!(typeof i.deltaHash === 'string' && HEX_64.test(i.deltaHash)))
+        return false;
+    if (!(typeof i.coverageSetHash === 'string' && HEX_64.test(i.coverageSetHash)))
+        return false;
+    if (i.evidenceIntegrityStatus !== 'local_self_attested' &&
+        i.evidenceIntegrityStatus !== 'backend_signed' &&
+        i.evidenceIntegrityStatus !== 'unsigned_local')
+        return false;
+    if (!validateRuntimeAdmissionReceiptSummary(i.receipt))
+        return false;
+    return true;
+}
 /**
  * Strict, bounded structural validation of an untrusted, already-parsed value.
  * Returns a typed record only when every field, enum, hash, mode, array, and
@@ -41453,6 +41614,8 @@ function readSelfAttestedAdmissionRecord(value) {
     if (!m.delta.every((entry) => validateDeltaEntry(entry, m.objectFormat)))
         return null;
     if (!m.coverage.every((entry) => validateCoverageEntry(entry, m.objectFormat)))
+        return null;
+    if (record.runtimeContext !== undefined && !validateRuntimeAdmissionContext(record.runtimeContext))
         return null;
     return value;
 }
@@ -48594,6 +48757,185 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.evaluateAdmission = evaluateAdmission;
 const governance_runtime_1 = __nccwpck_require__(7399);
 const contracts_1 = __nccwpck_require__(7239);
+const MAX_ADMISSION_JSON_BYTES = 8 * 1024 * 1024;
+function sourceLikeKey(key) {
+    if (contracts_1.ADMISSION_SOURCE_LIKE_KEYS.has(key))
+        return true;
+    const normalized = key.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const compact = normalized.replace(/_/g, '');
+    for (const blocked of contracts_1.ADMISSION_SOURCE_LIKE_KEYS) {
+        const blockedNormalized = blocked.toLowerCase().replace(/[^a-z0-9_]/g, '');
+        if (normalized === blockedNormalized || compact === blockedNormalized.replace(/_/g, ''))
+            return true;
+    }
+    return false;
+}
+function sanitizeAdmissionCandidate(value) {
+    if (Array.isArray(value)) {
+        let dropped = false;
+        const next = value.map((entry) => {
+            const result = sanitizeAdmissionCandidate(entry);
+            dropped = dropped || result.dropped;
+            return result.value;
+        });
+        return { value: next, dropped };
+    }
+    if (!value || typeof value !== 'object')
+        return { value, dropped: false };
+    let dropped = false;
+    const out = {};
+    for (const [key, child] of Object.entries(value)) {
+        if (sourceLikeKey(key)) {
+            dropped = true;
+            continue;
+        }
+        const result = sanitizeAdmissionCandidate(child);
+        dropped = dropped || result.dropped;
+        out[key] = result.value;
+    }
+    return { value: out, dropped };
+}
+function parseAdmissionArtifact(content) {
+    const direct = (0, governance_runtime_1.readSelfAttestedAdmissionRecordFromText)(content);
+    if (direct)
+        return { record: direct, sanitizedSourceLikeFields: false };
+    if (Buffer.byteLength(content, 'utf8') > MAX_ADMISSION_JSON_BYTES) {
+        return { record: null, sanitizedSourceLikeFields: false };
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(content);
+    }
+    catch {
+        return { record: null, sanitizedSourceLikeFields: false };
+    }
+    const sanitized = sanitizeAdmissionCandidate(parsed);
+    if (!sanitized.dropped)
+        return { record: null, sanitizedSourceLikeFields: false };
+    return {
+        record: (0, governance_runtime_1.readSelfAttestedAdmissionRecord)(sanitized.value),
+        sanitizedSourceLikeFields: true,
+    };
+}
+function trustLevelFor(record) {
+    return record.runtimeContext?.trustLevel ?? 'self_attested';
+}
+function emptyRuntimeContextEvaluation(found, invalidRecordCount = 0) {
+    return {
+        found,
+        validRecordCount: 0,
+        invalidRecordCount,
+        sessionCount: 0,
+        trustLevels: [],
+        aggregateTrustLevel: found ? 'none' : 'none',
+        agentHosts: [],
+        counts: {
+            blockedPaths: 0,
+            approvedExactPaths: 0,
+            deniedPaths: 0,
+            suggestedApprovalPaths: 0,
+            approvalRequiredSurfaces: 0,
+        },
+        approvalRequiredSurfaces: [],
+        receiptIntegrityStatuses: [],
+        replayHashStatuses: [],
+        receiptIds: [],
+        receiptKeyIds: [],
+        receiptVerificationStatuses: [],
+        receiptSignedAt: [],
+        receiptVerifiers: [],
+    };
+}
+function aggregateTrustLevel(levels) {
+    const unique = Array.from(new Set(levels));
+    if (unique.length === 0)
+        return 'none';
+    if (unique.length === 1)
+        return unique[0];
+    if (unique.includes('backend_signed'))
+        return 'mixed';
+    return 'mixed';
+}
+function aggregateRuntimeContext(perRecord, totalRecordCount) {
+    const usable = perRecord.filter((record) => record.usable);
+    const contexts = usable.map((record) => record.runtimeContext).filter((ctx) => Boolean(ctx));
+    const trustLevels = usable
+        .map((record) => record.trustLevel)
+        .filter((level) => level !== 'unknown');
+    const sessions = new Set();
+    const hosts = new Set();
+    const surfaces = new Set();
+    const receiptStatuses = new Set();
+    const replayStatuses = new Set();
+    const receiptIds = new Set();
+    const receiptKeyIds = new Set();
+    const receiptVerificationStatuses = new Set();
+    const receiptSignedAt = new Set();
+    const receiptVerifiers = new Set();
+    const counts = {
+        blockedPaths: 0,
+        approvedExactPaths: 0,
+        deniedPaths: 0,
+        suggestedApprovalPaths: 0,
+        approvalRequiredSurfaces: 0,
+    };
+    for (const record of usable) {
+        const ctx = record.runtimeContext;
+        if (!ctx) {
+            continue;
+        }
+        sessions.add(ctx.sessionId);
+        if (ctx.agentHost.adapter)
+            hosts.add(ctx.agentHost.adapter);
+        counts.blockedPaths += ctx.counts.blockedPaths;
+        counts.approvedExactPaths += ctx.counts.approvedExactPaths;
+        counts.deniedPaths += ctx.counts.deniedPaths;
+        counts.suggestedApprovalPaths += ctx.counts.suggestedApprovalPaths;
+        counts.approvalRequiredSurfaces += ctx.counts.approvalRequiredSurfaces;
+        for (const surface of ctx.paths.approvalRequiredSurfaces)
+            surfaces.add(surface);
+        receiptStatuses.add(ctx.integrity.evidenceIntegrityStatus);
+        replayStatuses.add(ctx.integrity.replayHashStatus);
+        const receipt = ctx.integrity.receipt;
+        if (receipt.receiptId)
+            receiptIds.add(receipt.receiptId);
+        if (receipt.keyId)
+            receiptKeyIds.add(receipt.keyId);
+        if (receipt.verificationStatus)
+            receiptVerificationStatuses.add(receipt.verificationStatus);
+        if (receipt.signedAt)
+            receiptSignedAt.add(receipt.signedAt);
+        if (receipt.verifier)
+            receiptVerifiers.add(receipt.verifier);
+    }
+    for (const record of usable) {
+        if (!record.runtimeContext) {
+            const match = record.filename.match(/^(.+)\.json$/);
+            if (match)
+                sessions.add(match[1]);
+            receiptStatuses.add(record.trustLevel === 'self_attested' ? 'local_self_attested' : record.trustLevel);
+            replayStatuses.add('missing');
+        }
+    }
+    return {
+        found: totalRecordCount > 0,
+        validRecordCount: usable.length,
+        invalidRecordCount: Math.max(0, totalRecordCount - usable.length),
+        sessionCount: sessions.size || usable.length,
+        trustLevels: Array.from(new Set(trustLevels)).sort(),
+        aggregateTrustLevel: aggregateTrustLevel(trustLevels),
+        agentHosts: Array.from(hosts).sort(),
+        counts,
+        approvalRequiredSurfaces: Array.from(surfaces).sort(),
+        receiptIntegrityStatuses: Array.from(receiptStatuses).sort(),
+        replayHashStatuses: Array.from(replayStatuses).sort(),
+        receiptIds: Array.from(receiptIds).sort(),
+        receiptKeyIds: Array.from(receiptKeyIds).sort(),
+        receiptVerificationStatuses: Array.from(receiptVerificationStatuses).sort(),
+        receiptSignedAt: Array.from(receiptSignedAt).sort(),
+        receiptVerifiers: Array.from(receiptVerifiers).sort(),
+    };
+}
 function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) {
     // Ground-truth delta (normalized, deterministic). Empty governance = all ungoverned.
     const groundTruthManifest = (0, governance_runtime_1.buildCoverageManifest)({
@@ -48606,6 +48948,7 @@ function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) 
     const totalEffectPaths = groundTruthDelta.map((e) => e.path).sort();
     // no_record: directory absent or zero artifacts discovered.
     if (dirAbsent || artifacts.length === 0) {
+        const foundInvalidMetadata = !dirAbsent && discoveryDiagnostics.length > 0;
         return {
             finalVerdict: 'no_record',
             coveredPaths: [],
@@ -48615,13 +48958,14 @@ function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) 
             discoveryDiagnostics,
             usableRecordCount: 0,
             totalRecordCount: artifacts.length,
+            runtimeContext: emptyRuntimeContextEvaluation(foundInvalidMetadata, foundInvalidMetadata ? discoveryDiagnostics.length : 0),
         };
     }
     const perRecord = [];
     const usableCoverageGroups = [];
     for (const artifact of artifacts) {
         // Phase A bounded parser — never throws, returns null on any violation.
-        const record = (0, governance_runtime_1.readSelfAttestedAdmissionRecordFromText)(artifact.content);
+        const { record, sanitizedSourceLikeFields } = parseAdmissionArtifact(artifact.content);
         if (!record) {
             perRecord.push({
                 filename: artifact.filename,
@@ -48631,6 +48975,8 @@ function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) 
                 unexpectedCoverage: [],
                 reasons: ['Artifact failed bounded structural parsing (malformed, oversized, or source-leaking).'],
                 usable: false,
+                trustLevel: 'unknown',
+                sanitizedSourceLikeFields,
             });
             continue;
         }
@@ -48643,8 +48989,13 @@ function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) 
             coveredPaths: decision.coveredPaths,
             uncoveredPaths: decision.uncoveredPaths,
             unexpectedCoverage: decision.unexpectedCoverage,
-            reasons: decision.reasons,
+            reasons: sanitizedSourceLikeFields
+                ? ['Source-like extra fields were ignored before source-free validation.', ...decision.reasons]
+                : decision.reasons,
             usable,
+            trustLevel: trustLevelFor(record),
+            runtimeContext: record.runtimeContext,
+            sanitizedSourceLikeFields,
         });
         if (usable) {
             usableCoverageGroups.push(record.manifest.coverage);
@@ -48662,6 +49013,7 @@ function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) 
             discoveryDiagnostics,
             usableRecordCount: 0,
             totalRecordCount: artifacts.length,
+            runtimeContext: aggregateRuntimeContext(perRecord, artifacts.length),
         };
     }
     // Union strict-admissible coverage identities across all usable records.
@@ -48699,6 +49051,7 @@ function evaluateAdmission(capture, artifacts, discoveryDiagnostics, dirAbsent) 
         discoveryDiagnostics,
         usableRecordCount,
         totalRecordCount: artifacts.length,
+        runtimeContext: aggregateRuntimeContext(perRecord, artifacts.length),
     };
 }
 
@@ -49218,6 +49571,12 @@ function emitOutputs(opts) {
     core.setOutput('uncovered_paths_count', String(admission.uncoveredPaths.length));
     core.setOutput('record_count', String(admission.totalRecordCount));
     core.setOutput('usable_record_count', String(admission.usableRecordCount));
+    core.setOutput('runtime_admission_found', String(admission.runtimeContext.found));
+    core.setOutput('runtime_admission_trust_level', (0, sanitize_1.outputSafe)(admission.runtimeContext.aggregateTrustLevel));
+    core.setOutput('runtime_admission_session_count', String(admission.runtimeContext.sessionCount));
+    core.setOutput('runtime_blocked_paths_count', String(admission.runtimeContext.counts.blockedPaths));
+    core.setOutput('runtime_approved_paths_count', String(admission.runtimeContext.counts.approvedExactPaths));
+    core.setOutput('runtime_denied_paths_count', String(admission.runtimeContext.counts.deniedPaths));
     core.setOutput('action_blocked', String(actionBlocked));
 }
 
@@ -49334,6 +49693,13 @@ function deriveReviewAttention(facts) {
         reasons.push('admission record is incomplete');
     if (facts.admission.finalVerdict === 'self_attested_inconsistent')
         reasons.push('admission record is inconsistent');
+    if (facts.admission.runtimeContext.invalidRecordCount > 0)
+        reasons.push('runtime admission metadata is invalid');
+    if (facts.admission.runtimeContext.counts.deniedPaths > 0)
+        reasons.push('runtime admission includes denied paths');
+    if (facts.admission.runtimeContext.counts.blockedPaths > facts.admission.runtimeContext.counts.approvedExactPaths
+        && facts.admission.runtimeContext.counts.blockedPaths > 0)
+        reasons.push('runtime admission has blocked paths without matching exact approvals');
     if (reasons.length > 0)
         return { level: 'needs_attention', reasons };
     if (status === 'absent' && facts.effects.length > 0 && !lowRiskDocsOnly) {
@@ -49395,6 +49761,24 @@ function buildMaintainerQuestions(facts) {
     }
     if (facts.admission.finalVerdict === 'no_record' && facts.effects.length > 0 && !lowRiskDocsOnly) {
         questions.push('No runtime admission record is attached. If this PR was generated by an agent, ask for source-free admission evidence.');
+    }
+    if (facts.admission.runtimeContext.invalidRecordCount > 0) {
+        questions.push('Runtime admission files were present but invalid. Should the author regenerate source-free admission metadata?');
+    }
+    const runtime = facts.admission.runtimeContext;
+    if (runtime.found && runtime.validRecordCount > 0) {
+        if (runtime.aggregateTrustLevel === 'self_attested') {
+            questions.push('Runtime admission is self-attested. Is that enough for this PR, or should backend-signed evidence be requested?');
+        }
+        if (runtime.counts.blockedPaths > 0) {
+            questions.push(`Runtime governance recorded ${runtime.counts.blockedPaths} blocked path(s). Were the final approvals and remaining boundaries reviewed?`);
+        }
+        if (runtime.counts.deniedPaths > 0) {
+            questions.push(`Runtime admission includes ${runtime.counts.deniedPaths} denied path(s). Are those paths absent from the final PR or explicitly explained?`);
+        }
+        if (runtime.counts.approvalRequiredSurfaces > 0) {
+            questions.push('Approval-required runtime surfaces were touched. Do the responsible owners agree with the exact-path approvals?');
+        }
     }
     if (facts.admission.finalVerdict === 'self_attested_incomplete') {
         questions.push(`Self-attested admission records leave ${facts.admission.uncoveredPaths.length} changed paths uncovered. Should the author explain or regenerate the record?`);
@@ -49542,6 +49926,15 @@ function admissionTopSummary(admission) {
             return (0, sanitize_1.mdSafe)(admission.finalVerdict);
     }
 }
+function runtimeAdmissionTopSummary(admission) {
+    const runtime = admission.runtimeContext;
+    if (!runtime.found)
+        return 'not_found - PR metadata only';
+    if (runtime.validRecordCount === 0)
+        return `invalid - ${runtime.invalidRecordCount} invalid source-free metadata item(s)`;
+    const hosts = runtime.agentHosts.length > 0 ? runtime.agentHosts.join(', ') : 'unknown host';
+    return `${runtime.aggregateTrustLevel} - ${pluralize(runtime.sessionCount, 'session')} from ${(0, sanitize_1.mdSafe)(hosts, 120)}`;
+}
 function reviewAttentionText(level, reasons) {
     if (level === 'simple')
         return 'Simple - no deterministic routing flags detected';
@@ -49573,6 +49966,7 @@ function renderStepSummary(opts) {
         ['Sensitive surfaces touched', sensitiveSummary(sensitiveHits)],
         ['CODEOWNERS zones crossed', codeownersTopSummary(codeowners)],
         ['Admission record status', admissionTopSummary(admission)],
+        ['Runtime admission context', runtimeAdmissionTopSummary(admission)],
         ['Review routing', reviewAttentionText(attention.level, attention.reasons)],
     ]);
     lines.push('');
@@ -49653,6 +50047,49 @@ function renderStepSummary(opts) {
         const extra = subsystemEntries.length - Math.min(subsystemEntries.length, MAX_SUBSYSTEMS_INLINE);
         if (extra > 0)
             lines.push(`| +${extra} more | |`);
+    }
+    lines.push('');
+    lines.push('#### Runtime admission context');
+    const runtime = admission.runtimeContext;
+    if (!runtime.found) {
+        lines.push('No runtime admission record found. This report is PR metadata only.');
+    }
+    else if (runtime.validRecordCount === 0) {
+        lines.push('Runtime admission files were present but invalid source-free metadata. The Action ignored unusable runtime claims and continued with PR metadata.');
+        if (admission.discoveryDiagnostics.length > 0) {
+            lines.push('');
+            lines.push(`Invalid metadata diagnostics (${admission.discoveryDiagnostics.length}):`);
+            for (const d of admission.discoveryDiagnostics.slice(0, MAX_WARNINGS_INLINE)) {
+                lines.push(`- \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 220)}`);
+            }
+            const extra = admission.discoveryDiagnostics.length - Math.min(admission.discoveryDiagnostics.length, MAX_WARNINGS_INLINE);
+            if (extra > 0)
+                lines.push(`- +${extra} more`);
+        }
+    }
+    else {
+        lines.push('| Field | Source-free result |');
+        lines.push('|---|---|');
+        lines.push(`| Runtime admission found | yes |`);
+        lines.push(`| Trust level | ${(0, sanitize_1.mdSafe)(runtime.aggregateTrustLevel)} |`);
+        lines.push(`| Sessions | ${runtime.sessionCount} |`);
+        lines.push(`| Governed agent host | ${inlineList(runtime.agentHosts, 4, 120)} |`);
+        lines.push(`| Blocked / approved / denied paths | ${runtime.counts.blockedPaths} / ${runtime.counts.approvedExactPaths} / ${runtime.counts.deniedPaths} |`);
+        lines.push(`| Approval-required surfaces | ${runtime.counts.approvalRequiredSurfaces}${runtime.approvalRequiredSurfaces.length > 0 ? ` - ${pathList(runtime.approvalRequiredSurfaces, 4)}` : ''} |`);
+        lines.push(`| Receipt / integrity status | ${inlineList(runtime.receiptIntegrityStatuses, 4, 120)}; replay ${inlineList(runtime.replayHashStatuses, 4, 120)} |`);
+        if (runtime.receiptIds.length > 0 || runtime.receiptVerificationStatuses.length > 0) {
+            lines.push(`| Backend receipt | ${inlineList(runtime.receiptIds, 4, 120)} |`);
+            lines.push(`| Receipt key / verification | key ${inlineList(runtime.receiptKeyIds, 4, 120)}; verification ${inlineList(runtime.receiptVerificationStatuses, 4, 120)} |`);
+            lines.push(`| Receipt verifier | ${inlineList(runtime.receiptVerifiers, 2, 180)} |`);
+        }
+        lines.push(`| Record validity | ${runtime.validRecordCount} valid, ${runtime.invalidRecordCount} invalid |`);
+        lines.push('');
+        if (runtime.aggregateTrustLevel === 'self_attested') {
+            lines.push('Self-attested runtime context is useful routing metadata, not proof that governance ran.');
+        }
+        else if (runtime.aggregateTrustLevel === 'backend_signed') {
+            lines.push('Backend-signed runtime context was attached; verify the receipt before treating it as enterprise evidence.');
+        }
     }
     lines.push('');
     lines.push('#### Runtime admission provenance');
