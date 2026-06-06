@@ -10,6 +10,27 @@ No Neurcode account. No API key. No source upload. No telemetry. No local runtim
 
 ---
 
+## Start Here As An OSS Maintainer
+
+The smallest useful path is:
+
+1. Copy the workflow in the Quick Start section.
+2. Run it on one pull request.
+3. Use the Step Summary to route review attention.
+4. Share whether the report helped, repeated the diff, or created noise.
+
+You get useful signal immediately without a Neurcode account:
+
+- CODEOWNERS zones crossed and owners involved.
+- Subsystems touched, ranked by changed-file count.
+- Deterministic sensitive path categories such as CI/workflow, dependency manifests, lockfiles, auth, billing/payment, database/migrations, secrets/config, infrastructure/deploy, and generated files.
+- Docs-only or low-routing PRs that stay quiet when no deterministic routing flag fires.
+- Optional runtime admission status when `.neurcode-admission/*.json` records are committed.
+
+This is a PR triage report. It is not an AI security scanner, not vulnerability detection, and not a review replacement.
+
+---
+
 ## What It Reports
 
 - Changed-file inventory from committed git metadata.
@@ -44,6 +65,35 @@ jobs:
 ```
 
 Layer 1 runs standalone on every PR. Layer 2 activates only when `.neurcode-admission/*.json` records are present.
+
+---
+
+## Action To Runtime Bridge
+
+The Action is the free OSS wedge. The runtime platform is the before-code-lands governance product.
+
+| Path | What maintainers see in the PR | What it means |
+|---|---|---|
+| Action alone | Review routing, sensitive path categories, CODEOWNERS crossings, subsystem reach, `admission_verdict: no_record`. | No runtime record was attached. Ordinary PRs can be reviewed normally. |
+| Action + runtime admission record | The same report plus `self_attested_complete`, `self_attested_incomplete`, or `self_attested_inconsistent`. | The PR author attached source-free self-attested evidence that local runtime governance was used. |
+| Full Neurcode runtime platform | Runtime session records, intent/plan context, exact-path approvals, boundary events, and dashboard review workflow before the PR arrives. | Live agent governance. Stronger backend-anchored receipts are future enterprise evidence, not current OSS Action proof. |
+
+Self-attested records are claims by the PR author. They are useful context, but not cryptographic proof and not enterprise signed receipts.
+
+---
+
+## Quick FAQ
+
+| Question | Answer |
+|---|---|
+| What is the GitHub Action? | A zero-account, source-free PR triage report for ownership, sensitive path categories, CODEOWNERS routing, and optional runtime admission context. |
+| What is runtime governance? | Neurcode's before-code-lands control layer for AI coding sessions: intent/plan records, ownership boundaries, exact-path approvals, and source-free evidence. |
+| Do I need an account? | No for the Action. Yes for the hosted runtime platform and dashboard workflow. |
+| What data leaves my repo? | The Action does not upload source, diff hunks, prompts, patches, secrets, or telemetry. It runs in GitHub Actions and writes a Step Summary plus outputs. |
+| What does the paid platform add? | Live agent governance before writes land, exact-path approvals, source-free runtime evidence, dashboard review workflow, and future stronger enterprise receipts. |
+| How do I start as an OSS maintainer? | Install the RC2 workflow on one repo or one PR and score whether the summary is actionable, obvious, or noisy. |
+| How do I start as an enterprise team? | Use the Action for PR rehearsal, then evaluate the runtime platform on one AI coding workflow where path ownership or sensitive boundaries matter. |
+| Is RC2 stable? | No. `v0.3.0-rc.2` is the current rehearsal ref. `v0.2.4` remains the existing stable public release. |
 
 ---
 
@@ -117,15 +167,11 @@ Experimental. This can fail on incomplete or inconsistent self-attested records.
 
 ---
 
-## Evaluation Harness
+## RC Evaluation
 
-The source-free evaluation harness is included under `evaluation/`.
+Maintainer Report V2 RC2 was rehearsed against controlled OSS-style scenarios and a FastAPI temp clone before publication. The rehearsal scored generated Step Summary lines as ACTIONABLE, OBVIOUS, or NOISE and checked for source snippets, diff hunks, secrets, telemetry claims, and proof overclaims.
 
-```bash
-node evaluation/oss-report-harness.mjs
-```
-
-It runs controlled OSS-style scenarios, scores the report as ACTIONABLE, OBVIOUS, or NOISE, and writes `evaluation/latest-report.md`. Use `--real-repo-url <url>` for optional temp-clone rehearsal.
+External maintainer feedback is still required before stable promotion.
 
 ---
 
@@ -138,6 +184,15 @@ See [`PROVENANCE.json`](./PROVENANCE.json) for the source commit SHA and SHA-256
 ## Existing v0.2.4 Installation Path
 
 `sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.2` is an additive release candidate for human review before promotion.
+
+---
+
+## Adoption Bridge Docs
+
+- [OSS maintainer path](./docs/oss-maintainer-path.md)
+- [Runtime admission demo story](./docs/runtime-admission-demo-story.md)
+- [Maintainer outreach ask](./docs/maintainer-outreach.md)
+- [Adoption ladder](./docs/adoption-ladder.md)
 
 ---
 

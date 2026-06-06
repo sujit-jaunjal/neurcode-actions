@@ -25,7 +25,7 @@
 - **Fork-safe**: no secrets required, `pull_request_target` explicitly rejected.
 - **Policy modes**: `advisory` (default, never fails) and `strict_self_attested` (experimental, labeled throughout).
 - **New outputs**: `review_attention`, `maintainer_questions_count`, and `sensitive_surface_count`.
-- **OSS evaluation harness**: source-free fixture and optional temp-clone rehearsal under `evaluation/`.
+- **OSS evaluation evidence**: source-free fixture and FastAPI temp-clone rehearsals were used for RC validation; the public distribution documents the result without shipping source fixtures or source harnesses.
 - **Bundle provenance**: `PROVENANCE.json` with source commit SHA and bundle SHA-256. CI verifies checksum; does not rebuild (monorepo source is private).
 
 ### Preserved
