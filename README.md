@@ -157,10 +157,14 @@ Long lists are capped with `+N more`. Ordering is stable.
 | `runtime_admission_found` | `true` when `.neurcode-admission` metadata was present. |
 | `runtime_admission_trust_level` | `none`, `unsigned_local`, `self_attested`, `backend_signed`, or `mixed`. |
 | `runtime_admission_session_count` | Governed runtime sessions represented by usable admission records. |
-| `runtime_blocked_paths_count` | Paths blocked during represented runtime sessions. |
-| `runtime_approved_paths_count` | Exact paths approved during represented runtime sessions. |
-| `runtime_denied_paths_count` | Denied paths in represented runtime sessions. |
+| `runtime_admission_blocked_count` | Paths blocked during represented runtime sessions. |
+| `runtime_admission_approved_count` | Exact paths approved during represented runtime sessions. |
+| `runtime_admission_denied_count` | Denied paths in represented runtime sessions. |
+| `runtime_admission_receipt_status` | Source-free receipt posture: `not_present`, `local_self_attested`, `valid`, `unverifiable`, `backend_signed`, or `mixed`. |
 | `action_blocked` | `true` only in strict mode when admission failed. |
+
+The older `runtime_blocked_paths_count`, `runtime_approved_paths_count`, and
+`runtime_denied_paths_count` aliases are retained for RC4 compatibility.
 
 ---
 

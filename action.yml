@@ -74,12 +74,20 @@ outputs:
     description: 'Runtime context trust level: none | unsigned_local | self_attested | backend_signed | mixed.'
   runtime_admission_session_count:
     description: 'Number of governed runtime sessions represented by usable admission records.'
-  runtime_blocked_paths_count:
+  runtime_admission_blocked_count:
     description: 'Source-free count of paths blocked during represented runtime sessions.'
-  runtime_approved_paths_count:
+  runtime_admission_approved_count:
     description: 'Source-free count of exact paths approved during represented runtime sessions.'
-  runtime_denied_paths_count:
+  runtime_admission_denied_count:
     description: 'Source-free count of denied paths in represented runtime sessions.'
+  runtime_admission_receipt_status:
+    description: 'Source-free receipt posture: not_present | local_self_attested | valid | unverifiable | backend_signed | mixed.'
+  runtime_blocked_paths_count:
+    description: 'Deprecated alias for runtime_admission_blocked_count.'
+  runtime_approved_paths_count:
+    description: 'Deprecated alias for runtime_admission_approved_count.'
+  runtime_denied_paths_count:
+    description: 'Deprecated alias for runtime_admission_denied_count.'
 
   # ── Policy outcome ────────────────────────────────────────────────────────
   action_blocked:

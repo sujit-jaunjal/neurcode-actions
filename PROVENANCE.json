@@ -3,7 +3,7 @@
   "note": "Release metadata and accidental-corruption integrity check. NOT an independent trust anchor, build attestation, signature, or cryptographic proof. This distribution repository contains only the pre-built bundle. The monorepo source is private; reproducible rebuild from this repo is not supported. Signed build attestations are planned for Phase C.",
   "actionVersion": "0.3.0-rc.4",
   "admissionContractVersion": "2026-06-02",
-  "sourceCommit": "uncommitted-codex/runtime-admission-action-bridge-v1",
-  "bundleSha256": "8a02015e08ef5084d3986ff6ae3ae9daf2c63ce62e945d48e124283636c8419c",
-  "builtAt": "2026-06-06T10:57:30.633Z"
+  "sourceCommit": "c25c744843931a3c0cc33a99a783a9fa5f69eab2",
+  "bundleSha256": "fe2be4b9f5df3f56ce988205f485992e42967d5c378f05d8063118a00ad68ab5",
+  "builtAt": "2026-06-06T12:54:30.000Z"
 }

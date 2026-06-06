@@ -49545,6 +49545,22 @@ exports.emitOutputs = emitOutputs;
 const core = __importStar(__nccwpck_require__(4442));
 const sanitize_1 = __nccwpck_require__(1117);
 const report_model_1 = __nccwpck_require__(5244);
+function receiptStatus(admission) {
+    const runtime = admission.runtimeContext;
+    if (!runtime.found)
+        return 'not_present';
+    const verificationStatuses = new Set(runtime.receiptVerificationStatuses.filter((status) => status && status !== 'not_present'));
+    if (verificationStatuses.size === 1)
+        return Array.from(verificationStatuses)[0];
+    if (verificationStatuses.size > 1)
+        return 'mixed';
+    const integrityStatuses = new Set(runtime.receiptIntegrityStatuses.filter(Boolean));
+    if (integrityStatuses.size === 0)
+        return runtime.validRecordCount > 0 ? 'local_self_attested' : 'invalid_or_missing';
+    if (integrityStatuses.size === 1)
+        return Array.from(integrityStatuses)[0];
+    return 'mixed';
+}
 function emitOutputs(opts) {
     const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, actionBlocked } = opts;
     const reportFacts = {
@@ -49574,6 +49590,11 @@ function emitOutputs(opts) {
     core.setOutput('runtime_admission_found', String(admission.runtimeContext.found));
     core.setOutput('runtime_admission_trust_level', (0, sanitize_1.outputSafe)(admission.runtimeContext.aggregateTrustLevel));
     core.setOutput('runtime_admission_session_count', String(admission.runtimeContext.sessionCount));
+    core.setOutput('runtime_admission_blocked_count', String(admission.runtimeContext.counts.blockedPaths));
+    core.setOutput('runtime_admission_approved_count', String(admission.runtimeContext.counts.approvedExactPaths));
+    core.setOutput('runtime_admission_denied_count', String(admission.runtimeContext.counts.deniedPaths));
+    core.setOutput('runtime_admission_receipt_status', (0, sanitize_1.outputSafe)(receiptStatus(admission)));
+    // Backward-compatible aliases from the first RC4 candidate.
     core.setOutput('runtime_blocked_paths_count', String(admission.runtimeContext.counts.blockedPaths));
     core.setOutput('runtime_approved_paths_count', String(admission.runtimeContext.counts.approvedExactPaths));
     core.setOutput('runtime_denied_paths_count', String(admission.runtimeContext.counts.deniedPaths));

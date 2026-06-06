@@ -8,6 +8,7 @@
 ### Added
 - Runtime admission context section now reads optional `.neurcode-admission/*.json` records and reports trust level, governed host, blocked/approved/denied counts, approval-required surfaces, receipt integrity, and source-free maintainer questions.
 - Backend receipt summaries can be attached to admission exports with `neurcode session export-admission <sessionId> --receipt receipt.json`. The Action displays receipt ID, key ID, verification status, signed timestamp, and verifier hint without embedding source or full receipt signatures.
+- Runtime admission workflow outputs now include `runtime_admission_found`, `runtime_admission_trust_level`, `runtime_admission_session_count`, `runtime_admission_blocked_count`, `runtime_admission_approved_count`, `runtime_admission_denied_count`, and `runtime_admission_receipt_status`. The first RC4 output aliases remain available for compatibility.
 
 ### Preserved
 - `v0.3.0-rc.3` remains the current published rehearsal ref until RC4 is tagged.
