@@ -3,7 +3,7 @@
   "note": "Release metadata and accidental-corruption integrity check. NOT an independent trust anchor, build attestation, signature, or cryptographic proof. This distribution repository contains only the pre-built bundle. The monorepo source is private; reproducible rebuild from this repo is not supported. Signed build attestations are planned for Phase C.",
   "actionVersion": "0.3.0-rc.4",
   "admissionContractVersion": "2026-06-02",
-  "sourceCommit": "c25c744843931a3c0cc33a99a783a9fa5f69eab2",
+  "sourceCommit": "16db3bd88fbca1e19dfb84bdfbdfbc5760d64dcc",
   "bundleSha256": "fe2be4b9f5df3f56ce988205f485992e42967d5c378f05d8063118a00ad68ab5",
-  "builtAt": "2026-06-06T12:54:30.000Z"
+  "builtAt": "2026-06-06T19:07:04.000Z"
 }
