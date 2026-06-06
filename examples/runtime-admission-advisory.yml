@@ -14,13 +14,13 @@ jobs:
   admission-advisory:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # both base and head SHAs must be present in the local clone
 
       - name: Runtime Admission Advisory
         id: admission
-        uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
+        uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.3
         # All inputs are optional. Base/head SHAs are resolved from the PR event; no overrides.
         # with:
         #   policy: advisory                # advisory (default) or strict_self_attested (experimental)

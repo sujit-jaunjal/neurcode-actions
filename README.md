@@ -58,10 +58,10 @@ jobs:
   admission-advisory:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
+      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.3
 ```
 
 Layer 1 runs standalone on every PR. Layer 2 activates only when `.neurcode-admission/*.json` records are present.
@@ -91,9 +91,9 @@ Self-attested records are claims by the PR author. They are useful context, but 
 | Do I need an account? | No for the Action. Yes for the hosted runtime platform and dashboard workflow. |
 | What data leaves my repo? | The Action does not upload source, diff hunks, prompts, patches, secrets, or telemetry. It runs in GitHub Actions and writes a Step Summary plus outputs. |
 | What does the paid platform add? | Live agent governance before writes land, exact-path approvals, source-free runtime evidence, dashboard review workflow, and future stronger enterprise receipts. |
-| How do I start as an OSS maintainer? | Install the RC2 workflow on one repo or one PR and score whether the summary is actionable, obvious, or noisy. |
+| How do I start as an OSS maintainer? | Install the RC3 workflow on one repo or one PR and score whether the summary is actionable, obvious, or noisy. |
 | How do I start as an enterprise team? | Use the Action for PR rehearsal, then evaluate the runtime platform on one AI coding workflow where path ownership or sensitive boundaries matter. |
-| Is RC2 stable? | No. `v0.3.0-rc.2` is the current rehearsal ref. `v0.2.4` remains the existing stable public release. |
+| Is RC3 stable? | No. `v0.3.0-rc.3` is the current rehearsal ref. `v0.2.4` remains the existing stable public release. |
 
 ---
 
@@ -145,7 +145,7 @@ They can help an author state that a local runtime admission process ran, but th
 ## Strict Self-Attested Mode
 
 ```yaml
-- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
+- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.3
   with:
     policy: strict_self_attested
     no_record_strict: 'false'
@@ -169,7 +169,7 @@ Experimental. This can fail on incomplete or inconsistent self-attested records.
 
 ## RC Evaluation
 
-Maintainer Report V2 RC2 was rehearsed against controlled OSS-style scenarios and a FastAPI temp clone before publication. The rehearsal scored generated Step Summary lines as ACTIONABLE, OBVIOUS, or NOISE and checked for source snippets, diff hunks, secrets, telemetry claims, and proof overclaims.
+Maintainer Report V2 was rehearsed against controlled OSS-style scenarios, a FastAPI temp clone, and live Airflow fork PRs before RC3 publication. The rehearsals scored generated Step Summary lines as ACTIONABLE, OBVIOUS, or NOISE and checked for source snippets, diff hunks, secrets, telemetry claims, and proof overclaims.
 
 External maintainer feedback is still required before stable promotion.
 
@@ -183,7 +183,7 @@ See [`PROVENANCE.json`](./PROVENANCE.json) for the source commit SHA and SHA-256
 
 ## Existing v0.2.4 Installation Path
 
-`sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.2` is an additive release candidate for human review before promotion.
+`sujit-jaunjal/neurcode-actions@v0.2.4` remains available and untouched as the existing stable pilot surface. This `v0.3.0-rc.3` is an additive release candidate for human review before promotion.
 
 ---
 

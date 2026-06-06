@@ -18,10 +18,10 @@ jobs:
   admission-advisory:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
+      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.3
 ```
 
 **What maintainers get immediately:**
@@ -41,7 +41,7 @@ jobs:
 - Does not prove that an AI agent was governed.
 - Does not replace maintainer review.
 
-`v0.3.0-rc.2` is the current rehearsal ref. `v0.2.4` remains the existing stable public release.
+`v0.3.0-rc.3` is the current rehearsal ref. `v0.2.4` remains the existing stable public release.
 
 ## Step 2 - Action Plus Runtime Admission Record
 

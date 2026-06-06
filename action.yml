@@ -73,5 +73,5 @@ outputs:
     description: 'true only when policy=strict_self_attested and admission failed. Always false in advisory mode.'
 
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'

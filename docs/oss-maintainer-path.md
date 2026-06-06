@@ -19,10 +19,10 @@ jobs:
   admission-advisory:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.2
+      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.3
 ```
 
 No Neurcode account, API key, runtime, local CLI, or telemetry endpoint is required.
@@ -77,6 +77,6 @@ Signed/backend-anchored receipts are future enterprise evidence. They are not pa
 
 ## RC Status
 
-`sujit-jaunjal/neurcode-actions@v0.3.0-rc.2` is the current rehearsal ref for Maintainer Report V2. It should be tried on real OSS pull requests before stable promotion.
+`sujit-jaunjal/neurcode-actions@v0.3.0-rc.3` is the current rehearsal ref for Maintainer Report V2. It should be tried on real OSS pull requests before stable promotion.
 
 `sujit-jaunjal/neurcode-actions@v0.2.4` remains the existing stable public release.

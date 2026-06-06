@@ -1,9 +1,18 @@
 # Changelog
 
-## [Unreleased / v0.3.0-rc.2] - Release Candidate
+## [Unreleased / v0.3.0-rc.3] - Release Candidate
 
 > **RC - for human review, not for production promotion yet.**
 > Preserves `v0.2.4` (Repository Operational Memory) as the existing stable public release.
+
+### Fixed
+- Updated the JavaScript Action runtime metadata to `node24` and public workflow snippets to `actions/checkout@v5` after live Airflow rehearsal exposed Node.js 20 deprecation warnings in GitHub Actions.
+
+---
+
+## [v0.3.0-rc.2] - Release Candidate
+
+> Superseded by `v0.3.0-rc.3` for external maintainer rehearsal.
 
 ### Fixed
 - Reduced docs-only noise by restricting auth-sensitive filename matching to code files, so documentation paths such as OAuth/JWT guides do not trigger auth review attention by filename alone.
@@ -13,7 +22,7 @@
 
 ## [v0.3.0-rc.1] - Release Candidate
 
-> Superseded by `v0.3.0-rc.2` for external maintainer rehearsal.
+> Superseded by `v0.3.0-rc.2`.
 
 ### Added
 - **Maintainer Report V2**: compact PR triage summary for changed files, subsystem reach, sensitive surfaces, CODEOWNERS routing, admission provenance, deterministic maintainer questions, and trust boundary.

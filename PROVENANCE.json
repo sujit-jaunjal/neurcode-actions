@@ -1,9 +1,9 @@
 {
   "schemaVersion": "neurcode.action-provenance.v1",
   "note": "Release metadata and accidental-corruption integrity check. NOT an independent trust anchor, build attestation, signature, or cryptographic proof. This distribution repository contains only the pre-built bundle. The monorepo source is private; reproducible rebuild from this repo is not supported. Signed build attestations are planned for Phase C.",
-  "actionVersion": "0.3.0-rc.2",
+  "actionVersion": "0.3.0-rc.3",
   "admissionContractVersion": "2026-06-02",
-  "sourceCommit": "d8bb7bd10bc04b81f559d18b883a96557f2cfc71",
+  "sourceCommit": "7701e4a4636c664b706848b33882fdeb136eceda",
   "bundleSha256": "38af52a9e026cc76d963e664d4a7b0480dc3c2ea4ed6240405747521c88a2e9d",
-  "builtAt": "2026-06-06T03:40:59.174Z"
+  "builtAt": "2026-06-06T08:36:11.120Z"
 }
