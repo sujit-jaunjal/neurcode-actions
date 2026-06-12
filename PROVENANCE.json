@@ -1,9 +1,12 @@
 {
   "schemaVersion": "neurcode.action-provenance.v1",
   "note": "Release metadata and accidental-corruption integrity check. NOT an independent trust anchor, build attestation, signature, or cryptographic proof. This distribution repository contains only the pre-built bundle. The monorepo source is private; reproducible rebuild from this repo is not supported. Signed build attestations are planned for Phase C.",
-  "actionVersion": "0.3.0-rc.4",
+  "actionVersion": "0.3.0-rc.5",
   "admissionContractVersion": "2026-06-02",
-  "sourceCommit": "16db3bd88fbca1e19dfb84bdfbdfbc5760d64dcc",
-  "bundleSha256": "fe2be4b9f5df3f56ce988205f485992e42967d5c378f05d8063118a00ad68ab5",
-  "builtAt": "2026-06-06T19:07:04.000Z"
+  "sourceCommit": "a4cd3e42",
+  "bundleSha256": "8df17ad111081a9254ca6488e14ba2feeec17f510ebe33a9a6a47954dd73371d",
+  "builtAt": "2026-06-12T13:49:25.446Z",
+  "sourceRepository": "https://github.com/sujit-jaunjal/neurcode",
+  "sourcePath": "packages/action",
+  "notes": "Synced from monorepo RC5 release alignment. Source-free advisory Action; stable promotion remains feedback-gated."
 }

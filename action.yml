@@ -26,6 +26,16 @@ inputs:
     required: false
     default: 'false'
 
+  require_signed_evidence:
+    description: >
+      Optional strict AI Change Record evidence mode. When true, fail if
+      .neurcode-ai-record/*.json is missing, invalid, or lacks a receipt that
+      the runner can verify with NEURCODE_AI_CHANGE_RECORD_SIGNING_SECRET and
+      NEURCODE_AI_CHANGE_RECORD_SIGNING_KEY_ID.
+      Default false keeps the Action advisory-only.
+    required: false
+    default: 'false'
+
   max_artifacts:
     description: 'Maximum number of .neurcode-admission/*.json files to process.'
     required: false
@@ -82,6 +92,12 @@ outputs:
     description: 'Source-free count of denied paths in represented runtime sessions.'
   runtime_admission_receipt_status:
     description: 'Source-free receipt posture: not_present | local_self_attested | valid | unverifiable | backend_signed | mixed.'
+  ai_change_record_found:
+    description: 'true when .neurcode-ai-record/*.json source-free AI Change Record evidence was discovered.'
+  ai_change_record_trust_level:
+    description: 'AI Change Record trust posture: none | self_attested | backend_signed_unverified | backend_signed_verified | backend_signed_invalid | mixed.'
+  ai_change_record_receipt_status:
+    description: 'AI Change Record receipt verification posture: not_present | valid | unverifiable | tampered | unsigned | mixed.'
   runtime_blocked_paths_count:
     description: 'Deprecated alias for runtime_admission_blocked_count.'
   runtime_approved_paths_count:

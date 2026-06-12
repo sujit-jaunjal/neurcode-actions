@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.3.0-rc.4] - Release Candidate
+## [v0.3.0-rc.5] - Release Candidate
 
 > **RC - for human review, not for production promotion yet.**
 > Preserves `v0.2.4` (Repository Operational Memory) as the existing stable public release.
@@ -8,10 +8,10 @@
 ### Added
 - Runtime admission context section now reads optional `.neurcode-admission/*.json` records and reports trust level, governed host, blocked/approved/denied counts, approval-required surfaces, receipt integrity, and source-free maintainer questions.
 - Backend receipt summaries can be attached to admission exports with `neurcode session export-admission <sessionId> --receipt receipt.json`. The Action displays receipt ID, key ID, verification status, signed timestamp, and verifier hint without embedding source or full receipt signatures.
-- Runtime admission workflow outputs now include `runtime_admission_found`, `runtime_admission_trust_level`, `runtime_admission_session_count`, `runtime_admission_blocked_count`, `runtime_admission_approved_count`, `runtime_admission_denied_count`, and `runtime_admission_receipt_status`. The first RC4 output aliases remain available for compatibility.
+- Runtime admission workflow outputs now include `runtime_admission_found`, `runtime_admission_trust_level`, `runtime_admission_session_count`, `runtime_admission_blocked_count`, `runtime_admission_approved_count`, `runtime_admission_denied_count`, and `runtime_admission_receipt_status`. The first RC5 output aliases remain available for compatibility.
 
 ### Preserved
-- `v0.3.0-rc.4` is the current published rehearsal ref after live Airflow fork rehearsal.
+- `v0.3.0-rc.5` is the current published rehearsal ref after live Airflow fork rehearsal.
 - The Action remains advisory by default and does not claim hard enforcement or proof from self-attested records.
 
 ---
@@ -28,7 +28,7 @@
 
 ## [v0.3.0-rc.2] - Release Candidate
 
-> Superseded by `v0.3.0-rc.4` for external maintainer rehearsal.
+> Superseded by `v0.3.0-rc.5` for external maintainer rehearsal.
 
 ### Fixed
 - Reduced docs-only noise by restricting auth-sensitive filename matching to code files, so documentation paths such as OAuth/JWT guides do not trigger auth review attention by filename alone.

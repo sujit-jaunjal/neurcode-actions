@@ -6,7 +6,7 @@ Use this when asking a maintainer to try the RC Action on one repository or one 
 
 Neurcode Runtime Admission Advisory is a free GitHub Action that writes a source-free PR triage summary. It shows changed-file count, subsystem reach, CODEOWNERS zones crossed, deterministic sensitive path categories, optional runtime admission status, and review-routing questions. It does not read source contents, upload telemetry, or claim vulnerabilities.
 
-Current rehearsal ref: `sujit-jaunjal/neurcode-actions@v0.3.0-rc.4`.
+Current rehearsal ref: `sujit-jaunjal/neurcode-actions@v0.3.0-rc.5`.
 
 Existing stable ref remains: `sujit-jaunjal/neurcode-actions@v0.2.4`.
 
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.4
+      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.5
 ```
 
 ## How To Remove It
@@ -66,7 +66,7 @@ Subject: Could you try a source-free PR triage Action on one PR?
 
 Hi <name>,
 
-I am rehearsing `sujit-jaunjal/neurcode-actions@v0.3.0-rc.4`, a free GitHub Action that writes a source-free PR triage report for maintainers.
+I am rehearsing `sujit-jaunjal/neurcode-actions@v0.3.0-rc.5`, a free GitHub Action that writes a source-free PR triage report for maintainers.
 
 It does not need an account or API key, does not upload source, and does not claim to detect vulnerabilities. It only reports deterministic facts like changed-file count, CODEOWNERS zones crossed, subsystem reach, CI/dependency/auth/config/migration-style path categories, and review-routing questions.
 
@@ -75,7 +75,7 @@ Would you be open to trying it on one repo or one PR and telling me whether the 
 Install is one workflow file:
 
 ```yaml
-- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.4
+- uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.5
 ```
 
 The feedback I need most: whether it helped you decide who should review the PR, and whether any line felt misleading or too loud.
@@ -100,7 +100,7 @@ What it does not do:
 - Does not replace maintainer review.
 
 Current rehearsal ref:
-`sujit-jaunjal/neurcode-actions@v0.3.0-rc.4`
+`sujit-jaunjal/neurcode-actions@v0.3.0-rc.5`
 
 Ask:
 Can we try it on one PR and score the summary lines as ACTIONABLE, OBVIOUS, or NOISE?

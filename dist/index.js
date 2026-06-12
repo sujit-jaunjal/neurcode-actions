@@ -40120,6 +40120,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ADMISSION_CONTRACT_VERSION = exports.ADMISSION_CONTRACT_ID = exports.RUNTIME_COMPATIBILITY_MANIFEST_SCHEMA_VERSION = exports.RUNTIME_COMPATIBILITY_MANIFEST_VERSION = exports.RUNTIME_COMPATIBILITY_CONTRACT_VERSION = exports.RUNTIME_COMPATIBILITY_CONTRACT_ID = exports.CLI_JSON_CONTRACT_VERSION = void 0;
+exports.compareCalendarContractVersion = compareCalendarContractVersion;
 exports.getRuntimeCompatibilityManifest = getRuntimeCompatibilityManifest;
 exports.compareSemver = compareSemver;
 exports.isSemverAtLeast = isSemverAtLeast;
@@ -40139,6 +40140,23 @@ exports.parseCliShipResumeJsonPayload = parseCliShipResumeJsonPayload;
 exports.parseCliShipAttestationVerifyJsonPayload = parseCliShipAttestationVerifyJsonPayload;
 exports.parseCliCompatJsonPayload = parseCliCompatJsonPayload;
 exports.CLI_JSON_CONTRACT_VERSION = '2026-05-11';
+/** Compare YYYY-MM-DD contract stamps; returns null when either side is unparsable. */
+function compareCalendarContractVersion(left, right) {
+    const parse = (value) => {
+        const match = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
+        if (!match)
+            return null;
+        const ms = Date.parse(`${match[1]}T00:00:00.000Z`);
+        return Number.isNaN(ms) ? null : ms;
+    };
+    const leftMs = parse(left);
+    const rightMs = parse(right);
+    if (leftMs === null || rightMs === null)
+        return null;
+    if (leftMs === rightMs)
+        return 0;
+    return leftMs < rightMs ? -1 : 1;
+}
 __exportStar(__nccwpck_require__(7184), exports);
 __exportStar(__nccwpck_require__(2494), exports);
 __exportStar(__nccwpck_require__(5499), exports);
@@ -41856,6 +41874,21 @@ function latestProtocolEvent(events) {
         decision: latest.decision ?? latest.verdict ?? null,
     };
 }
+function hasRuntimeCall(events, runtimeEventType) {
+    return events.some((event) => event.type === 'agent_runtime_call' && callEventType(event) === runtimeEventType);
+}
+function explicitProtocolCallCount(events, runtimeCalls, planEvents) {
+    let count = runtimeCalls.length;
+    if (events.some((event) => event.type === 'agent_handshake') && !hasRuntimeCall(events, 'session.handshake')) {
+        count += 1;
+    }
+    for (const event of planEvents) {
+        const expectedRuntimeType = event.type === 'plan_amended' ? 'plan.amend' : 'plan.capture';
+        if (!hasRuntimeCall(events, expectedRuntimeType))
+            count += 1;
+    }
+    return count;
+}
 function buildAgentInvocationSummary(session) {
     const events = Array.isArray(session.events) ? session.events : [];
     const launch = latestOf(events, (event) => event.type === 'agent_session_launched');
@@ -41988,7 +42021,7 @@ function buildAgentInvocationSummary(session) {
         handshakeSeen: Boolean(handshake) || isHardDeny,
         planCaptured,
         planBeforeFirstEdit,
-        explicitRuntimeCallCount: runtimeCalls.length,
+        explicitRuntimeCallCount: explicitProtocolCallCount(events, runtimeCalls, planEvents),
         editBeforeCallCount: editBeforeCalls.length,
         preWriteCheckCount: checkEvents.length,
         allowedCheckCount: okEvents.length,
@@ -42390,6 +42423,31 @@ function findPlanText(payload) {
     }
     // (3) An explicit plan field (used by manual/MCP callers).
     const planField = payload.plan;
+    if (typeof planField === 'string') {
+        const trimmed = planField.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            try {
+                const parsed = asRecord(JSON.parse(trimmed));
+                if (parsed) {
+                    const summary = asString(parsed.summary) || '';
+                    const steps = Array.isArray(parsed.steps)
+                        ? parsed.steps.map((step) => asString(step)).filter((value) => Boolean(value))
+                        : [];
+                    if (summary || steps.length > 0) {
+                        return {
+                            text: [summary, ...steps].join('\n'),
+                            source: 'mcp',
+                            structured: true,
+                            steps: steps.length > 0 ? steps : undefined,
+                        };
+                    }
+                }
+            }
+            catch {
+                // Fall through to plain-string plan handling.
+            }
+        }
+    }
     const planString = asString(planField);
     if (planString) {
         return { text: planString, source: 'claude_prompt', structured: true };
@@ -42868,7 +42926,13 @@ function normalizeAgentRuntimeEvent(value) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.AI_CHANGE_RECORD_TYPE = exports.AI_CHANGE_RECORD_SCHEMA_VERSION = void 0;
+exports.AI_CHANGE_RECORD_SIGNING_VERSION = exports.AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION = exports.AI_CHANGE_RECORD_TYPE = exports.AI_CHANGE_RECORD_SCHEMA_VERSION = void 0;
+exports.stableStringify = stableStringify;
+exports.stableHash = stableHash;
+exports.assertSourceFreeAIChangeRecordPayload = assertSourceFreeAIChangeRecordPayload;
+exports.canonicalAIChangeRecordHash = canonicalAIChangeRecordHash;
+exports.buildAIChangeRecordReceipt = buildAIChangeRecordReceipt;
+exports.verifyAIChangeRecordReceipt = verifyAIChangeRecordReceipt;
 exports.aiChangeRecordPath = aiChangeRecordPath;
 exports.buildAIChangeRecord = buildAIChangeRecord;
 exports.writeAIChangeRecord = writeAIChangeRecord;
@@ -42878,6 +42942,45 @@ const node_path_1 = __nccwpck_require__(6760);
 const architecture_obligations_1 = __nccwpck_require__(568);
 exports.AI_CHANGE_RECORD_SCHEMA_VERSION = 'neurcode.governed-session-record.v1';
 exports.AI_CHANGE_RECORD_TYPE = 'ai-change-accountability-record';
+exports.AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION = 'neurcode.ai-change-record-receipt.v1';
+exports.AI_CHANGE_RECORD_SIGNING_VERSION = 'neurcode.ai-change-record-signing.v1';
+const SOURCE_LIKE_KEYS = new Set([
+    'content',
+    'filecontent',
+    'file_content',
+    'sourcetext',
+    'source_text',
+    'sourcecode',
+    'source_code',
+    'diff',
+    'difftext',
+    'diff_text',
+    'hunk',
+    'hunks',
+    'patch',
+    'patchbody',
+    'patch_body',
+    'before',
+    'after',
+    'rawprompt',
+    'raw_prompt',
+    'promptwithsource',
+    'prompt_with_source',
+    'rawcontent',
+    'raw_content',
+    'privatecontent',
+    'private_content',
+    'commandbody',
+    'command_body',
+    'shellcommand',
+    'shell_command',
+    'shellcommandbody',
+    'shell_command_body',
+    'terminaloutput',
+    'terminal_output',
+    'secret',
+    'secrets',
+]);
 function stableStringify(value) {
     if (Array.isArray(value))
         return `[${value.map(stableStringify).join(',')}]`;
@@ -42888,8 +42991,268 @@ function stableStringify(value) {
     }
     return JSON.stringify(value);
 }
-function stableHash(value) {
-    return (0, node_crypto_1.createHash)('sha256').update(stableStringify(value)).digest('hex').slice(0, 24);
+function stableHash(value, length = 64) {
+    return (0, node_crypto_1.createHash)('sha256').update(stableStringify(value)).digest('hex').slice(0, length);
+}
+function assertSourceFreeAIChangeRecordPayload(value, path = 'record') {
+    if (Array.isArray(value)) {
+        value.forEach((entry, index) => assertSourceFreeAIChangeRecordPayload(entry, `${path}[${index}]`));
+        return;
+    }
+    if (!value || typeof value !== 'object')
+        return;
+    for (const [key, child] of Object.entries(value)) {
+        const normalizedKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '');
+        const compactKey = normalizedKey.replace(/_/g, '');
+        if (SOURCE_LIKE_KEYS.has(normalizedKey) || SOURCE_LIKE_KEYS.has(compactKey)) {
+            throw new Error(`source-like AI Change Record key is not allowed: ${path}.${key}`);
+        }
+        assertSourceFreeAIChangeRecordPayload(child, `${path}.${key}`);
+    }
+}
+function recordSigningPayload(record) {
+    const { generatedAt: _generatedAt, integrity: _integrity, ...payload } = record;
+    return payload;
+}
+function canonicalAIChangeRecordHash(record) {
+    const payload = recordSigningPayload(record);
+    assertSourceFreeAIChangeRecordPayload(payload);
+    return stableHash(payload, 64);
+}
+function aiReceiptSignedPayload(receipt) {
+    return {
+        schemaVersion: receipt.schemaVersion,
+        receiptId: receipt.receiptId,
+        issuer: receipt.issuer,
+        issuedAt: receipt.issuedAt,
+        organizationId: receipt.organizationId,
+        repoId: receipt.repoId,
+        repoKey: receipt.repoKey,
+        sessionId: receipt.sessionId,
+        recordHash: receipt.recordHash,
+        recordSchemaVersion: receipt.recordSchemaVersion,
+        recordGeneratedAt: receipt.recordGeneratedAt,
+        sourceFree: receipt.sourceFree,
+        signingVersion: receipt.signingVersion,
+        signingKeyId: receipt.signingKeyId,
+        signatureAlgorithm: receipt.signatureAlgorithm,
+    };
+}
+function aiReceiptHashPayload(receipt) {
+    return {
+        ...aiReceiptSignedPayload(receipt),
+        canonicalHash: receipt.canonicalHash,
+        signatureStatus: receipt.signatureStatus,
+        signingKeyId: receipt.signingKeyId,
+        signatureAlgorithm: receipt.signatureAlgorithm,
+        signature: receipt.signature,
+    };
+}
+function hmacSha256(secret, payload) {
+    return (0, node_crypto_1.createHmac)('sha256', secret).update(payload).digest('hex');
+}
+function safeEqualHex(left, right) {
+    if (!/^[a-f0-9]+$/i.test(left) || !/^[a-f0-9]+$/i.test(right))
+        return false;
+    const leftBuffer = Buffer.from(left, 'hex');
+    const rightBuffer = Buffer.from(right, 'hex');
+    return leftBuffer.length === rightBuffer.length && (0, node_crypto_1.timingSafeEqual)(leftBuffer, rightBuffer);
+}
+function buildAIChangeRecordReceipt(input) {
+    const issuedAt = input.issuedAt || new Date().toISOString();
+    const receiptId = input.receiptId || `acr_${stableHash({
+        organizationId: input.organizationId,
+        repoId: input.repoId,
+        repoKey: input.repoKey,
+        sessionId: input.sessionId,
+        recordHash: input.recordHash,
+    }, 24)}`;
+    const unsigned = {
+        schemaVersion: exports.AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION,
+        receiptId,
+        issuer: 'neurcode-api',
+        issuedAt,
+        organizationId: input.organizationId,
+        repoId: input.repoId,
+        repoKey: input.repoKey,
+        sessionId: input.sessionId,
+        recordHash: input.recordHash,
+        recordSchemaVersion: input.recordSchemaVersion || exports.AI_CHANGE_RECORD_SCHEMA_VERSION,
+        recordGeneratedAt: input.recordGeneratedAt || null,
+        sourceFree: true,
+        signingVersion: exports.AI_CHANGE_RECORD_SIGNING_VERSION,
+    };
+    assertSourceFreeAIChangeRecordPayload(unsigned, 'receipt');
+    const secret = (input.signingSecret || '').trim();
+    const explicitSigningKeyId = (input.signingKeyId || '').trim();
+    if (secret && !explicitSigningKeyId) {
+        throw new Error('signingKeyId is required when signing AI Change Record receipts');
+    }
+    const signedPayload = {
+        ...unsigned,
+        signingKeyId: secret ? explicitSigningKeyId : null,
+        signatureAlgorithm: 'hmac-sha256',
+    };
+    const canonical = stableStringify(signedPayload);
+    const signature = secret ? hmacSha256(secret, canonical) : null;
+    const receipt = {
+        ...unsigned,
+        canonicalHash: stableHash(signedPayload, 64),
+        signatureStatus: signature ? 'signed' : 'unsigned_missing_secret',
+        signingKeyId: signedPayload.signingKeyId,
+        signatureAlgorithm: 'hmac-sha256',
+        signature,
+        receiptHash: '',
+        verification: {
+            algorithm: 'hmac-sha256',
+            signedFields: [
+                'schemaVersion',
+                'receiptId',
+                'issuer',
+                'issuedAt',
+                'organizationId',
+                'repoId',
+                'repoKey',
+                'sessionId',
+                'recordHash',
+                'recordSchemaVersion',
+                'recordGeneratedAt',
+                'sourceFree',
+                'signingVersion',
+                'signingKeyId',
+                'signatureAlgorithm',
+            ],
+            sourceFree: true,
+        },
+    };
+    receipt.receiptHash = stableHash(aiReceiptHashPayload(receipt), 64);
+    assertSourceFreeAIChangeRecordPayload(receipt, 'receipt');
+    return receipt;
+}
+function verifyAIChangeRecordReceipt(input) {
+    const receipt = asRecord(input.receipt);
+    const reasons = [];
+    if (!receipt) {
+        return {
+            valid: false,
+            trustLevel: 'backend_signed_invalid',
+            status: 'tampered',
+            receiptId: null,
+            recordHash: null,
+            signingKeyId: null,
+            sourceFree: false,
+            checks: { recordHash: false, canonicalHash: false, receiptHash: false, signature: false, sourceFree: false },
+            reasons: ['receipt must be an object'],
+        };
+    }
+    let sourceFree = true;
+    try {
+        assertSourceFreeAIChangeRecordPayload(receipt, 'receipt');
+    }
+    catch (error) {
+        sourceFree = false;
+        reasons.push(error instanceof Error ? error.message : String(error));
+    }
+    const candidate = aiReceiptSignedPayload({
+        schemaVersion: receipt.schemaVersion,
+        receiptId: String(receipt.receiptId ?? ''),
+        issuer: receipt.issuer,
+        issuedAt: String(receipt.issuedAt ?? ''),
+        organizationId: String(receipt.organizationId ?? ''),
+        repoId: receipt.repoId ?? null,
+        repoKey: receipt.repoKey ?? null,
+        sessionId: String(receipt.sessionId ?? ''),
+        recordHash: String(receipt.recordHash ?? ''),
+        recordSchemaVersion: String(receipt.recordSchemaVersion ?? ''),
+        recordGeneratedAt: receipt.recordGeneratedAt ?? null,
+        sourceFree: receipt.sourceFree,
+        signingVersion: receipt.signingVersion,
+        signingKeyId: typeof receipt.signingKeyId === 'string' ? receipt.signingKeyId : null,
+        signatureAlgorithm: receipt.signatureAlgorithm,
+    });
+    if (receipt.schemaVersion !== exports.AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION)
+        reasons.push('receipt schema version mismatch');
+    if (receipt.issuer !== 'neurcode-api')
+        reasons.push('receipt issuer mismatch');
+    if (receipt.signingVersion !== exports.AI_CHANGE_RECORD_SIGNING_VERSION)
+        reasons.push('receipt signing version mismatch');
+    if (receipt.signatureAlgorithm !== 'hmac-sha256')
+        reasons.push('signature algorithm mismatch');
+    if (receipt.sourceFree !== true)
+        reasons.push('receipt is not marked source-free');
+    const expectedSigningKeyId = (input.expectedSigningKeyId || '').trim();
+    const signingKeyIdValid = !expectedSigningKeyId || receipt.signingKeyId === expectedSigningKeyId;
+    if (!signingKeyIdValid)
+        reasons.push('signing key id mismatch');
+    const expectedCanonicalHash = stableHash(candidate, 64);
+    const canonicalHashValid = receipt.canonicalHash === expectedCanonicalHash;
+    if (!canonicalHashValid)
+        reasons.push('canonical hash mismatch');
+    const expectedReceiptHash = stableHash({
+        ...candidate,
+        canonicalHash: receipt.canonicalHash,
+        signatureStatus: receipt.signatureStatus,
+        signingKeyId: receipt.signingKeyId ?? null,
+        signatureAlgorithm: receipt.signatureAlgorithm,
+        signature: receipt.signature ?? null,
+    }, 64);
+    const receiptHashValid = receipt.receiptHash === expectedReceiptHash;
+    if (!receiptHashValid)
+        reasons.push('receipt hash mismatch');
+    const expectedRecordHash = input.recordHash || null;
+    const recordHashValid = !expectedRecordHash || receipt.recordHash === expectedRecordHash;
+    if (!recordHashValid)
+        reasons.push('record hash mismatch');
+    let signatureValid = false;
+    const secret = (input.signingSecret || '').trim();
+    if (receipt.signatureStatus !== 'signed' || !receipt.signature) {
+        reasons.push('receipt is unsigned');
+    }
+    else if (!secret) {
+        reasons.push('signing secret is not configured for local verification');
+    }
+    else {
+        const expectedSignature = hmacSha256(secret, stableStringify(candidate));
+        signatureValid = safeEqualHex(receipt.signature, expectedSignature);
+        if (!signatureValid)
+            reasons.push('signature mismatch');
+    }
+    const requiredMetadataValid = receipt.schemaVersion === exports.AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION
+        && receipt.issuer === 'neurcode-api'
+        && receipt.signingVersion === exports.AI_CHANGE_RECORD_SIGNING_VERSION
+        && receipt.signatureAlgorithm === 'hmac-sha256'
+        && receipt.sourceFree === true
+        && signingKeyIdValid;
+    const valid = sourceFree && requiredMetadataValid && canonicalHashValid && receiptHashValid && recordHashValid && signatureValid;
+    const status = valid
+        ? 'valid'
+        : receipt.signatureStatus !== 'signed'
+            ? 'unsigned'
+            : !secret && sourceFree && canonicalHashValid && receiptHashValid && recordHashValid
+                ? 'unverifiable'
+                : 'tampered';
+    const trustLevel = valid
+        ? 'backend_signed_verified'
+        : status === 'unverifiable'
+            ? 'backend_signed_unverified'
+            : 'backend_signed_invalid';
+    return {
+        valid,
+        trustLevel,
+        status,
+        receiptId: typeof receipt.receiptId === 'string' ? receipt.receiptId : null,
+        recordHash: typeof receipt.recordHash === 'string' ? receipt.recordHash : null,
+        signingKeyId: typeof receipt.signingKeyId === 'string' ? receipt.signingKeyId : null,
+        sourceFree,
+        checks: {
+            recordHash: recordHashValid,
+            canonicalHash: canonicalHashValid,
+            receiptHash: receiptHashValid,
+            signature: signatureValid,
+            sourceFree,
+        },
+        reasons,
+    };
 }
 function eventTime(event) {
     const parsed = Date.parse(event.ts);
@@ -43299,6 +43662,71 @@ function buildReviewBrief(input) {
         ],
     };
 }
+function pathDir(path) {
+    const index = path.lastIndexOf('/');
+    return index >= 0 ? path.slice(0, index + 1) : '';
+}
+function exactPathOnly(paths) {
+    return paths.every((path) => !/[*!?\[\]{}]/.test(path) && !path.endsWith('/'));
+}
+function buildAccountabilitySummary(input) {
+    const allowedPaths = unique(input.trajectory
+        .filter((item) => item.verdicts.some((verdict) => verdict === 'ok'))
+        .map((item) => item.filePath));
+    const warnedPaths = unique(input.trajectory
+        .filter((item) => item.verdicts.some((verdict) => verdict === 'warn'))
+        .map((item) => item.filePath));
+    const blockedRows = input.trajectory.filter((item) => item.verdicts.some((verdict) => verdict === 'block'));
+    const blockedBoundaries = unique(blockedRows.map((item) => item.suggestedApprovalPath || item.filePath));
+    const approvedExactPaths = unique(input.approvals
+        .filter((item) => item.status === 'active')
+        .map((item) => item.path));
+    const boundaryOwners = unique(blockedRows.flatMap((item) => item.owners));
+    const neighboringSensitiveFilesBlocked = approvedExactPaths.some((approvedPath) => {
+        const approvedDir = pathDir(approvedPath);
+        if (!approvedDir)
+            return false;
+        return blockedRows.some((item) => {
+            const blockedPath = item.suggestedApprovalPath || item.filePath;
+            return blockedPath !== approvedPath && pathDir(blockedPath) === approvedDir;
+        });
+    });
+    const assumptions = unique([
+        input.session.goal ? null : 'No human-readable agent goal was recorded.',
+        boundaryOwners.length === 0 && blockedBoundaries.length > 0
+            ? 'Boundary ownership was not available from CODEOWNERS/runtime metadata for at least one blocked path.'
+            : null,
+        input.replayHash
+            ? null
+            : 'The record was generated before session finish; replay integrity is pending.',
+        'Intent and plan summaries are advisory text captured from the session, separate from deterministic path and approval facts.',
+    ]);
+    return {
+        schemaVersion: 'neurcode.change-accountability.v1',
+        facts: {
+            agentGoal: input.session.goal || 'No goal recorded',
+            scopeMode: input.session.scopeMode,
+            intendedScope: unique(input.scope.allowedGlobs),
+            touchedPaths: unique(input.trajectory.map((item) => item.filePath)),
+            allowedPaths,
+            warnedPaths,
+            blockedBoundaries,
+            boundaryOwners,
+            approvalRequired: blockedBoundaries.length > 0 || input.scope.approvalRequiredGlobs.length > 0,
+            exactPathApprovalOnly: approvedExactPaths.length > 0 && exactPathOnly(approvedExactPaths),
+            approvedExactPaths,
+            neighboringSensitiveFilesBlocked,
+            evidenceReceipt: input.replayHash ? 'self_attested' : 'replay-pending',
+            sourceExcluded: true,
+        },
+        assumptions,
+        limitations: [
+            'This local AI Change Record is self-attested unless a backend-signed receipt is attached and verified elsewhere.',
+            'Paths, owners, verdicts, approvals, and hashes are included; source code, diff hunks, patch bodies, prompts, and secrets are excluded.',
+            'Neighbor containment means a sibling blocked path remained denied after an exact approval; it is not a claim about runtime behavior.',
+        ],
+    };
+}
 function aiChangeRecordPath(projectRoot, sessionId) {
     return (0, node_path_1.join)(projectRoot, '.neurcode', 'sessions', `${sessionId}.change-record.json`);
 }
@@ -43388,6 +43816,16 @@ function buildAIChangeRecord(session, options = {}) {
         integrity: {
             replayHash: session.replayHash ?? null,
             replayHashStatus: session.replayHash ? 'present' : 'pending-session-finish',
+            trustLevel: 'self_attested',
+            receipt: {
+                present: false,
+                receiptId: null,
+                keyId: null,
+                signatureAlgorithm: null,
+                signingVersion: null,
+                signedAt: null,
+                verificationStatus: 'self_attested',
+            },
             deterministicFacts: [
                 'session contract',
                 'intent contract',
@@ -43407,6 +43845,13 @@ function buildAIChangeRecord(session, options = {}) {
     };
     const core = {
         ...coreWithoutReviewBrief,
+        accountability: buildAccountabilitySummary({
+            session: coreWithoutReviewBrief.session,
+            scope: coreWithoutReviewBrief.scope,
+            trajectory: coreWithoutReviewBrief.trajectory,
+            approvals: coreWithoutReviewBrief.approvals,
+            replayHash: coreWithoutReviewBrief.integrity.replayHash,
+        }),
         reviewBrief: buildReviewBrief({
             session: coreWithoutReviewBrief.session,
             intent: coreWithoutReviewBrief.intent,
@@ -43418,21 +43863,15 @@ function buildAIChangeRecord(session, options = {}) {
             replayHash: coreWithoutReviewBrief.integrity.replayHash,
         }),
     };
-    const recordHash = stableHash({
-        ...core,
-        generatedAt: null,
-        integrity: {
-            ...core.integrity,
-            recordHash: null,
-        },
-    });
-    return {
+    const record = {
         ...core,
         integrity: {
             ...core.integrity,
-            recordHash,
+            recordHash: canonicalAIChangeRecordHash(core),
         },
     };
+    assertSourceFreeAIChangeRecordPayload(record);
+    return record;
 }
 function writeAIChangeRecord(projectRoot, session, options = {}) {
     const path = aiChangeRecordPath(projectRoot, session.sessionId);
@@ -44112,6 +44551,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = void 0;
+exports.planDeclaredApprovalRequiredPaths = planDeclaredApprovalRequiredPaths;
 exports.normalizeArchitectureObligationPolicy = normalizeArchitectureObligationPolicy;
 exports.effectiveArchitectureObligationMode = effectiveArchitectureObligationMode;
 exports.isArchitectureObligationWaiverActive = isArchitectureObligationWaiverActive;
@@ -44177,6 +44617,57 @@ function approvalRequiredPaths(events) {
             paths.push(candidate.trim());
     }
     return unique(paths);
+}
+function pathMatchesApprovalRequiredGlob(filePath, approvalRequiredGlobs) {
+    return approvalRequiredGlobs.some((glob) => matchesPath(filePath, glob.replace(/^\//, '')));
+}
+/**
+ * Paths the accepted agent plan declares that sit inside approval-required /
+ * CODEOWNERS boundaries. These become live obligations at plan capture — before
+ * the first guarded write attempt — so agents and humans can approve upfront.
+ */
+function planDeclaredApprovalRequiredPaths(input) {
+    const approvalGlobs = input.approvalRequiredGlobs ?? [];
+    if (approvalGlobs.length === 0 || !input.agentPlan)
+        return [];
+    const required = new Set();
+    for (const raw of input.agentPlan.expectedFiles) {
+        const filePath = String(raw ?? '').trim().replace(/^\.\//, '').replace(/^\//, '');
+        if (!filePath || !pathMatchesApprovalRequiredGlob(filePath, approvalGlobs))
+            continue;
+        required.add(filePath);
+    }
+    for (const raw of input.agentPlan.expectedGlobs) {
+        const glob = String(raw ?? '').trim().replace(/^\.\//, '').replace(/^\//, '');
+        if (!glob || !pathMatchesApprovalRequiredGlob(glob, approvalGlobs))
+            continue;
+        // Prefer exact file obligations when the glob names a concrete file.
+        if (!glob.includes('*') && !glob.includes('?')) {
+            required.add(glob);
+        }
+    }
+    return Array.from(required).sort();
+}
+function ownershipApprovalDraft(requiredPath, approvedPaths, triggers) {
+    const approved = approvedPaths.find((approvedPath) => matchesPath(requiredPath, approvedPath));
+    const planDeclared = triggers.some((trigger) => trigger.startsWith('plan declares'));
+    return {
+        id: `ownership:exact-approval:${requiredPath}`,
+        category: 'ownership',
+        title: planDeclared
+            ? `Approve plan-declared path ${requiredPath}`
+            : `Approve sensitive path ${requiredPath}`,
+        description: planDeclared
+            ? 'This path is in the active agent plan and sits in a CODEOWNERS / approval-required boundary. Approve the exact path before the first edit.'
+            : 'A guarded sensitive or team-owned path must have an explicit session-scoped approval before the write lands.',
+        severity: 'critical',
+        triggeredBy: triggers,
+        requiredEvidence: [`Approve exactly ${requiredPath} or an explicitly chosen broader glob.`],
+        observedEvidence: approved
+            ? [evidence('exact-approval', `Active session approval recorded: ${approved}`, approved)]
+            : [],
+        requiredPath,
+    };
 }
 function evidence(kind, summary, path) {
     return { kind, summary, ...(path ? { path } : {}) };
@@ -44443,21 +44934,17 @@ function deriveArchitectureObligations(input) {
         });
     }
     const approvedPaths = input.approvedPaths ?? [];
+    const ownershipTriggers = new Map();
+    for (const requiredPath of planDeclaredApprovalRequiredPaths(input)) {
+        ownershipTriggers.set(requiredPath, [`plan declares owned target: ${requiredPath}`]);
+    }
     for (const requiredPath of approvalRequiredPaths(events)) {
-        const approved = approvedPaths.find((approvedPath) => matchesPath(requiredPath, approvedPath));
-        drafts.push({
-            id: `ownership:exact-approval:${requiredPath}`,
-            category: 'ownership',
-            title: `Approve sensitive path ${requiredPath}`,
-            description: 'A guarded sensitive or team-owned path must have an explicit session-scoped approval before the write lands.',
-            severity: 'critical',
-            triggeredBy: [`guarded write attempted: ${requiredPath}`],
-            requiredEvidence: [`Approve exactly ${requiredPath} or an explicitly chosen broader glob.`],
-            observedEvidence: approved
-                ? [evidence('exact-approval', `Active session approval recorded: ${approved}`, approved)]
-                : [],
-            requiredPath,
-        });
+        const existing = ownershipTriggers.get(requiredPath) ?? [];
+        existing.push(`guarded write attempted: ${requiredPath}`);
+        ownershipTriggers.set(requiredPath, existing);
+    }
+    for (const [requiredPath, triggers] of ownershipTriggers) {
+        drafts.push(ownershipApprovalDraft(requiredPath, approvedPaths, triggers));
     }
     // V2: architecture-graph-derived structural obligations (auth/payments/
     // public-api/migration/downstream-impact) for the modules currently in play.
@@ -45227,8 +45714,8 @@ function compileDeterministicConstraints(input) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.buildArchitectureGraph = exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION = exports.summarizeArchitectureObligations = exports.normalizeArchitectureObligationPolicy = exports.isArchitectureObligationWaiverActive = exports.evaluateArchitectureEdit = exports.evaluateArchitectureObligationFeedback = exports.effectiveArchitectureObligationMode = exports.deriveArchitectureObligations = exports.activeArchitectureObligationWaivers = exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = exports.buildAgentGuardPostureSummary = exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION = exports.buildAgentInvocationSummary = exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION = exports.writeAIChangeRecord = exports.buildAIChangeRecord = exports.aiChangeRecordPath = exports.AI_CHANGE_RECORD_TYPE = exports.AI_CHANGE_RECORD_SCHEMA_VERSION = exports.sessionPath = exports.sessionsDir = exports.replaySession = exports.finishSession = exports.buildPlanTimeline = exports.activeAgentPlanRevision = exports.evaluateSessionPlanCoherence = exports.classifyAgentPlanAmendment = exports.decideAgentPlanAmendment = exports.amendAgentPlan = exports.captureAgentPlan = exports.attachAgentPlan = exports.evaluatePlanCoherencePolicy = exports.evaluateIntentCoherence = exports.refreshArchitectureObligations = exports.waiveArchitectureObligation = exports.expireArchitectureObligationWaivers = exports.expireSessionApprovals = exports.activeApprovalPaths = exports.revokeSessionApproval = exports.approveSession = exports.appendEvent = exports.loadSession = exports.loadActiveSession = exports.createSession = exports.ownersForPath = exports.DEFAULT_PLAN_COHERENCE_MODE = exports.checkFileBoundary = exports.buildRepoGovernanceProfile = void 0;
-exports.normalizeAgentRuntimeEvent = exports.listAgentRuntimeAdapterCapabilities = exports.getAgentRuntimeAdapterCapability = exports.AGENT_RUNTIME_DECISION_SCHEMA_VERSION = exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION = exports.sanitizePlanCoherence = exports.sanitizeAgentPlan = exports.isTestOrUtilityPath = exports.planImpliesSupportWork = exports.evaluatePlanCoherence = exports.parsePlanSteps = exports.extractExpectedTargetsFromText = exports.extractAgentPlan = exports.AGENT_PLAN_SCHEMA_VERSION = exports.validateSelfAttestedRecordConsistency = exports.unionCoverageManifests = exports.unionCoverageEntries = exports.sortDeltaEntries = exports.sortCoverageEntries = exports.readSelfAttestedAdmissionRecordFromText = exports.readSelfAttestedAdmissionRecord = exports.normalizeDeltaEntries = exports.deriveCoverageEntries = exports.computeDeltaHash = exports.computeCoverageSetHash = exports.buildCoverageManifest = exports.compileDeterministicConstraints = exports.resolveImportSpecifier = exports.modulesInPlay = exports.moduleIdForPath = exports.isModuleTestSatisfiable = exports.findModuleForPath = exports.extractImportSpecifiers = exports.deriveGraphObligationSeeds = exports.dependentsOf = exports.dependenciesOf = void 0;
+exports.activeArchitectureObligationWaivers = exports.DEFAULT_ARCHITECTURE_OBLIGATION_POLICY = exports.ARCHITECTURE_OBLIGATION_SCHEMA_VERSION = exports.buildAgentGuardPostureSummary = exports.AGENT_GUARD_POSTURE_SCHEMA_VERSION = exports.buildAgentInvocationSummary = exports.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION = exports.writeAIChangeRecord = exports.verifyAIChangeRecordReceipt = exports.stableStringify = exports.stableHash = exports.canonicalAIChangeRecordHash = exports.buildAIChangeRecordReceipt = exports.buildAIChangeRecord = exports.assertSourceFreeAIChangeRecordPayload = exports.aiChangeRecordPath = exports.AI_CHANGE_RECORD_SIGNING_VERSION = exports.AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION = exports.AI_CHANGE_RECORD_TYPE = exports.AI_CHANGE_RECORD_SCHEMA_VERSION = exports.sessionPath = exports.sessionsDir = exports.replaySession = exports.finishSession = exports.buildPlanTimeline = exports.activeAgentPlanRevision = exports.evaluateSessionPlanCoherence = exports.classifyAgentPlanAmendment = exports.decideAgentPlanAmendment = exports.amendAgentPlan = exports.captureAgentPlan = exports.attachAgentPlan = exports.evaluatePlanCoherencePolicy = exports.evaluateIntentCoherence = exports.refreshArchitectureObligations = exports.waiveArchitectureObligation = exports.expireArchitectureObligationWaivers = exports.expireSessionApprovals = exports.activeApprovalPaths = exports.revokeSessionApproval = exports.approveSession = exports.appendEvent = exports.loadSession = exports.loadActiveSession = exports.createSession = exports.ownersForPath = exports.DEFAULT_RUNTIME_LOCAL_MODE = exports.DEFAULT_PLAN_COHERENCE_MODE = exports.checkFileBoundary = exports.buildRepoGovernanceProfile = void 0;
+exports.normalizeAgentRuntimeEvent = exports.listAgentRuntimeAdapterCapabilities = exports.getAgentRuntimeAdapterCapability = exports.AGENT_RUNTIME_DECISION_SCHEMA_VERSION = exports.AGENT_RUNTIME_ADAPTER_SCHEMA_VERSION = exports.sanitizePlanCoherence = exports.sanitizeAgentPlan = exports.isTestOrUtilityPath = exports.planImpliesSupportWork = exports.evaluatePlanCoherence = exports.parsePlanSteps = exports.extractExpectedTargetsFromText = exports.extractAgentPlan = exports.AGENT_PLAN_SCHEMA_VERSION = exports.validateSelfAttestedRecordConsistency = exports.unionCoverageManifests = exports.unionCoverageEntries = exports.sortDeltaEntries = exports.sortCoverageEntries = exports.readSelfAttestedAdmissionRecordFromText = exports.readSelfAttestedAdmissionRecord = exports.normalizeDeltaEntries = exports.deriveCoverageEntries = exports.computeDeltaHash = exports.computeCoverageSetHash = exports.buildCoverageManifest = exports.compileDeterministicConstraints = exports.resolveImportSpecifier = exports.modulesInPlay = exports.moduleIdForPath = exports.isModuleTestSatisfiable = exports.findModuleForPath = exports.extractImportSpecifiers = exports.deriveGraphObligationSeeds = exports.dependentsOf = exports.dependenciesOf = exports.buildArchitectureGraph = exports.ARCHITECTURE_GRAPH_SCHEMA_VERSION = exports.summarizeArchitectureObligations = exports.normalizeArchitectureObligationPolicy = exports.isArchitectureObligationWaiverActive = exports.evaluateArchitectureEdit = exports.planDeclaredApprovalRequiredPaths = exports.evaluateArchitectureObligationFeedback = exports.effectiveArchitectureObligationMode = exports.deriveArchitectureObligations = void 0;
 exports.extractPlannedFilePaths = extractPlannedFilePaths;
 exports.resolvePlanVerdict = resolvePlanVerdict;
 exports.buildPlanVerificationMessage = buildPlanVerificationMessage;
@@ -45238,6 +45725,7 @@ var profile_1 = __nccwpck_require__(6106);
 Object.defineProperty(exports, "buildRepoGovernanceProfile", ({ enumerable: true, get: function () { return profile_1.buildRepoGovernanceProfile; } }));
 Object.defineProperty(exports, "checkFileBoundary", ({ enumerable: true, get: function () { return profile_1.checkFileBoundary; } }));
 Object.defineProperty(exports, "DEFAULT_PLAN_COHERENCE_MODE", ({ enumerable: true, get: function () { return profile_1.DEFAULT_PLAN_COHERENCE_MODE; } }));
+Object.defineProperty(exports, "DEFAULT_RUNTIME_LOCAL_MODE", ({ enumerable: true, get: function () { return profile_1.DEFAULT_RUNTIME_LOCAL_MODE; } }));
 Object.defineProperty(exports, "ownersForPath", ({ enumerable: true, get: function () { return profile_1.ownersForPath; } }));
 // V0: Session store
 var session_1 = __nccwpck_require__(9463);
@@ -45269,8 +45757,16 @@ Object.defineProperty(exports, "sessionPath", ({ enumerable: true, get: function
 var ai_change_record_1 = __nccwpck_require__(3270);
 Object.defineProperty(exports, "AI_CHANGE_RECORD_SCHEMA_VERSION", ({ enumerable: true, get: function () { return ai_change_record_1.AI_CHANGE_RECORD_SCHEMA_VERSION; } }));
 Object.defineProperty(exports, "AI_CHANGE_RECORD_TYPE", ({ enumerable: true, get: function () { return ai_change_record_1.AI_CHANGE_RECORD_TYPE; } }));
+Object.defineProperty(exports, "AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION", ({ enumerable: true, get: function () { return ai_change_record_1.AI_CHANGE_RECORD_RECEIPT_SCHEMA_VERSION; } }));
+Object.defineProperty(exports, "AI_CHANGE_RECORD_SIGNING_VERSION", ({ enumerable: true, get: function () { return ai_change_record_1.AI_CHANGE_RECORD_SIGNING_VERSION; } }));
 Object.defineProperty(exports, "aiChangeRecordPath", ({ enumerable: true, get: function () { return ai_change_record_1.aiChangeRecordPath; } }));
+Object.defineProperty(exports, "assertSourceFreeAIChangeRecordPayload", ({ enumerable: true, get: function () { return ai_change_record_1.assertSourceFreeAIChangeRecordPayload; } }));
 Object.defineProperty(exports, "buildAIChangeRecord", ({ enumerable: true, get: function () { return ai_change_record_1.buildAIChangeRecord; } }));
+Object.defineProperty(exports, "buildAIChangeRecordReceipt", ({ enumerable: true, get: function () { return ai_change_record_1.buildAIChangeRecordReceipt; } }));
+Object.defineProperty(exports, "canonicalAIChangeRecordHash", ({ enumerable: true, get: function () { return ai_change_record_1.canonicalAIChangeRecordHash; } }));
+Object.defineProperty(exports, "stableHash", ({ enumerable: true, get: function () { return ai_change_record_1.stableHash; } }));
+Object.defineProperty(exports, "stableStringify", ({ enumerable: true, get: function () { return ai_change_record_1.stableStringify; } }));
+Object.defineProperty(exports, "verifyAIChangeRecordReceipt", ({ enumerable: true, get: function () { return ai_change_record_1.verifyAIChangeRecordReceipt; } }));
 Object.defineProperty(exports, "writeAIChangeRecord", ({ enumerable: true, get: function () { return ai_change_record_1.writeAIChangeRecord; } }));
 var agent_invocation_observability_1 = __nccwpck_require__(1349);
 Object.defineProperty(exports, "AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION", ({ enumerable: true, get: function () { return agent_invocation_observability_1.AGENT_INVOCATION_OBSERVABILITY_SCHEMA_VERSION; } }));
@@ -45285,6 +45781,7 @@ Object.defineProperty(exports, "activeArchitectureObligationWaivers", ({ enumera
 Object.defineProperty(exports, "deriveArchitectureObligations", ({ enumerable: true, get: function () { return architecture_obligations_1.deriveArchitectureObligations; } }));
 Object.defineProperty(exports, "effectiveArchitectureObligationMode", ({ enumerable: true, get: function () { return architecture_obligations_1.effectiveArchitectureObligationMode; } }));
 Object.defineProperty(exports, "evaluateArchitectureObligationFeedback", ({ enumerable: true, get: function () { return architecture_obligations_1.evaluateArchitectureObligationFeedback; } }));
+Object.defineProperty(exports, "planDeclaredApprovalRequiredPaths", ({ enumerable: true, get: function () { return architecture_obligations_1.planDeclaredApprovalRequiredPaths; } }));
 Object.defineProperty(exports, "evaluateArchitectureEdit", ({ enumerable: true, get: function () { return architecture_obligations_1.evaluateArchitectureEdit; } }));
 Object.defineProperty(exports, "isArchitectureObligationWaiverActive", ({ enumerable: true, get: function () { return architecture_obligations_1.isArchitectureObligationWaiverActive; } }));
 Object.defineProperty(exports, "normalizeArchitectureObligationPolicy", ({ enumerable: true, get: function () { return architecture_obligations_1.normalizeArchitectureObligationPolicy; } }));
@@ -45652,7 +46149,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.DEFAULT_PLAN_COHERENCE_MODE = void 0;
+exports.DEFAULT_RUNTIME_LOCAL_MODE = exports.DEFAULT_PLAN_COHERENCE_MODE = void 0;
 exports.ownersForPath = ownersForPath;
 exports.buildRepoGovernanceProfile = buildRepoGovernanceProfile;
 exports.checkFileBoundary = checkFileBoundary;
@@ -45661,6 +46158,7 @@ const micromatch_1 = __importDefault(__nccwpck_require__(9555));
 const architecture_obligations_1 = __nccwpck_require__(568);
 const architecture_graph_1 = __nccwpck_require__(65);
 exports.DEFAULT_PLAN_COHERENCE_MODE = 'warn';
+exports.DEFAULT_RUNTIME_LOCAL_MODE = 'advisory';
 // ── Security token map ────────────────────────────────────────────────────────
 //
 // Conservative: tokens are matched WHOLE against path-segment parts only.
@@ -45992,6 +46490,14 @@ function normalizePlanCoherenceMode(value) {
         ? value
         : exports.DEFAULT_PLAN_COHERENCE_MODE;
 }
+function normalizeRuntimeLocalMode(value) {
+    if (value === undefined || value === null || value === '') {
+        return exports.DEFAULT_RUNTIME_LOCAL_MODE;
+    }
+    return value === 'strict' || value === 'advisory' || value === 'paused'
+        ? value
+        : exports.DEFAULT_RUNTIME_LOCAL_MODE;
+}
 function normalizeRuntimeConfig(input) {
     return {
         approvalRequiredGlobs: normalizeGlobList(input?.approvalRequiredGlobs),
@@ -45999,6 +46505,7 @@ function normalizeRuntimeConfig(input) {
         safeSupportGlobs: normalizeGlobList(input?.safeSupportGlobs),
         ignoredGlobs: normalizeGlobList(input?.ignoredGlobs),
         planCoherence: normalizePlanCoherenceMode(input?.planCoherence),
+        localMode: normalizeRuntimeLocalMode(input?.localMode),
         architectureObligations: (0, architecture_obligations_1.normalizeArchitectureObligationPolicy)(input?.architectureObligations),
     };
 }
@@ -46011,6 +46518,9 @@ function canonicalRuntimeConfig(config) {
         ignoredGlobs: normalized.ignoredGlobs,
         ...(normalized.planCoherence && normalized.planCoherence !== exports.DEFAULT_PLAN_COHERENCE_MODE
             ? { planCoherence: normalized.planCoherence }
+            : {}),
+        ...(normalized.localMode && normalized.localMode !== exports.DEFAULT_RUNTIME_LOCAL_MODE
+            ? { localMode: normalized.localMode }
             : {}),
         ...(normalized.architectureObligations
             && (normalized.architectureObligations.mode !== 'warn'
@@ -46109,7 +46619,7 @@ function buildRepoGovernanceProfile(input) {
     };
 }
 function checkFileBoundary(input) {
-    const { filePath, allowedGlobs, ownershipRules, sensitiveGlobs, approvalRequiredGlobs, approvedPaths = [], approvalGrants = [], checkedAt, scopeMode = 'inferred', } = input;
+    const { filePath, allowedGlobs, ownershipRules, sensitiveGlobs, approvalRequiredGlobs, approvedPaths = [], approvalGrants = [], checkedAt, scopeMode = 'inferred', localMode = 'strict', } = input;
     // ── Scope check ──────────────────────────────────────────────────────────────
     const inScope = allowedGlobs.length === 0
         ? true
@@ -46169,6 +46679,7 @@ function checkFileBoundary(input) {
                 `Use neurcode_session_approve to approve this path, or narrow the task.` +
                 expiredNote,
             options: ['narrow', 'replan'],
+            blockType: 'approval_required_boundary',
             approvalContext: {
                 blockedPath: filePath,
                 approvalRequired: true,
@@ -46192,6 +46703,7 @@ function checkFileBoundary(input) {
             owners,
             message: `⏸ Neurcode: ${filePath} is owned by ${owners.join(', ')} and outside the declared scope.`,
             options: ['narrow', 'replan'],
+            blockType: 'scope_violation_or_task_expansion',
         };
     }
     if (!effectivelyInScope && isSensitive) {
@@ -46204,9 +46716,34 @@ function checkFileBoundary(input) {
             owners,
             message: `⏸ Neurcode: ${filePath} is a sensitive boundary (${matchedGlob}) and outside the declared scope.`,
             options: ['narrow', 'replan'],
+            blockType: 'approval_required_boundary',
+            approvalContext: {
+                blockedPath: filePath,
+                approvalRequired: true,
+                owners,
+                suggestedApprovalPath: filePath,
+            },
         };
     }
     if (!effectivelyInScope) {
+        const advisory = localMode === 'advisory'
+            ? 'advisory mode'
+            : localMode === 'paused'
+                ? 'paused local hard-hook mode'
+                : '';
+        if (advisory) {
+            return {
+                verdict: 'warn',
+                inScope,
+                isSensitive,
+                isApprovalRequired,
+                owners,
+                message: `⚠️ Neurcode: ${filePath} is outside the declared task scope. ` +
+                    `Allowed in ${advisory}; record this as a task expansion and re-plan if it is intentional.`,
+                options: ['continue', 'replan'],
+                blockType: 'scope_violation_or_task_expansion',
+            };
+        }
         return {
             verdict: 'block',
             inScope,
@@ -46215,6 +46752,7 @@ function checkFileBoundary(input) {
             owners,
             message: `⏸ Neurcode: ${filePath} is outside the declared scope for this task.`,
             options: ['narrow', 'replan'],
+            blockType: 'scope_violation_or_task_expansion',
         };
     }
     // ── In-scope but sensitive — advisory warning ─────────────────────────────
@@ -46369,6 +46907,7 @@ function createSession(projectRoot, profile, goal) {
         intentContract,
         graph: architectureGraph,
         policy: architectureObligationPolicy,
+        approvalRequiredGlobs: profile.approvalRequiredPaths,
         now: startedAt,
     });
     const session = {
@@ -46389,6 +46928,7 @@ function createSession(projectRoot, profile, goal) {
             approvalGrants: [],
             intentContract,
             planCoherenceMode: profile.runtimeConfig?.planCoherence ?? profile_1.DEFAULT_PLAN_COHERENCE_MODE,
+            runtimeMode: profile.runtimeConfig?.localMode ?? profile_1.DEFAULT_RUNTIME_LOCAL_MODE,
             architectureObligations,
             architectureObligationPolicy,
             architectureObligationWaivers: [],
@@ -46404,6 +46944,7 @@ function createSession(projectRoot, profile, goal) {
                     scopeMode,
                     intentContract,
                     planCoherenceMode: profile.runtimeConfig?.planCoherence ?? profile_1.DEFAULT_PLAN_COHERENCE_MODE,
+                    runtimeMode: profile.runtimeConfig?.localMode ?? profile_1.DEFAULT_RUNTIME_LOCAL_MODE,
                     architectureObligations,
                     architectureObligationPolicy,
                 },
@@ -46461,6 +47002,7 @@ function recomputeArchitectureObligations(session, now = new Date().toISOString(
         agentPlan: session.contract.agentPlan,
         events: session.events,
         approvedPaths: activeApprovalPaths(session.contract, now),
+        approvalRequiredGlobs: session.contract.approvalRequiredGlobs,
         graph: session.contract.architectureGraph,
         policy: session.contract.architectureObligationPolicy,
         waivers: (0, architecture_obligations_1.activeArchitectureObligationWaivers)(session.contract.architectureObligationWaivers ?? [], now),
@@ -46967,6 +47509,9 @@ function finishSession(projectRoot, sessionId, options = {}) {
             ...(options.unresolvedApprovalBlocks?.length
                 ? { unresolvedApprovalBlocks: options.unresolvedApprovalBlocks }
                 : {}),
+            ...(options.unresolvedActionableBlocks?.length
+                ? { unresolvedActionableBlocks: options.unresolvedActionableBlocks }
+                : {}),
         },
     });
     (0, node_fs_1.writeFileSync)(sessionPath(projectRoot, sessionId), JSON.stringify(session, null, 2) + '\n', 'utf8');
@@ -47057,7 +47602,28 @@ function cleanScopePathToken(raw) {
         .replace(/[)"'`>\].,;:]+$/, '')
         .trim();
 }
-function isLikelyRepoScopePath(token) {
+function deriveScopePathRoots(profile) {
+    const roots = new Set(SCOPE_PATH_ROOTS);
+    if (!profile)
+        return roots;
+    for (const prefix of deriveSourceRootPrefixes(profile)) {
+        const first = prefix.replace(/\/$/, '').split('/').filter(Boolean)[0];
+        if (first && !first.includes('*'))
+            roots.add(first);
+    }
+    for (const boundary of [
+        ...profile.ownershipBoundaries,
+        ...profile.sensitiveBoundaries,
+    ]) {
+        const glob = boundary.glob.replace(/^\//, '').replace(/\\/g, '/');
+        const first = glob.split('/').filter(Boolean)[0];
+        if (first && !first.includes('*') && !/^[A-Z][A-Za-z]+$/.test(first)) {
+            roots.add(first);
+        }
+    }
+    return roots;
+}
+function isLikelyRepoScopePath(token, profile) {
     if (!token || token.length > 240 || token.includes('://'))
         return false;
     if (!token.includes('/'))
@@ -47068,7 +47634,7 @@ function isLikelyRepoScopePath(token) {
     if (segments.length < 2)
         return false;
     const first = segments[0];
-    if (!SCOPE_PATH_ROOTS.has(first))
+    if (!deriveScopePathRoots(profile).has(first))
         return false;
     const lastSeg = segments.at(-1) ?? '';
     if (!lastSeg || lastSeg === '*' || lastSeg === '**')
@@ -47077,10 +47643,58 @@ function isLikelyRepoScopePath(token) {
         return false;
     return true;
 }
-function extractPathTokens(goal) {
+function extractPathTokens(goal, profile) {
     return unique((goal.match(/[a-z0-9_./-]+\/[a-z0-9_./-]+/gi) ?? [])
         .map(cleanScopePathToken)
-        .filter(isLikelyRepoScopePath));
+        .filter((token) => isLikelyRepoScopePath(token, profile)));
+}
+function deriveExcludedScopePrefixes(lowerGoal) {
+    const excluded = [];
+    if (/\b(?:do not touch|don't touch|without touching|no changes to|avoid)\s+providers\b/.test(lowerGoal)) {
+        excluded.push('providers/');
+    }
+    if (/\b(?:do not touch|don't touch|without touching|no changes to|avoid)\s+(?:ci|\.github|github workflows?)\b/.test(lowerGoal)) {
+        excluded.push('.github/');
+    }
+    return excluded;
+}
+function filterExcludedScopePrefixes(globs, excludedPrefixes) {
+    if (excludedPrefixes.length === 0)
+        return globs;
+    return globs.filter((glob) => !excludedPrefixes.some((prefix) => glob.startsWith(prefix)));
+}
+function anchorKeywordGlobsToGoal(pathTokens, profile, segment) {
+    const normalizedSegment = segment.toLowerCase();
+    const anchored = new Set();
+    for (const token of pathTokens) {
+        const parts = token.replace(/\/$/, '').split('/').filter(Boolean);
+        const segIndex = parts.findIndex((part) => part.toLowerCase() === normalizedSegment);
+        if (segIndex >= 0) {
+            anchored.add(`${parts.slice(0, segIndex + 1).join('/')}/**`);
+        }
+    }
+    if (anchored.size > 0)
+        return Array.from(anchored);
+    return inferKeywordGlobsFromProfile(profile, segment);
+}
+function inferTestSupportGlobs(lowerGoal, pathTokens, profile) {
+    if (!/\b(unit tests?|focused tests?|tests?\b)/i.test(lowerGoal))
+        return [];
+    const support = new Set();
+    const prefixes = deriveSourceRootPrefixes(profile);
+    for (const token of pathTokens) {
+        if (isFileScopeToken(token))
+            continue;
+        const dir = token.replace(/\/$/, '');
+        for (const rawPrefix of prefixes) {
+            const prefix = rawPrefix.replace(/\/$/, '');
+            if (!prefix || !dir.startsWith(prefix))
+                continue;
+            support.add(`${prefix}/tests/**`);
+            support.add(`${prefix}/test/**`);
+        }
+    }
+    return Array.from(support);
 }
 function primaryActionForGoal(lower) {
     if (/\b(add|create|implement|build|introduce)\b/.test(lower))
@@ -47121,7 +47735,7 @@ function domainKeywordsForGoal(lower) {
 }
 function supportGlobsForIntent(goal, profile) {
     const lower = goal.toLowerCase();
-    if (hasExclusiveScopeCue(lower) && extractPathTokens(goal).length > 0) {
+    if (hasExclusiveScopeCue(lower) && extractPathTokens(goal, profile).length > 0) {
         return [];
     }
     const globs = [
@@ -47412,6 +48026,14 @@ function recordAgentPlanRevision(args) {
         },
     });
     recomputeArchitectureObligations(args.session, capturedAt);
+    expandSessionScope(args.session, {
+        text: [
+            args.plan.summary,
+            ...args.plan.steps,
+        ].join('\n'),
+        expectedFiles: args.plan.expectedFiles,
+        expectedGlobs: args.plan.expectedGlobs,
+    });
     (0, node_fs_1.writeFileSync)(sessionPath(args.projectRoot, args.session.sessionId), JSON.stringify(args.session, null, 2) + '\n', 'utf8');
     return args.session;
 }
@@ -48176,23 +48798,23 @@ function deriveAllowedGlobs(goal, profile) {
     // We must NOT strip the extension and append /**, which was the bug that turned
     // "src/tasks/export_task.py" into "src/tasks/export_task/**" and then blocked
     // the exact file the user named.
-    const pathTokens = extractPathTokens(goal);
+    const excludedPrefixes = deriveExcludedScopePrefixes(lower);
+    const pathTokens = extractPathTokens(goal, profile);
     if (pathTokens.length > 0) {
         const exclusiveExplicitScope = hasExclusiveScopeCue(lower);
         const expanded = pathTokens.map((t) => {
             const normalised = t.replace(/^\//, '');
-            return isFileScopeToken(normalised) ? normalised : normalised.replace(/\/$/, '') + '/**';
+            return isFileScopeToken(normalised) ? normalised : `${normalised.replace(/\/$/, '')}/**`;
         });
-        const globs = excludeApprovalRequired(expandNestedSourceGlobs([
+        const globs = filterExcludedScopePrefixes(excludeApprovalRequired(expandNestedSourceGlobs([
             ...expanded,
+            ...inferTestSupportGlobs(lower, pathTokens, profile),
             ...(exclusiveExplicitScope ? [] : safeSupportGlobs),
-        ]));
+        ])), excludedPrefixes);
         if (globs.length > 0)
             return { allowedGlobs: globs, scopeMode: 'explicit' };
     }
     // ── Keyword inference ────────────────────────────────────────────────────────
-    // Match whole words only to avoid "services" matching "service" inside "user_services_old".
-    const wordOf = (kw) => new RegExp(`\\b${kw}\\b`, 'i').test(lower);
     const DIR_KEYWORDS = [
         [/\btasks?\b/i, 'src/tasks/**'],
         [/\bservices?\b/i, 'src/services/**'],
@@ -48208,18 +48830,46 @@ function deriveAllowedGlobs(goal, profile) {
         [/\bapi\b/i, 'src/api/**'],
     ];
     const matched = new Set();
-    for (const [re, glob] of DIR_KEYWORDS) {
-        if (re.test(lower))
-            matched.add(glob);
+    if (pathTokens.length > 0) {
+        for (const [re, fallbackGlob] of DIR_KEYWORDS) {
+            if (!re.test(lower))
+                continue;
+            const segment = fallbackGlob.match(/\/([^/*]+)\/\*\*$/)?.[1];
+            if (!segment)
+                continue;
+            for (const glob of anchorKeywordGlobsToGoal(pathTokens, profile, segment)) {
+                matched.add(glob);
+            }
+        }
+    }
+    else {
+        for (const [re, glob] of DIR_KEYWORDS) {
+            if (re.test(lower))
+                matched.add(glob);
+        }
     }
     if (matched.size > 0) {
-        // Always include non-sensitive support dirs alongside the primary match.
-        // These are genuinely low-risk and blocking them in a task-focused session
-        // is pure noise.
         for (const support of safeSupportGlobs) {
             matched.add(support);
         }
-        const globs = excludeApprovalRequired(expandNestedSourceGlobs(Array.from(matched)));
+        const globs = filterExcludedScopePrefixes(excludeApprovalRequired(expandNestedSourceGlobs(Array.from(matched))), excludedPrefixes);
+        return { allowedGlobs: globs, scopeMode: 'inferred' };
+    }
+    // Profile-aware keyword fallback when the goal names a segment but not a full path.
+    for (const [re, fallbackGlob] of DIR_KEYWORDS) {
+        if (!re.test(lower))
+            continue;
+        const segment = fallbackGlob.match(/\/([^/*]+)\/\*\*$/)?.[1];
+        if (!segment)
+            continue;
+        for (const glob of inferKeywordGlobsFromProfile(profile, segment)) {
+            matched.add(glob);
+        }
+    }
+    if (matched.size > 0) {
+        for (const support of safeSupportGlobs)
+            matched.add(support);
+        const globs = filterExcludedScopePrefixes(excludeApprovalRequired(expandNestedSourceGlobs(Array.from(matched))), excludedPrefixes);
         return { allowedGlobs: globs, scopeMode: 'inferred' };
     }
     // ── Ambiguous fallback ───────────────────────────────────────────────────────
@@ -48237,6 +48887,53 @@ function deriveAllowedGlobs(goal, profile) {
     // any approval-required path as a hard block even if it appears in-scope.
     const safeDirs = deriveSafeDirs(profile);
     return { allowedGlobs: safeDirs, scopeMode: 'ambiguous' };
+}
+function inferKeywordGlobsFromProfile(profile, segment) {
+    const found = new Set();
+    const sources = [
+        ...profile.ownershipBoundaries.map((boundary) => boundary.glob),
+        ...profile.sensitiveBoundaries.map((boundary) => boundary.glob),
+        ...profile.approvalRequiredPaths,
+    ];
+    const normalizedSegment = segment.toLowerCase();
+    for (const raw of sources) {
+        const glob = raw.replace(/^\//, '').replace(/\\/g, '/');
+        const parts = glob.split('/');
+        for (let index = 0; index < parts.length; index += 1) {
+            const part = parts[index]?.replace(/\*\*$/, '').replace(/\*$/, '');
+            if (!part || part.toLowerCase() !== normalizedSegment)
+                continue;
+            found.add(`${parts.slice(0, index + 1).join('/')}/**`);
+        }
+    }
+    return Array.from(found).sort();
+}
+function scopeEntriesFromPaths(paths) {
+    return normalizePlanPaths(paths).map((token) => (isFileScopeToken(token) ? token : `${token.replace(/\/$/, '')}/**`));
+}
+function expandSessionScope(session, input) {
+    const fromText = input.text?.trim()
+        ? (0, agent_plan_1.extractExpectedTargetsFromText)(input.text)
+        : { expectedFiles: [], expectedGlobs: [] };
+    const additions = unique([
+        ...scopeEntriesFromPaths([
+            ...(input.expectedFiles ?? []),
+            ...fromText.expectedFiles,
+        ]),
+        ...normalizePlanPaths([
+            ...(input.expectedGlobs ?? []),
+            ...fromText.expectedGlobs,
+        ]),
+    ]);
+    if (additions.length === 0)
+        return;
+    session.contract.allowedGlobs = unique([
+        ...session.contract.allowedGlobs,
+        ...additions,
+    ]);
+    if (session.contract.scopeMode === 'ambiguous') {
+        session.contract.scopeMode = 'explicit';
+    }
 }
 function deriveSourceRootPrefixes(profile) {
     const candidates = [
@@ -48464,6 +49161,7 @@ exports.parseLsTreeBounded = parseLsTreeBounded;
 exports.parseLsTree = parseLsTree;
 exports.discoverArtifactsFromLsTree = discoverArtifactsFromLsTree;
 exports.discoverArtifacts = discoverArtifacts;
+exports.discoverAIChangeRecordArtifacts = discoverAIChangeRecordArtifacts;
 const child_process_1 = __nccwpck_require__(5317);
 /** Phase A per-file byte ceiling (from governance-runtime/src/admission-provenance.ts). */
 exports.MAX_PER_FILE_BYTES = 8 * 1024 * 1024; // 8 MB
@@ -48589,7 +49287,7 @@ function parseLsTree(output) {
  * Process a pre-parsed list of LsTreeEntry values using real git cat-file calls.
  * Exported so tests can inject adversarial entries without needing a real git tree.
  */
-function discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggregateBytes) {
+function discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggregateBytes, directory = '.neurcode-admission') {
     const diagnostics = [];
     if (entries.length === 0) {
         return { artifacts: [], diagnostics, dirAbsent: true, ceilingHit: false };
@@ -48606,12 +49304,12 @@ function discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggrega
         }
         scanned++;
         // ── extract filename from path ───────────────────────────────────────────
-        // path from ls-tree is relative to the repo root: ".neurcode-admission/<name>"
+        // path from ls-tree is relative to the repo root: "<directory>/<name>"
         const pathStr = entry.path;
-        // Must be a direct child of .neurcode-admission/ (no sub-dirs).
-        const prefix = '.neurcode-admission/';
+        // Must be a direct child of the configured artifact directory (no sub-dirs).
+        const prefix = `${directory}/`;
         if (!pathStr.startsWith(prefix)) {
-            addDiagnostic(diagnostics, pathStr, 'Entry path does not start with .neurcode-admission/ — rejected.');
+            addDiagnostic(diagnostics, pathStr, `Entry path does not start with ${prefix} — rejected.`);
             continue;
         }
         const filename = pathStr.slice(prefix.length);
@@ -48694,11 +49392,18 @@ function discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggrega
  * Callers must wrap in try/catch and call core.setFailed() on throw.
  */
 function discoverArtifacts(repoRoot, headSha, maxArtifacts, maxAggregateBytes) {
-    // git ls-tree -z <headSha> .neurcode-admission/
+    return discoverArtifactsInDirectory(repoRoot, headSha, '.neurcode-admission', maxArtifacts, maxAggregateBytes);
+}
+function discoverAIChangeRecordArtifacts(repoRoot, headSha, maxArtifacts, maxAggregateBytes) {
+    return discoverArtifactsInDirectory(repoRoot, headSha, '.neurcode-ai-record', maxArtifacts, maxAggregateBytes);
+}
+function discoverArtifactsInDirectory(repoRoot, headSha, directory, maxArtifacts, maxAggregateBytes) {
+    // git ls-tree -z <headSha> <directory>/
     //   - Succeeds + empty output  → directory absent in this commit (dirAbsent=true)
     //   - Succeeds + non-empty     → entries to process
     //   - Throws                   → headSha unknown or git unavailable (setup error)
-    const lsOut = gitOrThrow(repoRoot, ['ls-tree', '-z', headSha, '.neurcode-admission/'], `git ls-tree ${headSha.slice(0, 12)} .neurcode-admission/`);
+    const directoryPath = `${directory}/`;
+    const lsOut = gitOrThrow(repoRoot, ['ls-tree', '-z', headSha, directoryPath], `git ls-tree ${headSha.slice(0, 12)} ${directoryPath}`);
     if (!lsOut || lsOut.trim() === '') {
         // Successful command, empty output: .neurcode-admission/ does not exist.
         return { artifacts: [], diagnostics: [], dirAbsent: true, ceilingHit: false };
@@ -48709,19 +49414,19 @@ function discoverArtifacts(repoRoot, headSha, maxArtifacts, maxAggregateBytes) {
         if (parsed.truncated) {
             return {
                 artifacts: [],
-                diagnostics: [{ filename: '.neurcode-admission/', reason: `Scan entry ceiling (${MAX_SCAN_ENTRIES}) reached — skipped.` }],
+                diagnostics: [{ filename: directoryPath, reason: `Scan entry ceiling (${MAX_SCAN_ENTRIES}) reached — skipped.` }],
                 dirAbsent: false,
                 ceilingHit: true,
             };
         }
         return { artifacts: [], diagnostics: [], dirAbsent: true, ceilingHit: false };
     }
-    const result = discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggregateBytes);
+    const result = discoverArtifactsFromLsTree(repoRoot, entries, maxArtifacts, maxAggregateBytes, directory);
     if (parsed.truncated) {
         result.ceilingHit = true;
         if (result.diagnostics.length < MAX_DIAGNOSTICS) {
             result.diagnostics.push({
-                filename: '.neurcode-admission/',
+                filename: directoryPath,
                 reason: `Scan entry ceiling (${MAX_SCAN_ENTRIES}) reached — skipped.`,
             });
         }
@@ -49097,6 +49802,179 @@ function decidePolicyOutcome(verdict, policy, noRecordStrict) {
 
 /***/ }),
 
+/***/ 5781:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.evaluateAIChangeRecordArtifacts = evaluateAIChangeRecordArtifacts;
+const governance_runtime_1 = __nccwpck_require__(7399);
+const MAX_AI_RECORD_JSON_BYTES = 8 * 1024 * 1024;
+function asRecord(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+function stringArray(value) {
+    return Array.isArray(value)
+        ? Array.from(new Set(value.filter((item) => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()))).sort()
+        : [];
+}
+function extractRecordEnvelope(value) {
+    const obj = asRecord(value);
+    if (!obj)
+        return { record: null, receipt: null };
+    const record = asRecord(obj.record)?.recordType === 'ai-change-accountability-record'
+        ? asRecord(obj.record)
+        : obj.recordType === 'ai-change-accountability-record'
+            ? obj
+            : null;
+    const receipt = asRecord(obj.receipt)?.schemaVersion === 'neurcode.ai-change-record-receipt.v1'
+        ? obj.receipt
+        : asRecord(obj.backendReceipt)?.schemaVersion === 'neurcode.ai-change-record-receipt.v1'
+            ? obj.backendReceipt
+            : null;
+    return { record, receipt };
+}
+function parseArtifact(artifact) {
+    if (Buffer.byteLength(artifact.content, 'utf8') > MAX_AI_RECORD_JSON_BYTES) {
+        return { value: null, reason: 'AI Change Record artifact exceeds byte limit' };
+    }
+    try {
+        return { value: JSON.parse(artifact.content) };
+    }
+    catch {
+        return { value: null, reason: 'AI Change Record artifact is not valid JSON' };
+    }
+}
+function trustAggregate(levels) {
+    const unique = Array.from(new Set(levels));
+    if (unique.length === 0)
+        return 'none';
+    if (unique.length === 1)
+        return unique[0];
+    return 'mixed';
+}
+function receiptSecret() {
+    return process.env.NEURCODE_AI_CHANGE_RECORD_SIGNING_SECRET || null;
+}
+function receiptKeyId() {
+    return process.env.NEURCODE_AI_CHANGE_RECORD_SIGNING_KEY_ID || null;
+}
+function evaluateAIChangeRecordArtifacts(artifacts, discoveryDiagnostics, dirAbsent) {
+    const diagnostics = [...discoveryDiagnostics];
+    const records = [];
+    const levels = [];
+    const receiptIds = new Set();
+    const keyIds = new Set();
+    const signedAt = new Set();
+    const verificationStatuses = new Set();
+    const touchedPaths = new Set();
+    const sensitiveSurfaces = new Set();
+    const blockedBoundaries = new Set();
+    const approvedPaths = new Set();
+    let approvalRequired = false;
+    for (const artifact of artifacts) {
+        const parsed = parseArtifact(artifact);
+        if (parsed.reason) {
+            diagnostics.push({ filename: artifact.filename, reason: parsed.reason });
+            records.push({ filename: artifact.filename, valid: false, trustLevel: 'backend_signed_invalid', recordHash: null, receiptId: null, reasons: [parsed.reason] });
+            continue;
+        }
+        const { record, receipt } = extractRecordEnvelope(parsed.value);
+        const reasons = [];
+        if (!record)
+            reasons.push('no AI Change Record payload found');
+        if (record) {
+            try {
+                (0, governance_runtime_1.assertSourceFreeAIChangeRecordPayload)(record);
+            }
+            catch (error) {
+                reasons.push(error instanceof Error ? error.message : String(error));
+            }
+        }
+        const declaredHash = typeof record?.integrity?.recordHash === 'string' ? record.integrity.recordHash : null;
+        let computedHash = null;
+        if (record) {
+            try {
+                computedHash = (0, governance_runtime_1.canonicalAIChangeRecordHash)(record);
+                if (declaredHash && computedHash !== declaredHash)
+                    reasons.push('record hash mismatch');
+            }
+            catch (error) {
+                reasons.push(error instanceof Error ? error.message : String(error));
+            }
+        }
+        let trustLevel = 'self_attested';
+        let receiptId = null;
+        if (receipt) {
+            const verification = (0, governance_runtime_1.verifyAIChangeRecordReceipt)({
+                recordHash: declaredHash || computedHash,
+                receipt,
+                signingSecret: receiptSecret(),
+                expectedSigningKeyId: receiptKeyId(),
+            });
+            trustLevel = verification.trustLevel;
+            receiptId = verification.receiptId;
+            verificationStatuses.add(verification.status);
+            if (verification.trustLevel === 'backend_signed_invalid') {
+                for (const reason of verification.reasons)
+                    reasons.push(reason);
+            }
+            if (receipt.receiptId)
+                receiptIds.add(receipt.receiptId);
+            if (receipt.signingKeyId)
+                keyIds.add(receipt.signingKeyId);
+            if (receipt.issuedAt)
+                signedAt.add(receipt.issuedAt);
+        }
+        const facts = asRecord(record?.accountability?.facts);
+        for (const path of stringArray(facts?.touchedPaths))
+            touchedPaths.add(path);
+        for (const path of stringArray(facts?.blockedBoundaries))
+            blockedBoundaries.add(path);
+        for (const path of stringArray(facts?.approvedExactPaths))
+            approvedPaths.add(path);
+        for (const path of stringArray(record?.reviewBrief?.reviewFocus))
+            sensitiveSurfaces.add(path);
+        approvalRequired = approvalRequired || facts?.approvalRequired === true;
+        const valid = Boolean(record) && reasons.length === 0;
+        if (valid)
+            levels.push(trustLevel);
+        else
+            diagnostics.push({ filename: artifact.filename, reason: reasons[0] || 'invalid AI Change Record artifact' });
+        records.push({
+            filename: artifact.filename,
+            valid,
+            trustLevel,
+            recordHash: declaredHash || computedHash,
+            receiptId,
+            reasons,
+        });
+    }
+    const validRecordCount = records.filter((record) => record.valid).length;
+    return {
+        found: !dirAbsent || artifacts.length > 0,
+        totalRecordCount: records.length,
+        validRecordCount,
+        invalidRecordCount: Math.max(0, records.length - validRecordCount),
+        trustLevel: trustAggregate(levels),
+        receiptIds: Array.from(receiptIds).sort(),
+        keyIds: Array.from(keyIds).sort(),
+        signedAt: Array.from(signedAt).sort(),
+        verificationStatuses: Array.from(verificationStatuses).sort(),
+        touchedPaths: Array.from(touchedPaths).sort(),
+        sensitiveSurfaces: Array.from(sensitiveSurfaces).sort(),
+        blockedBoundaries: Array.from(blockedBoundaries).sort(),
+        approvedPaths: Array.from(approvedPaths).sort(),
+        approvalRequired,
+        diagnostics,
+        records,
+    };
+}
+
+
+/***/ }),
+
 /***/ 372:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -49300,11 +50178,12 @@ function readInputs() {
     const policyRaw = core.getInput('policy', { required: false }).trim().toLowerCase();
     const policy = policyRaw === 'strict_self_attested' ? 'strict_self_attested' : 'advisory';
     const noRecordStrict = core.getInput('no_record_strict', { required: false }).trim().toLowerCase() === 'true';
+    const requireSignedEvidence = core.getInput('require_signed_evidence', { required: false }).trim().toLowerCase() === 'true';
     const maxArtifactsRaw = parseInt(core.getInput('max_artifacts', { required: false }).trim() || '256', 10);
     const maxArtifacts = Math.max(1, Math.min(isNaN(maxArtifactsRaw) ? 256 : maxArtifactsRaw, MAX_ARTIFACTS_CEILING));
     const maxAggregateBytesRaw = parseInt(core.getInput('max_aggregate_bytes', { required: false }).trim() || '16777216', 10);
     const maxAggregateBytes = Math.max(1024, Math.min(isNaN(maxAggregateBytesRaw) ? 16 * 1024 * 1024 : maxAggregateBytesRaw, MAX_AGGREGATE_BYTES_CEILING));
-    return { policy, noRecordStrict, maxArtifacts, maxAggregateBytes };
+    return { policy, noRecordStrict, requireSignedEvidence, maxArtifacts, maxAggregateBytes };
 }
 
 
@@ -49385,6 +50264,7 @@ const sensitive_1 = __nccwpck_require__(3503);
 const capture_1 = __nccwpck_require__(1363);
 const discover_1 = __nccwpck_require__(2558);
 const evaluate_1 = __nccwpck_require__(8194);
+const evaluate_2 = __nccwpck_require__(5781);
 const policy_1 = __nccwpck_require__(171);
 const outputs_1 = __nccwpck_require__(5734);
 const summary_1 = __nccwpck_require__(9660);
@@ -49452,10 +50332,26 @@ async function run() {
         return;
     }
     const admission = (0, evaluate_1.evaluateAdmission)(admissionCapture, discovery.artifacts, discovery.diagnostics, discovery.dirAbsent);
+    let aiRecordDiscovery;
+    try {
+        aiRecordDiscovery = (0, discover_1.discoverAIChangeRecordArtifacts)(repoRoot, ctx.headSha, inputs.maxArtifacts, inputs.maxAggregateBytes);
+    }
+    catch (err) {
+        core.setFailed(err instanceof Error ? err.message : String(err));
+        return;
+    }
+    for (const d of aiRecordDiscovery.diagnostics) {
+        core.warning(`[neurcode] ai-record: ${(0, sanitize_1.logSafe)(d.filename)}: ${(0, sanitize_1.logSafe)(d.reason)}`);
+    }
+    const aiChangeRecord = (0, evaluate_2.evaluateAIChangeRecordArtifacts)(aiRecordDiscovery.artifacts, aiRecordDiscovery.diagnostics, aiRecordDiscovery.dirAbsent);
+    core.info(`[neurcode] AI Change Record: found=${aiChangeRecord.found} ` +
+        `valid=${aiChangeRecord.validRecordCount} trust=${aiChangeRecord.trustLevel}`);
     core.info(`[neurcode] Layer 2: verdict=${admission.finalVerdict} ` +
         `covered=${admission.coveredPaths.length} uncovered=${admission.uncoveredPaths.length}`);
     // ── 5. Policy decision ─────────────────────────────────────────────────────
     const policyDecision = (0, policy_1.decidePolicyOutcome)(admission.finalVerdict, inputs.policy, inputs.noRecordStrict);
+    const signedEvidenceMissing = inputs.requireSignedEvidence &&
+        (!aiChangeRecord.found || aiChangeRecord.validRecordCount === 0 || aiChangeRecord.trustLevel !== 'backend_signed_verified');
     // ── 6. Emit outputs ────────────────────────────────────────────────────────
     (0, outputs_1.emitOutputs)({
         effects: inventory.effects,
@@ -49464,7 +50360,8 @@ async function run() {
         codeowners,
         codeownersChanged: inventory.codeownersChanged,
         admission,
-        actionBlocked: policyDecision.shouldFail,
+        aiChangeRecord,
+        actionBlocked: policyDecision.shouldFail || signedEvidenceMissing,
     });
     // ── 7. Step summary ────────────────────────────────────────────────────────
     const summaryText = (0, summary_1.renderStepSummary)({
@@ -49474,7 +50371,14 @@ async function run() {
         codeowners,
         codeownersChanged: inventory.codeownersChanged,
         admission,
-        policyDecision,
+        aiChangeRecord,
+        policyDecision: {
+            ...policyDecision,
+            shouldFail: policyDecision.shouldFail || signedEvidenceMissing,
+            strictWarning: signedEvidenceMissing
+                ? 'require_signed_evidence=true but backend-signed verified AI Change Record evidence is missing or invalid.'
+                : policyDecision.strictWarning,
+        },
     });
     try {
         await (0, summary_1.writeSummary)(summaryText);
@@ -49484,8 +50388,9 @@ async function run() {
         core.info(summaryText);
     }
     // ── 8. Fail if policy requires it ─────────────────────────────────────────
-    if (policyDecision.shouldFail) {
-        core.setFailed(`[neurcode] Admission policy (${inputs.policy}) failed: verdict=${admission.finalVerdict}. ` +
+    if (policyDecision.shouldFail || signedEvidenceMissing) {
+        core.setFailed(`[neurcode] Admission policy (${inputs.policy}) failed: verdict=${admission.finalVerdict}; ` +
+            `ai_change_record_trust=${aiChangeRecord.trustLevel}. ` +
             'Self-attested claim, not enterprise proof. See step summary.');
     }
 }
@@ -49561,8 +50466,18 @@ function receiptStatus(admission) {
         return Array.from(integrityStatuses)[0];
     return 'mixed';
 }
+function aiRecordReceiptStatus(aiChangeRecord) {
+    if (!aiChangeRecord?.found)
+        return 'not_present';
+    const statuses = new Set(aiChangeRecord.verificationStatuses.filter(Boolean));
+    if (statuses.size === 0)
+        return aiChangeRecord.validRecordCount > 0 ? 'self_attested' : 'invalid_or_missing';
+    if (statuses.size === 1)
+        return Array.from(statuses)[0];
+    return 'mixed';
+}
 function emitOutputs(opts) {
-    const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, actionBlocked } = opts;
+    const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, aiChangeRecord, actionBlocked } = opts;
     const reportFacts = {
         effects,
         subsystems,
@@ -49594,6 +50509,9 @@ function emitOutputs(opts) {
     core.setOutput('runtime_admission_approved_count', String(admission.runtimeContext.counts.approvedExactPaths));
     core.setOutput('runtime_admission_denied_count', String(admission.runtimeContext.counts.deniedPaths));
     core.setOutput('runtime_admission_receipt_status', (0, sanitize_1.outputSafe)(receiptStatus(admission)));
+    core.setOutput('ai_change_record_found', String(aiChangeRecord?.found ?? false));
+    core.setOutput('ai_change_record_trust_level', (0, sanitize_1.outputSafe)(aiChangeRecord?.trustLevel ?? 'none'));
+    core.setOutput('ai_change_record_receipt_status', (0, sanitize_1.outputSafe)(aiRecordReceiptStatus(aiChangeRecord)));
     // Backward-compatible aliases from the first RC4 candidate.
     core.setOutput('runtime_blocked_paths_count', String(admission.runtimeContext.counts.blockedPaths));
     core.setOutput('runtime_approved_paths_count', String(admission.runtimeContext.counts.approvedExactPaths));
@@ -49716,11 +50634,15 @@ function deriveReviewAttention(facts) {
         reasons.push('admission record is inconsistent');
     if (facts.admission.runtimeContext.invalidRecordCount > 0)
         reasons.push('runtime admission metadata is invalid');
+    if (facts.aiChangeRecord?.found && facts.aiChangeRecord.invalidRecordCount > 0)
+        reasons.push('AI Change Record evidence is invalid');
+    if (facts.aiChangeRecord?.trustLevel === 'backend_signed_invalid')
+        reasons.push('AI Change Record receipt is invalid');
     if (facts.admission.runtimeContext.counts.deniedPaths > 0)
         reasons.push('runtime admission includes denied paths');
     if (facts.admission.runtimeContext.counts.blockedPaths > facts.admission.runtimeContext.counts.approvedExactPaths
         && facts.admission.runtimeContext.counts.blockedPaths > 0)
-        reasons.push('runtime admission has blocked paths without matching exact approvals');
+        reasons.push('runtime admission includes contained or still-blocked paths to review');
     if (reasons.length > 0)
         return { level: 'needs_attention', reasons };
     if (status === 'absent' && facts.effects.length > 0 && !lowRiskDocsOnly) {
@@ -49782,6 +50704,18 @@ function buildMaintainerQuestions(facts) {
     }
     if (facts.admission.finalVerdict === 'no_record' && facts.effects.length > 0 && !lowRiskDocsOnly) {
         questions.push('No runtime admission record is attached. If this PR was generated by an agent, ask for source-free admission evidence.');
+    }
+    if (!facts.aiChangeRecord?.found && facts.effects.length > 0 && !lowRiskDocsOnly) {
+        questions.push('No AI Change Record artifact is attached. If an agent authored this PR, ask for the source-free change record and receipt posture.');
+    }
+    else if (facts.aiChangeRecord?.trustLevel === 'self_attested') {
+        questions.push('AI Change Record evidence is self-attested. Is that enough, or should backend-signed verified evidence be required?');
+    }
+    else if (facts.aiChangeRecord?.trustLevel === 'backend_signed_unverified') {
+        questions.push('AI Change Record has a backend-signed receipt that this runner did not verify. Should receipt verification be completed before merge?');
+    }
+    else if (facts.aiChangeRecord?.trustLevel === 'backend_signed_invalid') {
+        questions.push('AI Change Record receipt is invalid. Should the author regenerate the source-free record and receipt?');
     }
     if (facts.admission.runtimeContext.invalidRecordCount > 0) {
         questions.push('Runtime admission files were present but invalid. Should the author regenerate source-free admission metadata?');
@@ -49971,12 +50905,12 @@ function pushRows(lines, rows) {
     }
 }
 function renderStepSummary(opts) {
-    const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, policyDecision, } = opts;
+    const { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, aiChangeRecord, policyDecision, } = opts;
     const lines = [];
-    const facts = { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission };
+    const facts = { effects, subsystems, sensitiveHits, codeowners, codeownersChanged, admission, aiChangeRecord };
     const attention = (0, report_model_1.deriveReviewAttention)(facts);
     const questions = (0, report_model_1.buildMaintainerQuestions)(facts);
-    lines.push('### Neurcode Runtime Admission Advisory');
+    lines.push('### Neurcode AI Change Accountability Report');
     lines.push('');
     lines.push(`Policy: **${(0, sanitize_1.mdSafe)(policyDecision.policyLabel, 160)}**`);
     lines.push('');
@@ -49986,8 +50920,9 @@ function renderStepSummary(opts) {
         ['Subsystems touched', subsystemSummary(subsystems)],
         ['Sensitive surfaces touched', sensitiveSummary(sensitiveHits)],
         ['CODEOWNERS zones crossed', codeownersTopSummary(codeowners)],
-        ['Admission record status', admissionTopSummary(admission)],
-        ['Runtime admission context', runtimeAdmissionTopSummary(admission)],
+        ['Runtime admission status', admissionTopSummary(admission)],
+        ['AI Change Record trust', aiChangeRecord?.found ? String(aiChangeRecord.trustLevel) : 'no record artifact'],
+        ['Runtime evidence context', runtimeAdmissionTopSummary(admission)],
         ['Review routing', reviewAttentionText(attention.level, attention.reasons)],
     ]);
     lines.push('');
@@ -50070,10 +51005,52 @@ function renderStepSummary(opts) {
             lines.push(`| +${extra} more | |`);
     }
     lines.push('');
-    lines.push('#### Runtime admission context');
+    lines.push('#### AI Change Record evidence');
+    if (!aiChangeRecord?.found) {
+        lines.push('No `.neurcode-ai-record/*.json` AI Change Record artifact was found. This is normal for ordinary PRs; for agent-authored PRs, ask for source-free change accountability evidence.');
+    }
+    else if (aiChangeRecord.validRecordCount === 0) {
+        lines.push('AI Change Record artifacts were present but invalid. Treat them as unusable evidence.');
+    }
+    else {
+        lines.push('| Field | Source-free result |');
+        lines.push('|---|---|');
+        lines.push(`| Evidence present | yes |`);
+        lines.push(`| Trust level | ${(0, sanitize_1.mdSafe)(String(aiChangeRecord.trustLevel))} |`);
+        lines.push(`| Records | ${aiChangeRecord.validRecordCount} valid, ${aiChangeRecord.invalidRecordCount} invalid |`);
+        lines.push(`| Touched paths | ${pathList(aiChangeRecord.touchedPaths)} |`);
+        lines.push(`| Sensitive/review surfaces | ${pathList(aiChangeRecord.sensitiveSurfaces)} |`);
+        lines.push(`| Blocked boundaries | ${pathList(aiChangeRecord.blockedBoundaries)} |`);
+        lines.push(`| Approved exact paths | ${pathList(aiChangeRecord.approvedPaths)} |`);
+        lines.push(`| Receipt IDs | ${inlineList(aiChangeRecord.receiptIds, 4, 120)} |`);
+        lines.push(`| Key IDs | ${inlineList(aiChangeRecord.keyIds, 4, 120)} |`);
+        lines.push(`| Verification statuses | ${inlineList(aiChangeRecord.verificationStatuses, 4, 120)} |`);
+        lines.push('');
+        if (aiChangeRecord.trustLevel === 'self_attested') {
+            lines.push('The AI Change Record is self-attested. It is useful accountability metadata, not cryptographic proof.');
+        }
+        else if (aiChangeRecord.trustLevel === 'backend_signed_unverified') {
+            lines.push('A backend-signed receipt is attached, but this runner did not verify the signature. Treat it as signed-but-unverified evidence.');
+        }
+        else if (aiChangeRecord.trustLevel === 'backend_signed_verified') {
+            lines.push('The runner verified the backend signature over the source-free record hash and receipt metadata.');
+        }
+        else if (aiChangeRecord.trustLevel === 'backend_signed_invalid') {
+            lines.push('The attached AI Change Record receipt is invalid or does not match the record hash.');
+        }
+    }
+    if (aiChangeRecord?.diagnostics.length) {
+        lines.push('');
+        lines.push(`AI Change Record diagnostics (${aiChangeRecord.diagnostics.length}):`);
+        for (const d of aiChangeRecord.diagnostics.slice(0, MAX_WARNINGS_INLINE)) {
+            lines.push(`- \`${(0, sanitize_1.mdSafe)(d.filename)}\`: ${(0, sanitize_1.mdSafe)(d.reason, 220)}`);
+        }
+    }
+    lines.push('');
+    lines.push('#### Runtime evidence context');
     const runtime = admission.runtimeContext;
     if (!runtime.found) {
-        lines.push('No runtime admission record found. This report is PR metadata only.');
+        lines.push('No AI Change Record or runtime admission artifact was found. This report is PR metadata only.');
     }
     else if (runtime.validRecordCount === 0) {
         lines.push('Runtime admission files were present but invalid source-free metadata. The Action ignored unusable runtime claims and continued with PR metadata.');
@@ -50096,6 +51073,7 @@ function renderStepSummary(opts) {
         lines.push(`| Sessions | ${runtime.sessionCount} |`);
         lines.push(`| Governed agent host | ${inlineList(runtime.agentHosts, 4, 120)} |`);
         lines.push(`| Blocked / approved / denied paths | ${runtime.counts.blockedPaths} / ${runtime.counts.approvedExactPaths} / ${runtime.counts.deniedPaths} |`);
+        lines.push(`| Exact approval scope | ${runtime.counts.approvedExactPaths > 0 ? 'exact path only; neighboring paths still require their own approval' : 'none attached'} |`);
         lines.push(`| Approval-required surfaces | ${runtime.counts.approvalRequiredSurfaces}${runtime.approvalRequiredSurfaces.length > 0 ? ` - ${pathList(runtime.approvalRequiredSurfaces, 4)}` : ''} |`);
         lines.push(`| Receipt / integrity status | ${inlineList(runtime.receiptIntegrityStatuses, 4, 120)}; replay ${inlineList(runtime.replayHashStatuses, 4, 120)} |`);
         if (runtime.receiptIds.length > 0 || runtime.receiptVerificationStatuses.length > 0) {
@@ -50106,14 +51084,14 @@ function renderStepSummary(opts) {
         lines.push(`| Record validity | ${runtime.validRecordCount} valid, ${runtime.invalidRecordCount} invalid |`);
         lines.push('');
         if (runtime.aggregateTrustLevel === 'self_attested') {
-            lines.push('Self-attested runtime context is useful routing metadata, not proof that governance ran.');
+            lines.push('Self-attested runtime context is useful routing metadata, not proof that governance ran. Ask for backend-signed evidence when your policy requires stronger receipts.');
         }
         else if (runtime.aggregateTrustLevel === 'backend_signed') {
             lines.push('Backend-signed runtime context was attached; verify the receipt before treating it as enterprise evidence.');
         }
     }
     lines.push('');
-    lines.push('#### Runtime admission provenance');
+    lines.push('#### Runtime evidence provenance');
     lines.push('| Field | Result |');
     lines.push('|---|---|');
     lines.push(`| Verdict | ${verdictLabel(admission.finalVerdict)} |`);
@@ -50192,7 +51170,7 @@ function renderStepSummary(opts) {
     lines.push('- Self-attested records are claims, not cryptographic proof or enterprise signed receipts.');
     lines.push('');
     lines.push('---');
-    lines.push('*[Neurcode Runtime Admission Advisory](https://github.com/sujit-jaunjal/neurcode-actions) - advisory-only - no telemetry - no source upload*');
+    lines.push('*[Neurcode AI Change Accountability](https://github.com/sujit-jaunjal/neurcode-actions) - advisory-only - no telemetry - no source upload*');
     return lines.join('\n');
 }
 async function writeSummary(content) {

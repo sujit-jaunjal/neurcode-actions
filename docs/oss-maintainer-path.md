@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.4
+      - uses: sujit-jaunjal/neurcode-actions@v0.3.0-rc.5
 ```
 
 No Neurcode account, API key, runtime, local CLI, or telemetry endpoint is required.
@@ -85,6 +85,6 @@ git add .neurcode-admission/*.json
 
 ## RC Status
 
-`sujit-jaunjal/neurcode-actions@v0.3.0-rc.4` is the current rehearsal ref for Maintainer Report V2. It should be tried on real OSS pull requests before stable promotion.
+`sujit-jaunjal/neurcode-actions@v0.3.0-rc.5` is the current rehearsal ref for Maintainer Report V2. It should be tried on real OSS pull requests before stable promotion.
 
 `sujit-jaunjal/neurcode-actions@v0.2.4` remains the existing stable public release.
